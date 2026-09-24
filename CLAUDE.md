@@ -133,4 +133,19 @@ docker compose down                  # stop, keep data
 docker compose down -v               # stop and wipe the pgdata volume
 ```
 
-<!-- Add build/test commands as each app is scaffolded. -->
+Backend (needs dotnet-ef 8.* installed globally: `dotnet tool install -g dotnet-ef --version "8.*"`):
+
+```bash
+./scripts/dev-secrets.sh                            # .env -> dotnet user-secrets (never prints values, re-runnable)
+dotnet build backend
+dotnet test backend                                 # Docker must be running (Testcontainers postgres:16)
+dotnet run --project backend/CampusSpace.Api        # http://localhost:5080 (/health, /swagger); Development auto-migrates
+dotnet ef migrations add <Name> --project backend/CampusSpace.Api -o Data/Migrations
+dotnet ef database update --project backend/CampusSpace.Api
+dotnet list backend package --include-transitive | grep -E " 9\.| 10\."   # must print nothing Microsoft.*/Npgsql
+```
+
+If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
+`TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
+
+<!-- Add web/mobile/agent-service commands as each app is scaffolded. -->
