@@ -26,13 +26,13 @@ docs/                        plan, addendum, ADRs, ER diagram, report assets
 
 | Layer | Version |
 |-------|---------|
-| .NET | 8, pinned via `global.json` |
+| .NET | 8 (SDK 8.0.423), pinned via `global.json` |
 | EF Core, Npgsql.EntityFrameworkCore.PostgreSQL, JwtBearer | `8.*` (newer majors target .NET 10) |
 | PostgreSQL | 16 in Docker (local) |
-| Node | 22 |
+| Node | 24 |
 | Web | React 18 + TypeScript + Vite |
-| Mobile | Flutter stable |
-| Agent service | Python 3.11, managed by `uv` |
+| Mobile | Flutter 3.47 stable (Android only) |
+| Agent service | Python 3.11 via `uv` |
 
 ## Local ports (fixed)
 
@@ -112,6 +112,25 @@ because annotations cannot read `PolicySettings`.
   3. Three things I must understand for the viva
   4. A 2-line entry for my AI usage log
 
+## Git workflow
+
+- Never commit to `main`. Start every task from an up-to-date `main` on a new branch named `<type>/<component>-<short-desc>`
+  (for example `chore/repo-skeleton`, `feat/a-rooms-crud`, `feat/shared-auth`).
+- Keep commits small, using Conventional Commits.
+- When a task is done and verified, push and open a PR with `gh pr create`. The PR body lists what changed,
+  how it was verified, and which plan section it implements.
+- Never merge PRs yourself. The user merges.
+
 ## Commands
 
-<!-- Fill in as tools are added. -->
+Database (credentials come from `.env`; psql reads them from the container's env):
+
+```bash
+docker compose up -d                 # start PostgreSQL 16
+docker compose ps                    # wait for (healthy)
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select version();"'
+docker compose down                  # stop, keep data
+docker compose down -v               # stop and wipe the pgdata volume
+```
+
+<!-- Add build/test commands as each app is scaffolded. -->
