@@ -112,6 +112,15 @@ because annotations cannot read `PolicySettings`.
   3. Three things I must understand for the viva
   4. A 2-line entry for my AI usage log
 
+## Git workflow
+
+- Never commit to `main`. Start every task from an up-to-date `main` on a new branch named `<type>/<component>-<short-desc>`
+  (for example `chore/repo-skeleton`, `feat/a-rooms-crud`, `feat/shared-auth`).
+- Keep commits small, using Conventional Commits.
+- When a task is done and verified, push and open a PR with `gh pr create`. The PR body lists what changed,
+  how it was verified, and which plan section it implements.
+- Never merge PRs yourself. The user merges.
+
 ## Commands
 
 <!-- Fill in as tools are added. -->
