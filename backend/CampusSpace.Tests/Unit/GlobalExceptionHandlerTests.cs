@@ -1,0 +1,60 @@
+using System.Text.Json;
+using CampusSpace.Api.Extensions;
+using CampusSpace.Api.Middleware;
+using FluentAssertions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
+
+namespace CampusSpace.Tests.Unit;
+
+public class GlobalExceptionHandlerTests
+{
+    private static async Task<(int Status, JsonElement Body)> HandleAsync(Exception exception)
+    {
+        var services = new ServiceCollection().AddLogging().AddErrorHandling().BuildServiceProvider();
+        var context = new DefaultHttpContext { RequestServices = services, TraceIdentifier = "test-trace-id" };
+        context.Response.Body = new MemoryStream();
+        var handler = new GlobalExceptionHandler(
+            services.GetRequiredService<IProblemDetailsService>(),
+            NullLogger<GlobalExceptionHandler>.Instance);
+
+        var handled = await handler.TryHandleAsync(context, exception, CancellationToken.None);
+
+        handled.Should().BeTrue();
+        context.Response.Body.Position = 0;
+        using var json = await JsonDocument.ParseAsync(context.Response.Body);
+        return (context.Response.StatusCode, json.RootElement.Clone());
+    }
+
+    private static PostgresException Postgres(string sqlState) =>
+        new("secret internal detail", "ERROR", "ERROR", sqlState);
+
+    [Theory]
+    [InlineData(PostgresErrorCodes.UniqueViolation, "Duplicate value")]
+    [InlineData(PostgresErrorCodes.ExclusionViolation, "Time slot was just booked")]
+    public async Task Postgres_conflicts_wrapped_by_ef_map_to_409(string sqlState, string title)
+    {
+        var (status, body) = await HandleAsync(new DbUpdateException("save failed", Postgres(sqlState)));
+
+        status.Should().Be(StatusCodes.Status409Conflict);
+        body.GetProperty("status").GetInt32().Should().Be(409);
+        body.GetProperty("title").GetString().Should().Be(title);
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Fact]
+    public async Task Other_exceptions_map_to_500_without_leaking_details()
+    {
+        var (status, body) = await HandleAsync(new InvalidOperationException("secret internal detail"));
+
+        status.Should().Be(StatusCodes.Status500InternalServerError);
+        body.GetProperty("title").GetString().Should().Be("An unexpected error occurred");
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+        body.TryGetProperty("detail", out _).Should().BeFalse();
+        body.TryGetProperty("exception", out _).Should().BeFalse();
+        body.GetRawText().Should().NotContain("secret internal detail");
+    }
+}

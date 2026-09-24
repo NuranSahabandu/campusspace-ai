@@ -1,0 +1,26 @@
+using CampusSpace.Api.Data;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace CampusSpace.Tests.Infrastructure;
+
+/// <summary>
+/// Runs the real API in memory against the test container. Uses the "Testing" environment,
+/// so user-secrets, Swagger and the Development auto-migration are all off.
+/// </summary>
+public sealed class CustomWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment("Testing");
+        builder.UseSetting("ConnectionStrings:Default", connectionString);
+    }
+
+    public async Task MigrateAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    }
+}
