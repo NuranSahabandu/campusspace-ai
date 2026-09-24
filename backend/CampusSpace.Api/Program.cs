@@ -1,29 +1,46 @@
 using CampusSpace.Api.Extensions;
+using CampusSpace.Api.Health;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Sinks, formatters and levels come from the "Serilog" section of appsettings.*.json.
+builder.Host.UseSerilog((context, services, logger) => logger
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services));
 
 builder.Services.AddPersistence();
+builder.Services.AddErrorHandling();
+builder.Services.AddFrontendCors(builder.Configuration);
+builder.Services.AddApiHealthChecks();
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+app.UseSerilogRequestLogging();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
     await app.MigrateAndSeedAsync();
 }
+else
+{
+    // Local dev is HTTP only (port 5080); TLS is enforced outside Development.
+    app.UseHttpsRedirection();
+}
 
-app.UseHttpsRedirection();
-
+app.UseCors(ServiceCollectionExtensions.FrontendsCorsPolicy);
 app.UseAuthorization();
 
+app.MapHealthChecks("/health", new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
+    .AllowAnonymous();
 app.MapControllers();
 
 app.Run();
