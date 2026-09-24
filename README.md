@@ -44,3 +44,21 @@ Local ports: API `5080`, agent service `8000`, React `5173`, PostgreSQL `5432`.
 
 `.env` is git-ignored. Never commit it. Locally, the API reads `ConnectionStrings__Default` and `Jwt__*` from
 `dotnet user-secrets`. The `.env` names document those keys, and they also work as environment variables.
+
+## Run the API
+
+1. Start the database (see above) and wait for `(healthy)`.
+2. Copy the API secrets from `.env` into `dotnet user-secrets`. The script never prints values and is safe to re-run:
+   ```bash
+   ./scripts/dev-secrets.sh
+   ```
+3. Run the API. In Development it applies pending migrations at startup:
+   ```bash
+   dotnet run --project backend/CampusSpace.Api
+   ```
+   - Health: <http://localhost:5080/health>
+   - Swagger: <http://localhost:5080/swagger>
+4. Run the tests. Docker must be running; Testcontainers starts its own `postgres:16`:
+   ```bash
+   dotnet test backend
+   ```
