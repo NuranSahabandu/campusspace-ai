@@ -1,0 +1,59 @@
+# ---------- Secrets / env ----------
+.env
+.env.*
+!.env.example
+
+# ---------- .NET ----------
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.trx
+
+# ---------- Node / React ----------
+node_modules/
+dist/
+.vite/
+coverage/
+npm-debug.log*
+*.tsbuildinfo
+
+# ---------- Flutter / Dart ----------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+mobile/**/build/
+mobile/android/local.properties
+mobile/android/.gradle/
+mobile/android/key.properties
+*.jks
+*.keystore
+
+# ---------- Python / uv ----------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---------- Local databases (LangGraph checkpoints etc.) ----------
+*.sqlite
+*.sqlite3
+*.db
+
+# ---------- macOS ----------
+.DS_Store
+
+# ---------- IDEs ----------
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json

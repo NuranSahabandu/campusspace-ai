@@ -26,13 +26,13 @@ docs/                        plan, addendum, ADRs, ER diagram, report assets
 
 | Layer | Version |
 |-------|---------|
-| .NET | 8, pinned via `global.json` |
+| .NET | 8 (SDK 8.0.423), pinned via `global.json` |
 | EF Core, Npgsql.EntityFrameworkCore.PostgreSQL, JwtBearer | `8.*` (newer majors target .NET 10) |
 | PostgreSQL | 16 in Docker (local) |
-| Node | 22 |
+| Node | 24 |
 | Web | React 18 + TypeScript + Vite |
-| Mobile | Flutter stable |
-| Agent service | Python 3.11, managed by `uv` |
+| Mobile | Flutter 3.47 stable (Android only) |
+| Agent service | Python 3.11 via `uv` |
 
 ## Local ports (fixed)
 
@@ -123,4 +123,14 @@ because annotations cannot read `PolicySettings`.
 
 ## Commands
 
-<!-- Fill in as tools are added. -->
+Database (credentials come from `.env`; psql reads them from the container's env):
+
+```bash
+docker compose up -d                 # start PostgreSQL 16
+docker compose ps                    # wait for (healthy)
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select version();"'
+docker compose down                  # stop, keep data
+docker compose down -v               # stop and wipe the pgdata volume
+```
+
+<!-- Add build/test commands as each app is scaffolded. -->
