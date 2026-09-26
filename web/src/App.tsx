@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, type ReactNode, Suspense } from 'react'
 import { LinearProgress } from '@mui/material'
 import { Route, Routes } from 'react-router'
 import { ProtectedRoute } from './auth/ProtectedRoute'
@@ -12,6 +12,17 @@ import { AppLayout } from './layout/AppLayout'
 
 // The DataGrid is most of the bundle; load it only when a data page is opened.
 const UsersPage = lazy(() => import('./features/users/UsersPage').then((m) => ({ default: m.UsersPage })))
+const ClubsPage = lazy(() => import('./features/clubs/ClubsPage').then((m) => ({ default: m.ClubsPage })))
+const ClubDetailPage = lazy(() => import('./features/clubs/ClubDetailPage').then((m) => ({ default: m.ClubDetailPage })))
+
+/** Admin-only page: role guard plus a Suspense boundary for the lazy chunk. */
+function AdminPage({ children }: { children: ReactNode }) {
+  return (
+    <ProtectedRoute roles={[Roles.Admin]}>
+      <Suspense fallback={<LinearProgress />}>{children}</Suspense>
+    </ProtectedRoute>
+  )
+}
 
 /** Route table. The router itself is supplied by main.tsx (browser) or the tests (memory). */
 export function AppRoutes() {
@@ -26,16 +37,9 @@ export function AppRoutes() {
           <Route path="requests" element={<ComingSoonPage title="Requests" owner="C" />} />
           <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
           <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
-          <Route
-            path="users"
-            element={
-              <ProtectedRoute roles={[Roles.Admin]}>
-                <Suspense fallback={<LinearProgress />}>
-                  <UsersPage />
-                </Suspense>
-              </ProtectedRoute>
-            }
-          />
+          <Route path="users" element={<AdminPage><UsersPage /></AdminPage>} />
+          <Route path="clubs" element={<AdminPage><ClubsPage /></AdminPage>} />
+          <Route path="clubs/:id" element={<AdminPage><ClubDetailPage /></AdminPage>} />
           <Route path="forbidden" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

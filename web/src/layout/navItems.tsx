@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
+import GroupsIcon from '@mui/icons-material/Groups'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import PeopleIcon from '@mui/icons-material/People'
 import PsychologyIcon from '@mui/icons-material/Psychology'
@@ -24,6 +25,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/approvals', label: 'Approvals', icon: <FactCheckIcon />, roles: STAFF_ROLES },
   { path: '/agent-runs', label: 'Agent runs', icon: <PsychologyIcon />, roles: STAFF_ROLES },
   { path: '/users', label: 'Users', icon: <PeopleIcon />, roles: [Roles.Admin] },
+  { path: '/clubs', label: 'Clubs', icon: <GroupsIcon />, roles: [Roles.Admin] },
 ]
 
 export const navItemsFor = (role: string | undefined) =>

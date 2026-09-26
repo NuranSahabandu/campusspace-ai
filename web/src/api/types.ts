@@ -34,3 +34,44 @@ export interface UpdateUserRequest {
   role: string
   isActive: boolean
 }
+
+/** A club in a list. representativeName is null when the club has no representative. */
+export interface ClubDto {
+  id: number
+  name: string
+  isActive: boolean
+  memberCount: number
+  representativeName: string | null
+}
+
+export interface ClubMemberDto {
+  userId: number
+  fullName: string
+  role: string
+  isRepresentative: boolean
+  joinedAt: string
+}
+
+/** A club with its members, representative first. */
+export interface ClubDetailDto {
+  id: number
+  name: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+  members: ClubMemberDto[]
+}
+
+export interface CreateClubRequest {
+  name: string
+}
+
+export interface UpdateClubRequest {
+  name: string
+  isActive: boolean
+}
+
+export interface AddClubMemberRequest {
+  userId: number
+  isRepresentative: boolean
+}
