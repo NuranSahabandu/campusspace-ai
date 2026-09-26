@@ -149,7 +149,9 @@ Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous 
 `GET /api/auth/me` returns the signed-in user. `GET /api/users` (Admin) lists users with
 `?search=&role=&sort=&page=&pageSize=`; `GET/POST/PUT /api/users/{id}` manage them. `GET /api/clubs` lists active clubs
 (any role); Admins manage clubs, members and representatives. `GET /api/audit-logs` (Admin) shows every audited change
-and login, filtered by `?entityType=&action=&userId=&from=&to=`. Errors, including 401 and 403, are Problem Details with a `traceId`.
+and login, filtered by `?entityType=&action=&userId=&from=&to=`. `GET /api/buildings`, `/api/features` and `/api/rooms`
+(`?buildingId=&type=&minCapacity=&features=computers,projector&search=&sort=&page=&pageSize=`) work for any role;
+Facilities Officers manage them and `/api/rooms/{id}/blackouts`. Errors, including 401 and 403, are Problem Details with a `traceId`.
 
 ### Test accounts
 
@@ -170,5 +172,10 @@ not secrets. All of them use the password **`CampusSpace#2026`** (`Seed:DemoPass
 
 Clubs (representative first): **Robotics Club** (Kavindi; Ishan, Dr. Nimal), **Drama Society** (Nethmi; Tharindu),
 **IEEE Student Branch** (Tharindu; Ishan, Kavindi).
+
+Facilities: buildings **MB**, **NB**, **EB**; features `projector`, `computers`, `whiteboard`, `ac`, `sound_system`,
+`smart_board`; 16 rooms of all four types (any missing room code is added). Walkthrough labs: **A301** (MB, 48, computers,
+projector, ac, whiteboard), **A305** (MB, 50, no projector) and **N201** (NB, 60, with smart_board). **E305** is inactive.
+One "Projector maintenance" blackout on **A101** next Monday 08:00–12:00 (campus time) is added when there are no blackouts.
 
 To re-seed, wipe the database (`docker compose down -v`) and run the API again.

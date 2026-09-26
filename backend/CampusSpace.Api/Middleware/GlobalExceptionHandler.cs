@@ -16,6 +16,7 @@ public sealed class GlobalExceptionHandler(
 {
     public const string UniqueViolation = "23505";
     public const string ExclusionViolation = "23P01";
+    public const string ForeignKeyViolation = "23503";
 
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -57,6 +58,8 @@ public sealed class GlobalExceptionHandler(
                 (StatusCodes.Status409Conflict, "Club already has a representative"),
             UniqueViolation => (StatusCodes.Status409Conflict, "Duplicate value"),
             ExclusionViolation => (StatusCodes.Status409Conflict, "Time slot was just booked"),
+            // Services check FKs before inserting (400 on the field), so this is a delete of a row that is still referenced.
+            ForeignKeyViolation => (StatusCodes.Status409Conflict, "In use"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred"),
         };
     }
