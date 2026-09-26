@@ -5,6 +5,8 @@ A LangGraph multi-agent service drafts a proposal. A Facilities Officer approves
 Four students each own one business component (A–D) end-to-end, including one distinct agent.
 
 **Source of truth:** `docs/CampusSpace_AI_Project_Plan.pdf` plus `docs/plan-addendum.md`. The addendum wins where they differ.
+To look up a plan section, search the text copy `docs/plan.txt` (for example `grep -n '10.8' docs/plan.txt`).
+The PDF is the official copy and wins if it and `docs/plan.txt` ever disagree.
 If a request conflicts with them, **stop and ask** before doing anything.
 
 ## Repo layout (§7.2)
