@@ -14,9 +14,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<Club> Clubs => Set<Club>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<Building> Buildings => Set<Building>();
+    public DbSet<Feature> Features => Set<Feature>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<RoomFeature> RoomFeatures => Set<RoomFeature>();
+    public DbSet<RoomBlackout> RoomBlackouts => Set<RoomBlackout>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // GiST indexes that mix a scalar column with a range (RoomBlackouts now, the Bookings exclusion constraint later).
+        modelBuilder.HasPostgresExtension("btree_gist");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 
