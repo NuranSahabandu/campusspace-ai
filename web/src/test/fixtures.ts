@@ -1,4 +1,4 @@
-import type { AuthResponse, PagedResult, UserDto } from '../api/types'
+import type { AuditLogDto, AuthResponse, ClubDetailDto, ClubDto, ClubMemberDto, PagedResult, UserDto } from '../api/types'
 import { Roles, type Role } from '../auth/roles'
 
 export const makeUser = (role: Role, overrides: Partial<UserDto> = {}): UserDto => ({
@@ -23,9 +23,66 @@ export const USERS: UserDto[] = [
   makeUser(Roles.Admin, { id: 5, fullName: 'System Admin', email: 'admin@campusspace.local' }),
 ]
 
-export const usersPage = (items: UserDto[] = USERS): PagedResult<UserDto> => ({
-  items,
-  page: 1,
-  pageSize: 20,
-  total: items.length,
+export const pageOf = <T>(items: T[]): PagedResult<T> => ({ items, page: 1, pageSize: 20, total: items.length })
+
+export const usersPage = (items: UserDto[] = USERS): PagedResult<UserDto> => pageOf(items)
+
+export const CLUBS: ClubDto[] = [
+  { id: 1, name: 'Robotics Club', isActive: true, memberCount: 3, representativeName: 'Kavindi Perera' },
+  { id: 2, name: 'Chess Circle', isActive: false, memberCount: 0, representativeName: null },
+]
+
+const member = (userId: number, fullName: string, role: Role, isRepresentative = false): ClubMemberDto => ({
+  userId,
+  fullName,
+  role,
+  isRepresentative,
+  joinedAt: '2026-09-01T08:00:00Z',
 })
+
+/** Robotics Club with Kavindi as representative, or Ishan once he is made representative. */
+export const clubDetail = (representativeId = 1): ClubDetailDto => ({
+  id: 1,
+  name: 'Robotics Club',
+  isActive: true,
+  createdAt: '2026-09-01T08:00:00Z',
+  updatedAt: '2026-09-01T08:00:00Z',
+  members: [
+    member(1, 'Kavindi Perera', Roles.Student, representativeId === 1),
+    member(2, 'Ishan Silva', Roles.Student, representativeId === 2),
+    member(3, 'Dr. Fernando', Roles.Lecturer, representativeId === 3),
+  ].sort((a, b) => Number(b.isRepresentative) - Number(a.isRepresentative)),
+})
+
+export const AUDIT_LOGS: AuditLogDto[] = [
+  {
+    id: 3,
+    userId: 5,
+    userName: 'System Admin',
+    action: 'Updated',
+    entityType: 'User',
+    entityId: '9',
+    details: { changed: ['Role', 'IsActive'] },
+    at: '2026-09-26T08:45:00Z',
+  },
+  {
+    id: 2,
+    userId: null,
+    userName: null,
+    action: 'LoginFailed',
+    entityType: 'User',
+    entityId: null,
+    details: { email: 'nobody@campusspace.local' },
+    at: '2026-09-26T08:30:00Z',
+  },
+  {
+    id: 1,
+    userId: 5,
+    userName: 'System Admin',
+    action: 'Deleted',
+    entityType: 'ClubMember',
+    entityId: '1:7',
+    details: {},
+    at: '2026-09-26T08:00:00Z',
+  },
+]
