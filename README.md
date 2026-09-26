@@ -26,7 +26,8 @@ Local ports: API `5080`, agent service `8000`, React `5173`, PostgreSQL `5432`.
    openssl rand -hex 32
    ```
    Use hex, not base64. The password goes into `postgresql://` URLs, where `/ + =` would need escaping.
-   Put the same password in `ConnectionStrings__Default`.
+   Put the same password in `ConnectionStrings__Default`. `Jwt__Key` must be at least 32 bytes (the hex output is 64),
+   or the API refuses to start.
 3. Start PostgreSQL:
    ```bash
    docker compose up -d
@@ -62,3 +63,34 @@ Local ports: API `5080`, agent service `8000`, React `5173`, PostgreSQL `5432`.
    ```bash
    dotnet test backend
    ```
+
+## Authentication
+
+Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous routes are `POST /api/auth/register`,
+`POST /api/auth/login` and `/health`. Roles come from `Models/Roles.cs`.
+
+1. Register (always creates a **Student**) or log in. Both return `{ accessToken, expiresAt, user }`:
+   ```bash
+   curl -s -X POST http://localhost:5080/api/auth/login -H 'Content-Type: application/json' \
+     -d '{"email":"admin@campusspace.local","password":"CampusSpace#2026"}'
+   ```
+2. Send the token as `Authorization: Bearer <accessToken>`. Tokens last 120 minutes (`Jwt:AccessTokenMinutes`).
+3. In Swagger, click **Authorize** and paste the `accessToken` without the `Bearer ` prefix.
+
+`GET /api/auth/me` returns the signed-in user. `GET /api/users` (Admin) lists users with
+`?search=&role=&sort=&page=&pageSize=`. Errors, including 401 and 403, are Problem Details with a `traceId`.
+
+### Test accounts
+
+In Development, the API seeds these accounts when the `Users` table is empty. They are public demo credentials,
+not secrets. All of them use the password **`CampusSpace#2026`** (`Seed:DemoPassword` in `appsettings.Development.json`).
+
+| Email | Role | Name |
+|-------|------|------|
+| `kavindi@campusspace.local` | Student | Kavindi Perera |
+| `lecturer@campusspace.local` | Lecturer | Dr. Nimal Fernando |
+| `tech@campusspace.local` | LabTechnician | Sunil Jayasinghe |
+| `perera@campusspace.local` | FacilitiesOfficer | Mr. Perera |
+| `admin@campusspace.local` | Admin | System Admin |
+
+To re-seed, wipe the database (`docker compose down -v`) and run the API again.
