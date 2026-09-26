@@ -147,11 +147,14 @@ Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous 
 3. In Swagger, click **Authorize** and paste the `accessToken` without the `Bearer ` prefix.
 
 `GET /api/auth/me` returns the signed-in user. `GET /api/users` (Admin) lists users with
-`?search=&role=&sort=&page=&pageSize=`. Errors, including 401 and 403, are Problem Details with a `traceId`.
+`?search=&role=&sort=&page=&pageSize=`; `GET/POST/PUT /api/users/{id}` manage them. `GET /api/clubs` lists active clubs
+(any role); Admins manage clubs, members and representatives. `GET /api/audit-logs` (Admin) shows every audited change
+and login, filtered by `?entityType=&action=&userId=&from=&to=`. Errors, including 401 and 403, are Problem Details with a `traceId`.
 
 ### Test accounts
 
-In Development, the API seeds these accounts when the `Users` table is empty. They are public demo credentials,
+In Development, the API seeds any of these accounts whose email is missing, plus three clubs when the `Clubs` table
+is empty. They are public demo credentials,
 not secrets. All of them use the password **`CampusSpace#2026`** (`Seed:DemoPassword` in `appsettings.Development.json`).
 
 | Email | Role | Name |
@@ -161,5 +164,11 @@ not secrets. All of them use the password **`CampusSpace#2026`** (`Seed:DemoPass
 | `tech@campusspace.local` | LabTechnician | Sunil Jayasinghe |
 | `perera@campusspace.local` | FacilitiesOfficer | Mr. Perera |
 | `admin@campusspace.local` | Admin | System Admin |
+| `ishan@campusspace.local` | Student | Ishan Silva |
+| `nethmi@campusspace.local` | Student | Nethmi Rajapaksa |
+| `tharindu@campusspace.local` | Student | Tharindu Wickramasinghe |
+
+Clubs (representative first): **Robotics Club** (Kavindi; Ishan, Dr. Nimal), **Drama Society** (Nethmi; Tharindu),
+**IEEE Student Branch** (Tharindu; Ishan, Kavindi).
 
 To re-seed, wipe the database (`docker compose down -v`) and run the API again.

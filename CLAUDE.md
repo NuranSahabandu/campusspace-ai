@@ -214,7 +214,15 @@ curl -s "http://localhost:5080/api/users?page=1&pageSize=20" -H "Authorization: 
 Auth conventions: the fallback policy denies anonymous access, so only mark `[AllowAnonymous]` when you mean it. Use
 `[Authorize(Roles = Roles.X)]` (never string literals), `User.GetUserId()` for the caller's id, `ConflictException`
 for 409s from services, and `PageQuery`/`PagedResult<T>`/`ToPagedResultAsync` for list endpoints.
-Tests get tokens from `TestAuth.CreateClient(factory, Roles.X)`.
+Tests get tokens from `TestAuth.CreateClient(factory, Roles.X)`. For writes, use
+`TestAuth.CreateUserClientAsync(factory, Roles.X)`: it inserts a real user, because audit rows store the caller's id as an FK.
+
+Shared foundation conventions: services get the caller from `ICurrentUser` (null outside a request). Mark a business
+entity `IAuditable` and `AppDbContext.SaveChangesAsync` audits its inserts, updates and deletes (property names only,
+never values or `PasswordHash`). `ExecuteUpdate`/`ExecuteDelete` are not audited. Log non-entity events with
+`IAuditService` (constants in `AuditActions`), never with passwords or tokens. Throw `BusinessRuleException(field, message)`
+for a rule-based 400 with a field error. A DB rule that needs a specific 409 is mapped by `ConstraintName` in
+`GlobalExceptionHandler.Map`. Prefer EF-generated constraints and indexes over raw SQL.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
