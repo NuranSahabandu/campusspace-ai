@@ -87,3 +87,90 @@ export interface AuditLogDto {
   details: Record<string, unknown>
   at: string
 }
+
+/** A building. Officers also see inactive ones; everyone else sees active ones only. */
+export interface BuildingDto {
+  id: number
+  code: string
+  name: string
+  isActive: boolean
+}
+
+export interface CreateBuildingRequest {
+  code: string
+  name: string
+}
+
+export interface UpdateBuildingRequest {
+  code: string
+  name: string
+  isActive: boolean
+}
+
+/** A room feature. The code (snake_case) is what the agents use. */
+export interface FeatureDto {
+  id: number
+  code: string
+  name: string
+}
+
+export interface FeatureRequest {
+  code: string
+  name: string
+}
+
+export interface BuildingRefDto {
+  id: number
+  code: string
+  name: string
+}
+
+export interface FeatureRefDto {
+  code: string
+  name: string
+}
+
+/** A room with its building and features (features ordered by code). type is one of ROOM_TYPES. */
+export interface RoomDto {
+  id: number
+  code: string
+  name: string
+  type: string
+  capacity: number
+  isActive: boolean
+  building: BuildingRefDto
+  features: FeatureRefDto[]
+}
+
+export interface CreateRoomRequest {
+  code: string
+  name: string
+  type: string
+  capacity: number
+  buildingId: number
+  featureCodes: string[]
+}
+
+/** Replaces the whole feature set. isActive = true reactivates a deactivated room. */
+export interface UpdateRoomRequest extends CreateRoomRequest {
+  isActive: boolean
+}
+
+/** A maintenance blackout as [start, end), both UTC. */
+export interface BlackoutDto {
+  id: number
+  roomId: number
+  start: string
+  end: string
+  reason: string
+  createdById: number
+  createdByName: string
+  createdAt: string
+}
+
+/** Times carry an offset (campusLocalToIso gives +05:30); the server stores UTC. */
+export interface CreateBlackoutRequest {
+  start: string
+  end: string
+  reason: string
+}

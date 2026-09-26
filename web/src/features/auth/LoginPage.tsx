@@ -9,6 +9,7 @@ import { applyFieldErrors, parseProblem } from '../../api/problem'
 import type { AuthResponse } from '../../api/types'
 import { useAuthStore } from '../../auth/authStore'
 import { isStaffRole } from '../../auth/roles'
+import { returnPathFor } from '../../auth/routeAccess'
 
 // Mirrors LoginRequest's data annotations; the server remains the real validator (§12).
 const schema = z.object({
@@ -23,6 +24,7 @@ export const NOT_STAFF = 'This portal is for staff. Please use the CampusSpace m
 
 export function LoginPage() {
   const token = useAuthStore((s) => s.token)
+  const role = useAuthStore((s) => s.user?.role)
   const login = useAuthStore((s) => s.login)
   const navigate = useNavigate()
   const location = useLocation()
@@ -36,9 +38,10 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(schema), defaultValues: { email: '', password: '' } })
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/'
+  // The page to return to, used only if the signed-in role may open it (another user may be signing in).
+  const from = (location.state as { from?: string } | null)?.from
 
-  if (token) return <Navigate to={from} replace />
+  if (token && role) return <Navigate to={returnPathFor(from, role)} replace />
 
   const onSubmit = async (values: LoginForm) => {
     setFormError(null)
@@ -50,7 +53,7 @@ export function LoginPage() {
         return
       }
       login(data)
-      navigate(from, { replace: true })
+      navigate(returnPathFor(from, data.user.role), { replace: true })
     } catch (error) {
       const problem = parseProblem(error)
       if (problem.status === 401) setFormError(INVALID_CREDENTIALS)

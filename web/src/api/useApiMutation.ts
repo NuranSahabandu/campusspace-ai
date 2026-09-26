@@ -12,6 +12,8 @@ interface Options<TVars, TData, TForm extends FieldValues> {
   form?: { setError: UseFormSetError<TForm>; fields: readonly Path<TForm>[] }
   /** The form field a 409 message belongs to (for example 'email'). Without it a 409 is a toast. */
   conflictField?: Path<TForm>
+  /** Toast text for a 409 that has no conflictField (for example a delete of a row still in use). */
+  conflictMessage?: string
   onSuccess?: (data: TData, vars: TVars) => void
 }
 
@@ -31,6 +33,7 @@ export function useApiMutation<TVars = void, TData = unknown, TForm extends Fiel
   successMessage,
   form,
   conflictField,
+  conflictMessage,
   onSuccess,
 }: Options<TVars, TData, TForm>) {
   const queryClient = useQueryClient()
@@ -53,6 +56,10 @@ export function useApiMutation<TVars = void, TData = unknown, TForm extends Fiel
       }
       if (problem.status === 409 && form && conflictField) {
         form.setError(conflictField, { type: 'server', message: problem.title })
+        return
+      }
+      if (problem.status === 409 && conflictMessage) {
+        toast.error(conflictMessage)
         return
       }
       if (problem.status === 400 || problem.status === 409) {

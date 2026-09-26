@@ -61,4 +61,20 @@ describe('useApiMutation', () => {
       expect(setError).toHaveBeenCalledWith('root.server', { type: 'server', message: 'Club is inactive.' }),
     )
   })
+
+  it('shows conflictMessage for a 409 without a conflict field', async () => {
+    server.use(
+      http.delete(`${API}/api/things/1`, () => HttpResponse.json({ status: 409, title: 'In use' }, { status: 409 })),
+    )
+    const { result } = renderHook(
+      () => useApiMutation({ mutationFn: () => api.delete('/api/things/1'), conflictMessage: "Can't delete: in use." }),
+      { wrapper },
+    )
+
+    act(() => result.current.mutate())
+
+    await waitFor(() =>
+      expect(useToastStore.getState().current).toMatchObject({ severity: 'error', message: "Can't delete: in use." }),
+    )
+  })
 })

@@ -1,4 +1,4 @@
-import { campusDayBounds, formatDateTime } from './formatDateTime'
+import { campusDayBounds, campusLocalToIso, formatDateTime } from './formatDateTime'
 
 describe('formatDateTime', () => {
   it('shows a UTC timestamp in Colombo time (UTC+05:30)', () => {
@@ -18,5 +18,19 @@ describe('campusDayBounds', () => {
       from: '2026-09-26T00:00:00+05:30',
       to: '2026-09-26T23:59:59.999+05:30',
     })
+  })
+})
+
+describe('campusLocalToIso', () => {
+  it('reads a datetime-local value as campus time', () => {
+    expect(campusLocalToIso('2026-09-28T08:00')).toBe('2026-09-28T08:00:00+05:30')
+  })
+
+  it('drops seconds the input may include', () => {
+    expect(campusLocalToIso('2026-09-28T23:45:30')).toBe('2026-09-28T23:45:00+05:30')
+  })
+
+  it('gives the right UTC instant', () => {
+    expect(new Date(campusLocalToIso('2026-09-28T08:00')).toISOString()).toBe('2026-09-28T02:30:00.000Z')
   })
 })
