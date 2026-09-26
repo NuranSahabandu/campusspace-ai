@@ -1,3 +1,5 @@
+[![ci](https://github.com/NuranSahabandu/campusspace-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NuranSahabandu/campusspace-ai/actions/workflows/ci.yml)
+
 # CampusSpace AI
 
 Campus room and equipment booking. A LangGraph multi-agent service drafts proposals, Facilities Officers approve them, and .NET books them in one transaction. SE3090 group project.

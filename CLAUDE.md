@@ -164,4 +164,12 @@ Tests get tokens from `TestAuth.CreateClient(factory, Roles.X)`.
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
+CI (`.github/workflows/ci.yml`, job `backend` runs restore, Release build with warnings as errors, and tests):
+
+```bash
+gh pr checks --watch                                # watch the current branch's PR run until it finishes
+gh run list --limit 1                               # latest run and its URL
+gh run view --log-failed                            # read the failing step's log
+```
+
 <!-- Add web/mobile/agent-service commands as each app is scaffolded. -->
