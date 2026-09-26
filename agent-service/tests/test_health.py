@@ -1,0 +1,37 @@
+import platform
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app import __version__
+from app.main import create_app
+from tests.conftest import TEST_SERVICE_KEY, make_settings
+
+
+def test_health_returns_200_without_key(client: TestClient) -> None:
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "service": "agent-service",
+        "version": __version__,
+        "python": platform.python_version(),
+        "models": {"planner": "gemini-2.5-flash", "worker": "gemini-2.5-flash-lite"},
+        "checkpointer": "not_configured",
+        "google_api_key_configured": False,
+    }
+
+
+def test_health_never_returns_secret_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    google_key = "fake-google-key-value-123"
+    tools_key = "a" * 40
+    settings = make_settings(monkeypatch, GOOGLE_API_KEY=google_key, AgentTools__Key=tools_key)
+
+    with TestClient(create_app(settings)) as c:
+        response = c.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["google_api_key_configured"] is True
+    for secret in (TEST_SERVICE_KEY, google_key, tools_key):
+        assert secret not in response.text
