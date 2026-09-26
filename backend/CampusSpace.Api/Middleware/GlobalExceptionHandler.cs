@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CampusSpace.Api.Data.Configurations;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
@@ -20,6 +21,12 @@ public sealed class GlobalExceptionHandler(
     {
         var traceId = Activity.Current?.TraceId.ToString() ?? httpContext.TraceIdentifier;
         var (status, title) = Map(exception);
+        var problem = exception is BusinessRuleException rule
+            // Same shape as a data-annotation failure, so clients reuse their field-error handling.
+            ? new HttpValidationProblemDetails(new Dictionary<string, string[]> { [rule.Field] = [rule.Message] })
+            : new ProblemDetails();
+        problem.Status = status;
+        problem.Title = title;
 
         if (status >= StatusCodes.Status500InternalServerError)
             logger.LogError(exception, "Unhandled exception. TraceId {TraceId}", traceId);
@@ -31,7 +38,7 @@ public sealed class GlobalExceptionHandler(
         {
             HttpContext = httpContext,
             Exception = exception,
-            ProblemDetails = new ProblemDetails { Status = status, Title = title },
+            ProblemDetails = problem,
         });
     }
 
@@ -39,11 +46,15 @@ public sealed class GlobalExceptionHandler(
     {
         if (exception is ConflictException conflict)
             return (StatusCodes.Status409Conflict, conflict.Message);
+        if (exception is BusinessRuleException rule)
+            return (StatusCodes.Status400BadRequest, rule.Message);
 
         // EF Core wraps database errors in DbUpdateException; look for the PostgresException inside.
         var postgres = exception as PostgresException ?? exception.InnerException as PostgresException;
         return postgres?.SqlState switch
         {
+            UniqueViolation when postgres.ConstraintName == ClubMemberConfiguration.OneRepresentativeIndex =>
+                (StatusCodes.Status409Conflict, "Club already has a representative"),
             UniqueViolation => (StatusCodes.Status409Conflict, "Duplicate value"),
             ExclusionViolation => (StatusCodes.Status409Conflict, "Time slot was just booked"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred"),

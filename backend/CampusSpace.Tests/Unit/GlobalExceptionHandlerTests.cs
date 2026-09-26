@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CampusSpace.Api.Data.Configurations;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Middleware;
 using FluentAssertions;
@@ -29,8 +30,8 @@ public class GlobalExceptionHandlerTests
         return (context.Response.StatusCode, json.RootElement.Clone());
     }
 
-    private static PostgresException Postgres(string sqlState) =>
-        new("secret internal detail", "ERROR", "ERROR", sqlState);
+    private static PostgresException Postgres(string sqlState, string? constraintName = null) =>
+        new("secret internal detail", "ERROR", "ERROR", sqlState, constraintName: constraintName);
 
     [Theory]
     [InlineData(PostgresErrorCodes.UniqueViolation, "Duplicate value")]
@@ -45,6 +46,19 @@ public class GlobalExceptionHandlerTests
         body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
     }
 
+    [Theory]
+    [InlineData(ClubMemberConfiguration.OneRepresentativeIndex, "Club already has a representative")]
+    [InlineData("IX_Users_Email", "Duplicate value")]
+    public async Task Unique_violations_are_mapped_by_constraint_name(string constraintName, string title)
+    {
+        var exception = new DbUpdateException("save failed", Postgres(PostgresErrorCodes.UniqueViolation, constraintName));
+
+        var (status, body) = await HandleAsync(exception);
+
+        status.Should().Be(StatusCodes.Status409Conflict);
+        body.GetProperty("title").GetString().Should().Be(title);
+    }
+
     [Fact]
     public async Task ConflictException_maps_to_409_with_its_message_as_title()
     {
@@ -52,6 +66,18 @@ public class GlobalExceptionHandlerTests
 
         status.Should().Be(StatusCodes.Status409Conflict);
         body.GetProperty("title").GetString().Should().Be("Email is already registered");
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Fact]
+    public async Task BusinessRuleException_maps_to_400_with_a_field_error()
+    {
+        var (status, body) = await HandleAsync(new BusinessRuleException("IsActive", "You cannot deactivate your own account."));
+
+        status.Should().Be(StatusCodes.Status400BadRequest);
+        body.GetProperty("title").GetString().Should().Be("You cannot deactivate your own account.");
+        body.GetProperty("errors").GetProperty("IsActive")[0].GetString()
+            .Should().Be("You cannot deactivate your own account.");
         body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
     }
 

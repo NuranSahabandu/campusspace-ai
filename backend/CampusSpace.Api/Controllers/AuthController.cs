@@ -22,8 +22,7 @@ public class AuthController(IAuthService auth) : ControllerBase
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken ct)
     {
         var response = await auth.RegisterAsync(request, ct);
-        // /me is the resource for "the signed-in user" until Phase 1 adds GET /api/users/{id}.
-        return Created(Url.Action(nameof(Me)) ?? "/api/auth/me", response);
+        return CreatedAtAction(nameof(UsersController.Get), "Users", new { id = response.User.Id }, response);
     }
 
     [HttpPost("login")]

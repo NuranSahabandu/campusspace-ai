@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CampusSpace.Api.Services;
 
-public sealed class AuthService(AppDbContext db, ITokenService tokens) : IAuthService
+public sealed class AuthService(AppDbContext db, ITokenService tokens, IAuditService audit) : IAuthService
 {
     // Verified when the email is unknown, so an unknown email takes as long as a wrong password.
     private static readonly string DummyHash = BCrypt.Net.BCrypt.HashPassword("timing-equaliser-not-a-password");
@@ -42,8 +42,14 @@ public sealed class AuthService(AppDbContext db, ITokenService tokens) : IAuthSe
 
         var passwordOk = BCrypt.Net.BCrypt.Verify(request.Password, user?.PasswordHash ?? DummyHash);
         if (user is null || !passwordOk || !user.IsActive)
+        {
+            // Attributed to the matched account (if any) so an admin can spot attacks on it. Never the password.
+            await audit.LogForUserAsync(user?.Id, AuditActions.LoginFailed, nameof(User), user?.Id.ToString(),
+                new { email }, ct);
             return null;
+        }
 
+        await audit.LogForUserAsync(user.Id, AuditActions.Login, nameof(User), user.Id.ToString(), ct: ct);
         return CreateResponse(user);
     }
 

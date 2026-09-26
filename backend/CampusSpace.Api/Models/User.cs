@@ -1,6 +1,6 @@
 namespace CampusSpace.Api.Models;
 
-public class User : ITimestamped
+public class User : ITimestamped, IAuditable
 {
     public long Id { get; set; }
     public string FullName { get; set; } = string.Empty;
