@@ -46,6 +46,16 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task ConflictException_maps_to_409_with_its_message_as_title()
+    {
+        var (status, body) = await HandleAsync(new ConflictException("Email is already registered"));
+
+        status.Should().Be(StatusCodes.Status409Conflict);
+        body.GetProperty("title").GetString().Should().Be("Email is already registered");
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Fact]
     public async Task Other_exceptions_map_to_500_without_leaking_details()
     {
         var (status, body) = await HandleAsync(new InvalidOperationException("secret internal detail"));

@@ -57,6 +57,7 @@ public static class AuthExtensions
 
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IAuthService, AuthService>();
         return services;
     }
 
