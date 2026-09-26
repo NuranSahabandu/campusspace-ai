@@ -15,6 +15,7 @@ const UsersPage = lazy(() => import('./features/users/UsersPage').then((m) => ({
 const ClubsPage = lazy(() => import('./features/clubs/ClubsPage').then((m) => ({ default: m.ClubsPage })))
 const AuditLogsPage = lazy(() => import('./features/audit/AuditLogsPage').then((m) => ({ default: m.AuditLogsPage })))
 const ClubDetailPage = lazy(() => import('./features/clubs/ClubDetailPage').then((m) => ({ default: m.ClubDetailPage })))
+const RoomsPage = lazy(() => import('./features/facilities/RoomsPage').then((m) => ({ default: m.RoomsPage })))
 const ReferencePage = lazy(() =>
   import('./features/facilities/ReferencePage').then((m) => ({ default: m.ReferencePage })),
 )
@@ -40,7 +41,7 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute roles={STAFF_ROLES} />}>
         <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
-          <Route path="rooms" element={<ComingSoonPage title="Rooms" owner="A" />} />
+          <Route path="rooms" element={<GuardedPage roles={OFFICER}><RoomsPage /></GuardedPage>} />
           <Route path="equipment" element={<ComingSoonPage title="Equipment" owner="B" />} />
           <Route path="requests" element={<ComingSoonPage title="Requests" owner="C" />} />
           <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
