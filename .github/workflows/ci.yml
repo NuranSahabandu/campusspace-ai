@@ -102,11 +102,26 @@ jobs:
 
       - run: npm run build
 
-# Jobs to add later (plan §17.2). Use the CLAUDE.md pins, which supersede the plan's
-# Node 20 and pip examples.
-#
-#   mobile (Phase 0.7):
-#     runs-on: ubuntu-latest
-#     defaults: { run: { working-directory: mobile } }
-#     steps: checkout, subosito/flutter-action@v2 (3.47 stable), flutter pub get,
-#            flutter analyze, flutter test
+  mobile:
+    name: mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same Flutter as local (CLAUDE.md pins 3.47 stable). No APK build until Phase 6.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.3
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter analyze
+
+      # Fakes and provider overrides: no network, no emulator.
+      - run: flutter test
