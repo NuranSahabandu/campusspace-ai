@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/router.dart';
 
 import '../auth/auth_controller.dart';
 import '../auth/models.dart';
 
-/// Phase 0 placeholder home: what each mobile role will see first (plan §13).
+/// Home: what each mobile role sees first (plan §13). Requesters can browse rooms; the rest is a placeholder.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -51,6 +54,17 @@ class _RequesterHome extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: const Icon(Icons.meeting_room_outlined),
+            title: const Text('Browse rooms'),
+            subtitle: const Text('Search by building, type, capacity and features'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(AppRoutes.rooms),
+          ),
+        ),
+        const SizedBox(height: 24),
         Text('My requests', style: textTheme.titleLarge),
         const SizedBox(height: 32),
         const Icon(Icons.event_note_outlined, size: 48),

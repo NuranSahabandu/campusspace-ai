@@ -1,11 +1,18 @@
 import 'package:campusspace_mobile/app.dart';
+import 'package:campusspace_mobile/core/api/paged_result.dart';
 import 'package:campusspace_mobile/features/auth/auth_repository.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/auth/token_storage.dart';
+import 'package:campusspace_mobile/features/rooms/facilities_repository.dart';
+import 'package:campusspace_mobile/features/rooms/models.dart';
+import 'package:campusspace_mobile/features/rooms/room_detail_screen.dart';
+import 'package:campusspace_mobile/features/rooms/rooms_screen.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
@@ -66,10 +73,65 @@ List<Override> authOverrides(FakeTokenStorage storage, AuthRepository repository
     ];
 
 /// Pumps the whole app (router included) with fake auth dependencies.
-Future<void> pumpApp(WidgetTester tester, FakeTokenStorage storage, AuthRepository repository) async {
+Future<void> pumpApp(WidgetTester tester, FakeTokenStorage storage, AuthRepository repository,
+    {List<Override> overrides = const []}) async {
   await tester.pumpWidget(ProviderScope(
-    overrides: authOverrides(storage, repository),
+    overrides: [...authOverrides(storage, repository), ...overrides],
     child: const CampusSpaceApp(),
   ));
   await tester.pumpAndSettle();
+}
+
+class MockFacilitiesRepository extends Mock implements FacilitiesRepository {}
+
+/// A room for tests: code R1, R2, … in building MB.
+Room testRoom(int n, {List<FeatureRef> features = const []}) => Room(
+      id: n,
+      code: 'R$n',
+      name: 'Room $n',
+      type: RoomTypes.seminarRoom,
+      capacity: 10 + n,
+      isActive: true,
+      building: const BuildingRef(id: 1, code: 'MB', name: 'Main Building'),
+      features: features,
+    );
+
+/// Page [page] of [total] test rooms, [pageSize] per page.
+PagedResult<Room> roomsPage(int page, int total, {int pageSize = 20}) {
+  final first = (page - 1) * pageSize + 1;
+  final last = (first + pageSize - 1).clamp(0, total);
+  return PagedResult(
+    items: [for (var n = first; n <= last; n++) testRoom(n)],
+    page: page,
+    pageSize: pageSize,
+    total: total,
+  );
+}
+
+/// Pumps [initialLocation] in a bare router with just the rooms screens (no auth), so screen
+/// tests only fake the facilities repository.
+Future<GoRouter> pumpRoomsScreens(WidgetTester tester, FacilitiesRepository repository,
+    {String initialLocation = '/rooms'}) async {
+  final router = GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      GoRoute(
+        path: '/rooms',
+        builder: (_, _) => const RoomsScreen(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (_, state) => RoomDetailScreen(id: int.tryParse(state.pathParameters['id']!)),
+          ),
+        ],
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [facilitiesRepositoryProvider.overrideWithValue(repository)],
+    child: MaterialApp.router(routerConfig: router),
+  ));
+  await tester.pumpAndSettle();
+  return router;
 }

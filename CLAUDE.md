@@ -206,6 +206,11 @@ flutter_secure_storage, never SharedPreferences. Add routes in `lib/core/router.
 auth. Show server errors with `Problem.from(e)` and `problem.fieldError('field')`. Validators mirror the DTO
 annotations in `lib/core/validators.dart`. Cleartext HTTP is allowed only in debug builds and only to
 `10.0.2.2`/`localhost`. Tests override `tokenStorageProvider`/`authRepositoryProvider` with fakes (`test/helpers.dart`).
+Parse list responses with `PagedResult<T>.fromJson(json, T.fromJson)` (`lib/core/api/paged_result.dart`). Build query
+parameters in a filter value class whose `toQuery()` drops empty values (see `RoomFilter`: `minCapacity` 0 would be a 400).
+Riverpod 3 retries failing providers automatically, so pass `retry: (_, _) => null` to providers whose screen has a Retry
+button. Guard role-specific routes in `authRedirect` (for example `/rooms` is for Student and Lecturer only). Screen tests
+override `facilitiesRepositoryProvider` and use `pumpRoomsScreens`; router tests use `pumpApp(..., overrides: [...])`.
 
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 
