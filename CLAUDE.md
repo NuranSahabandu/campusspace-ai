@@ -15,7 +15,7 @@ If a request conflicts with them, **stop and ask** before doing anything.
 backend/CampusSpace.Api/     Controllers/ Dtos/ Services/ Data/ (AppDbContext, Configurations/, Migrations/, Seed.cs)
                              Models/ Agents/ (AgentClient, AgentRunPoller) Internal/ (X-Agent-Key tool routes)
 backend/CampusSpace.Tests/   xUnit unit + integration (Testcontainers)
-web/                         React + TS + Vite
+web/                         React + TS + Vite (src/: api/ auth/ layout/ features/<area>/ ui/ test/)
 mobile/                      Flutter
 agent-service/app/           main.py, graph.py, workers/, tools.py, schemas.py, validation.py (V01–V12)
 agent-service/eval/          eval_dataset.json (golden cases)
@@ -32,7 +32,7 @@ docs/                        plan, addendum, ADRs, ER diagram, report assets
 | EF Core, Npgsql.EntityFrameworkCore.PostgreSQL, JwtBearer | `8.*` (newer majors target .NET 10) |
 | PostgreSQL | 16 in Docker (local) |
 | Node | 24 |
-| Web | React 18 + TypeScript + Vite |
+| Web | React 19 + TypeScript + Vite (see `docs/adr/README.md`) |
 | Mobile | Flutter 3.47 stable (Android only) |
 | Agent service | Python 3.11 via `uv` |
 
@@ -167,6 +167,22 @@ uv run ruff check .
 uv run pytest -q                                    # never reads the real .env
 curl -s localhost:8000/health                       # the API's /health shows it as check "agent-service"
 ```
+
+Web (run from `web/`; Node 24 per `.nvmrc`; `VITE_API_URL` comes from the repo-root `.env`):
+
+```bash
+npm ci
+npm run dev                                         # http://localhost:5173 (strictPort); needs the API on :5080
+npm run lint                                        # oxlint
+npm test -- --run                                   # Vitest + Testing Library + MSW; no real network, no .env
+npm run build                                       # tsc -b && vite build
+```
+
+Web conventions: call the API only through `api` in `src/api/client.ts`. Server data goes through TanStack Query and
+the session through `useAuthStore` (ADR-1). Guard routes with `<ProtectedRoute roles={...}>` using `Roles`/`STAFF_ROLES`
+from `src/auth/roles.ts`, and add the matching entry in `src/layout/navItems.tsx`. Show server errors with
+`parseProblem`/`applyFieldErrors`. Copy `features/users/` for new list pages. Never prefix a secret with `VITE_`.
+Tests use `renderApp(route, { role })` from `src/test/utils.tsx` and MSW handlers (`server.use(...)`).
 
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 

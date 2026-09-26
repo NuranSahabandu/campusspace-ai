@@ -89,6 +89,27 @@ The API's `/health` includes an `agent-service` check. When the agent service is
 
 See [agent-service/README.md](agent-service/README.md) for configuration and endpoints.
 
+## Run the web app
+
+The staff portal (Facilities Officers and Admins) is React 19 + Vite. It reads `VITE_API_URL` from the repo-root `.env`.
+
+1. Start the database and the API (see above).
+2. Run it:
+   ```bash
+   cd web
+   npm ci
+   npm run dev                # http://localhost:5173
+   ```
+3. Lint, test and build. The tests mock the API with MSW and never touch the network:
+   ```bash
+   npm run lint
+   npm test -- --run
+   npm run build
+   ```
+
+Sign in as `perera@campusspace.local` or `admin@campusspace.local` (see "Test accounts"). Students, lecturers and
+technicians are refused: they use the mobile app. See [web/README.md](web/README.md) for the structure.
+
 ## Authentication
 
 Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous routes are `POST /api/auth/register`,
