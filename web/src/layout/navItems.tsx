@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import ApartmentIcon from '@mui/icons-material/Apartment'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
@@ -20,7 +21,14 @@ export interface NavItem {
 /** One list drives the drawer; the routes in App.tsx enforce the same roles. */
 export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/', label: 'Dashboard', icon: <DashboardIcon />, roles: STAFF_ROLES },
-  { path: '/rooms', label: 'Rooms', icon: <MeetingRoomIcon />, roles: STAFF_ROLES },
+  // Facilities writes are Officer-only (Component A), so Admins do not get these screens.
+  { path: '/rooms', label: 'Rooms', icon: <MeetingRoomIcon />, roles: [Roles.FacilitiesOfficer] },
+  {
+    path: '/facilities/reference',
+    label: 'Buildings & features',
+    icon: <ApartmentIcon />,
+    roles: [Roles.FacilitiesOfficer],
+  },
   { path: '/equipment', label: 'Equipment', icon: <VideocamIcon />, roles: STAFF_ROLES },
   { path: '/requests', label: 'Requests', icon: <AssignmentIcon />, roles: STAFF_ROLES },
   { path: '/approvals', label: 'Approvals', icon: <FactCheckIcon />, roles: STAFF_ROLES },
