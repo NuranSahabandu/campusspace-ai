@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
@@ -32,6 +33,8 @@ public static class ServiceCollectionExtensions
     /// <summary>Business services (Controller -> IService -> AppDbContext). One scope per request.</summary>
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUserService, UserService>();
         return services;

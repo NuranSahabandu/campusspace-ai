@@ -56,6 +56,18 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task BusinessRuleException_maps_to_400_with_a_field_error()
+    {
+        var (status, body) = await HandleAsync(new BusinessRuleException("IsActive", "You cannot deactivate your own account."));
+
+        status.Should().Be(StatusCodes.Status400BadRequest);
+        body.GetProperty("title").GetString().Should().Be("You cannot deactivate your own account.");
+        body.GetProperty("errors").GetProperty("IsActive")[0].GetString()
+            .Should().Be("You cannot deactivate your own account.");
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Fact]
     public async Task Other_exceptions_map_to_500_without_leaking_details()
     {
         var (status, body) = await HandleAsync(new InvalidOperationException("secret internal detail"));
