@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CampusSpace.Api.Data.Configurations;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
@@ -52,6 +53,8 @@ public sealed class GlobalExceptionHandler(
         var postgres = exception as PostgresException ?? exception.InnerException as PostgresException;
         return postgres?.SqlState switch
         {
+            UniqueViolation when postgres.ConstraintName == ClubMemberConfiguration.OneRepresentativeIndex =>
+                (StatusCodes.Status409Conflict, "Club already has a representative"),
             UniqueViolation => (StatusCodes.Status409Conflict, "Duplicate value"),
             ExclusionViolation => (StatusCodes.Status409Conflict, "Time slot was just booked"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred"),

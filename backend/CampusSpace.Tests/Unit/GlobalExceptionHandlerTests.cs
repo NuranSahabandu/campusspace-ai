@@ -1,4 +1,5 @@
 using System.Text.Json;
+using CampusSpace.Api.Data.Configurations;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Middleware;
 using FluentAssertions;
@@ -29,8 +30,8 @@ public class GlobalExceptionHandlerTests
         return (context.Response.StatusCode, json.RootElement.Clone());
     }
 
-    private static PostgresException Postgres(string sqlState) =>
-        new("secret internal detail", "ERROR", "ERROR", sqlState);
+    private static PostgresException Postgres(string sqlState, string? constraintName = null) =>
+        new("secret internal detail", "ERROR", "ERROR", sqlState, constraintName: constraintName);
 
     [Theory]
     [InlineData(PostgresErrorCodes.UniqueViolation, "Duplicate value")]
@@ -43,6 +44,19 @@ public class GlobalExceptionHandlerTests
         body.GetProperty("status").GetInt32().Should().Be(409);
         body.GetProperty("title").GetString().Should().Be(title);
         body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Theory]
+    [InlineData(ClubMemberConfiguration.OneRepresentativeIndex, "Club already has a representative")]
+    [InlineData("IX_Users_Email", "Duplicate value")]
+    public async Task Unique_violations_are_mapped_by_constraint_name(string constraintName, string title)
+    {
+        var exception = new DbUpdateException("save failed", Postgres(PostgresErrorCodes.UniqueViolation, constraintName));
+
+        var (status, body) = await HandleAsync(exception);
+
+        status.Should().Be(StatusCodes.Status409Conflict);
+        body.GetProperty("title").GetString().Should().Be(title);
     }
 
     [Fact]

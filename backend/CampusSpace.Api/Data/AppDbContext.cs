@@ -1,11 +1,16 @@
+using CampusSpace.Api.Auth;
 using CampusSpace.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CampusSpace.Api.Data;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+/// <param name="currentUser">Who is making the change, for AuditLogs.UserId. Null outside a request (seeding, tests).</param>
+public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? currentUser = null) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<Club> Clubs => Set<Club>();
+    public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
