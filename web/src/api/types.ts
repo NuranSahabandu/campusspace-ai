@@ -21,3 +21,16 @@ export interface PagedResult<T> {
   pageSize: number
   total: number
 }
+
+export interface CreateUserRequest {
+  fullName: string
+  email: string
+  password: string
+  role: string
+}
+
+export interface UpdateUserRequest {
+  fullName: string
+  role: string
+  isActive: boolean
+}
