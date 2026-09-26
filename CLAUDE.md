@@ -36,6 +36,10 @@ docs/                        plan, addendum, ADRs, ER diagram, report assets
 | Mobile | Flutter 3.47 stable (Android only) |
 | Agent service | Python 3.11 via `uv` |
 
+- Every `Microsoft.*` and `Npgsql` package stays on 8.x, **including transitive ones**. Before adding a third-party package,
+  check its net8.0 dependencies. For example, use Serilog.AspNetCore 8.0.3, not 10.0.0, because 10.0.0 pulls in Microsoft.Extensions.* 10.x.
+- After adding a package, run the `--include-transitive` check in Commands and show its (empty) output.
+
 ## Local ports (fixed)
 
 | Service | Port |
@@ -83,6 +87,12 @@ Addendum rules:
 `Controller → IService/Service (AddScoped) → AppDbContext`. There is no separate repository layer.
 DTOs are `record`s with data annotations (`[Required]`, `[Range]`, `[EmailAddress]`). Policy-driven checks belong in services,
 because annotations cannot read `PolicySettings`.
+
+## Agent service conventions
+
+- Anchor file paths to the source file (`Path(__file__).resolve().parents[N] / ...`), never to the working directory.
+  Never write `"../.env"`. This applies to `.env`, eval datasets and prompt files.
+- Tests that load files use `monkeypatch.chdir` plus a temporary file, and never read the real `.env`.
 
 ## Secrets
 
