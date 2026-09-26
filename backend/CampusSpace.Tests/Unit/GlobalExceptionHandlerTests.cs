@@ -36,6 +36,7 @@ public class GlobalExceptionHandlerTests
     [Theory]
     [InlineData(PostgresErrorCodes.UniqueViolation, "Duplicate value")]
     [InlineData(PostgresErrorCodes.ExclusionViolation, "Time slot was just booked")]
+    [InlineData(PostgresErrorCodes.ForeignKeyViolation, "In use")]
     public async Task Postgres_conflicts_wrapped_by_ef_map_to_409(string sqlState, string title)
     {
         var (status, body) = await HandleAsync(new DbUpdateException("save failed", Postgres(sqlState)));
