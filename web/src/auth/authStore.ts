@@ -12,8 +12,13 @@ interface AuthState {
   token: string | null
   expiresAt: string | null
   user: UserDto | null
+  /**
+   * True after an explicit "Log out", false after an expiry. Only an expired session remembers the page
+   * to return to. Not persisted.
+   */
+  loggedOutByUser: boolean
   login: (response: AuthResponse) => void
-  logout: () => void
+  logout: (options?: { byUser?: boolean }) => void
 }
 
 const isExpired = (expiresAt: string | null) => !expiresAt || Date.parse(expiresAt) <= Date.now()
@@ -35,13 +40,14 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       ...empty,
+      loggedOutByUser: false,
       login: ({ accessToken, expiresAt, user }) => {
-        set({ token: accessToken, expiresAt, user })
+        set({ token: accessToken, expiresAt, user, loggedOutByUser: false })
         scheduleLogout(expiresAt)
       },
-      logout: () => {
+      logout: ({ byUser = false } = {}) => {
         clearTimeout(logoutTimer)
-        set(empty)
+        set({ ...empty, loggedOutByUser: byUser })
       },
     }),
     {

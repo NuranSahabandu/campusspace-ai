@@ -2,7 +2,7 @@ import { lazy, type ReactNode, Suspense } from 'react'
 import { LinearProgress } from '@mui/material'
 import { Route, Routes } from 'react-router'
 import { ProtectedRoute } from './auth/ProtectedRoute'
-import { type Role, Roles, STAFF_ROLES } from './auth/roles'
+import { type AppPath, ROUTE_ROLES } from './auth/routeAccess'
 import { LoginPage } from './features/auth/LoginPage'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { ForbiddenPage } from './features/errors/ForbiddenPage'
@@ -23,14 +23,10 @@ const ReferencePage = lazy(() =>
   import('./features/facilities/ReferencePage').then((m) => ({ default: m.ReferencePage })),
 )
 
-const ADMIN: readonly Role[] = [Roles.Admin]
-// The facilities write endpoints are Officer-only, so Admins do not get these screens.
-const OFFICER: readonly Role[] = [Roles.FacilitiesOfficer]
-
-/** A lazy page for some roles: role guard plus a Suspense boundary for the lazy chunk. */
-function GuardedPage({ roles, children }: { roles: readonly Role[]; children: ReactNode }) {
+/** A lazy page: the role guard for its path (ROUTE_ROLES) plus a Suspense boundary for the lazy chunk. */
+function GuardedPage({ path, children }: { path: AppPath; children: ReactNode }) {
   return (
-    <ProtectedRoute roles={roles}>
+    <ProtectedRoute roles={ROUTE_ROLES[path]}>
       <Suspense fallback={<LinearProgress />}>{children}</Suspense>
     </ProtectedRoute>
   )
@@ -41,20 +37,20 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route element={<ProtectedRoute roles={STAFF_ROLES} />}>
+      <Route element={<ProtectedRoute roles={ROUTE_ROLES['/']} />}>
         <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
-          <Route path="rooms" element={<GuardedPage roles={OFFICER}><RoomsPage /></GuardedPage>} />
-          <Route path="rooms/:id" element={<GuardedPage roles={OFFICER}><RoomDetailPage /></GuardedPage>} />
+          <Route path="rooms" element={<GuardedPage path="/rooms"><RoomsPage /></GuardedPage>} />
+          <Route path="rooms/:id" element={<GuardedPage path="/rooms/:id"><RoomDetailPage /></GuardedPage>} />
           <Route path="equipment" element={<ComingSoonPage title="Equipment" owner="B" />} />
           <Route path="requests" element={<ComingSoonPage title="Requests" owner="C" />} />
           <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
           <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
-          <Route path="users" element={<GuardedPage roles={ADMIN}><UsersPage /></GuardedPage>} />
-          <Route path="clubs" element={<GuardedPage roles={ADMIN}><ClubsPage /></GuardedPage>} />
-          <Route path="clubs/:id" element={<GuardedPage roles={ADMIN}><ClubDetailPage /></GuardedPage>} />
-          <Route path="facilities/reference" element={<GuardedPage roles={OFFICER}><ReferencePage /></GuardedPage>} />
-          <Route path="audit-logs" element={<GuardedPage roles={ADMIN}><AuditLogsPage /></GuardedPage>} />
+          <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
+          <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
+          <Route path="clubs/:id" element={<GuardedPage path="/clubs/:id"><ClubDetailPage /></GuardedPage>} />
+          <Route path="facilities/reference" element={<GuardedPage path="/facilities/reference"><ReferencePage /></GuardedPage>} />
+          <Route path="audit-logs" element={<GuardedPage path="/audit-logs"><AuditLogsPage /></GuardedPage>} />
           <Route path="forbidden" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

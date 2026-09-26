@@ -31,7 +31,8 @@ export function AppLayout() {
 
   const handleLogout = () => {
     setMenuAnchor(null)
-    logout()
+    // byUser: an explicit logout starts the next login on the dashboard, with no page to return to.
+    logout({ byUser: true })
     navigate('/login', { replace: true })
   }
 
