@@ -2,7 +2,7 @@ import { lazy, type ReactNode, Suspense } from 'react'
 import { LinearProgress } from '@mui/material'
 import { Route, Routes } from 'react-router'
 import { ProtectedRoute } from './auth/ProtectedRoute'
-import { Roles, STAFF_ROLES } from './auth/roles'
+import { type Role, Roles, STAFF_ROLES } from './auth/roles'
 import { LoginPage } from './features/auth/LoginPage'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { ForbiddenPage } from './features/errors/ForbiddenPage'
@@ -15,11 +15,18 @@ const UsersPage = lazy(() => import('./features/users/UsersPage').then((m) => ({
 const ClubsPage = lazy(() => import('./features/clubs/ClubsPage').then((m) => ({ default: m.ClubsPage })))
 const AuditLogsPage = lazy(() => import('./features/audit/AuditLogsPage').then((m) => ({ default: m.AuditLogsPage })))
 const ClubDetailPage = lazy(() => import('./features/clubs/ClubDetailPage').then((m) => ({ default: m.ClubDetailPage })))
+const ReferencePage = lazy(() =>
+  import('./features/facilities/ReferencePage').then((m) => ({ default: m.ReferencePage })),
+)
 
-/** Admin-only page: role guard plus a Suspense boundary for the lazy chunk. */
-function AdminPage({ children }: { children: ReactNode }) {
+const ADMIN: readonly Role[] = [Roles.Admin]
+// The facilities write endpoints are Officer-only, so Admins do not get these screens.
+const OFFICER: readonly Role[] = [Roles.FacilitiesOfficer]
+
+/** A lazy page for some roles: role guard plus a Suspense boundary for the lazy chunk. */
+function GuardedPage({ roles, children }: { roles: readonly Role[]; children: ReactNode }) {
   return (
-    <ProtectedRoute roles={[Roles.Admin]}>
+    <ProtectedRoute roles={roles}>
       <Suspense fallback={<LinearProgress />}>{children}</Suspense>
     </ProtectedRoute>
   )
@@ -38,10 +45,11 @@ export function AppRoutes() {
           <Route path="requests" element={<ComingSoonPage title="Requests" owner="C" />} />
           <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
           <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
-          <Route path="users" element={<AdminPage><UsersPage /></AdminPage>} />
-          <Route path="clubs" element={<AdminPage><ClubsPage /></AdminPage>} />
-          <Route path="clubs/:id" element={<AdminPage><ClubDetailPage /></AdminPage>} />
-          <Route path="audit-logs" element={<AdminPage><AuditLogsPage /></AdminPage>} />
+          <Route path="users" element={<GuardedPage roles={ADMIN}><UsersPage /></GuardedPage>} />
+          <Route path="clubs" element={<GuardedPage roles={ADMIN}><ClubsPage /></GuardedPage>} />
+          <Route path="clubs/:id" element={<GuardedPage roles={ADMIN}><ClubDetailPage /></GuardedPage>} />
+          <Route path="facilities/reference" element={<GuardedPage roles={OFFICER}><ReferencePage /></GuardedPage>} />
+          <Route path="audit-logs" element={<GuardedPage roles={ADMIN}><AuditLogsPage /></GuardedPage>} />
           <Route path="forbidden" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

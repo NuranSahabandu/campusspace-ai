@@ -1,4 +1,16 @@
-import type { AuditLogDto, AuthResponse, ClubDetailDto, ClubDto, ClubMemberDto, PagedResult, UserDto } from '../api/types'
+import type {
+  AuditLogDto,
+  AuthResponse,
+  BlackoutDto,
+  BuildingDto,
+  ClubDetailDto,
+  ClubDto,
+  ClubMemberDto,
+  FeatureDto,
+  PagedResult,
+  RoomDto,
+  UserDto,
+} from '../api/types'
 import { Roles, type Role } from '../auth/roles'
 
 export const makeUser = (role: Role, overrides: Partial<UserDto> = {}): UserDto => ({
@@ -84,5 +96,60 @@ export const AUDIT_LOGS: AuditLogDto[] = [
     entityId: '1:7',
     details: {},
     at: '2026-09-26T08:00:00Z',
+  },
+]
+
+export const BUILDINGS: BuildingDto[] = [
+  { id: 1, code: 'MB', name: 'Main Building', isActive: true },
+  { id: 2, code: 'NB', name: 'New Building', isActive: true },
+  { id: 3, code: 'OLD', name: 'Old Wing', isActive: false },
+]
+
+export const FEATURES: FeatureDto[] = [
+  { id: 1, code: 'ac', name: 'Air conditioning' },
+  { id: 2, code: 'computers', name: 'Computers' },
+  { id: 3, code: 'projector', name: 'Projector' },
+  { id: 4, code: 'whiteboard', name: 'Whiteboard' },
+]
+
+const ref = (code: string) => {
+  const f = FEATURES.find((x) => x.code === code)!
+  return { code: f.code, name: f.name }
+}
+
+export const makeRoom = (overrides: Partial<RoomDto> = {}): RoomDto => ({
+  id: 1,
+  code: 'A301',
+  name: 'Computer Lab A301',
+  type: 'ComputerLab',
+  capacity: 48,
+  isActive: true,
+  building: { id: 1, code: 'MB', name: 'Main Building' },
+  features: [ref('computers'), ref('projector')],
+  ...overrides,
+})
+
+export const ROOMS: RoomDto[] = [
+  makeRoom(),
+  makeRoom({
+    id: 2,
+    code: 'N201',
+    name: 'Computer Lab N201',
+    capacity: 60,
+    building: { id: 2, code: 'NB', name: 'New Building' },
+  }),
+  makeRoom({ id: 3, code: 'A102', name: 'Lecture Hall A102', type: 'LectureHall', capacity: 80, features: [ref('whiteboard')], isActive: false }),
+]
+
+export const BLACKOUTS: BlackoutDto[] = [
+  {
+    id: 7,
+    roomId: 1,
+    start: '2026-09-28T02:30:00Z',
+    end: '2026-09-28T06:30:00Z',
+    reason: 'Projector maintenance',
+    createdById: 4,
+    createdByName: 'Mr. Perera',
+    createdAt: '2026-09-20T08:00:00Z',
   },
 ]
