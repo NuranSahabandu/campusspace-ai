@@ -75,3 +75,15 @@ export interface AddClubMemberRequest {
   userId: number
   isRepresentative: boolean
 }
+
+/** One audit row. userName is null for anonymous events or a deleted user. details is the stored JSON object. */
+export interface AuditLogDto {
+  id: number
+  userId: number | null
+  userName: string | null
+  action: string
+  entityType: string
+  entityId: string | null
+  details: Record<string, unknown>
+  at: string
+}
