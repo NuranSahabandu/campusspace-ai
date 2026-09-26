@@ -1,0 +1,47 @@
+using CampusSpace.Api.Dtos.Common;
+using CampusSpace.Api.Dtos.Facilities;
+using CampusSpace.Api.Models;
+using CampusSpace.Api.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace CampusSpace.Api.Controllers;
+
+/// <summary>Maintenance blackouts of a room (§9 Component A). Facilities Officers only.</summary>
+[ApiController]
+[Route("api/rooms/{roomId:long}/blackouts")]
+[Authorize(Roles = Roles.FacilitiesOfficer)]
+public class RoomBlackoutsController(IRoomBlackoutService blackouts) : ControllerBase
+{
+    [HttpGet]
+    [ProducesResponseType<PagedResult<BlackoutDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PagedResult<BlackoutDto>>> List(long roomId, [FromQuery] BlackoutsQuery query, CancellationToken ct)
+        => await blackouts.ListAsync(roomId, query, ct) is { } page ? Ok(page) : NotFound();
+
+    [HttpGet("{blackoutId:long}")]
+    [ProducesResponseType<BlackoutDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BlackoutDto>> Get(long roomId, long blackoutId, CancellationToken ct)
+        => await blackouts.GetAsync(roomId, blackoutId, ct) is { } blackout ? Ok(blackout) : NotFound();
+
+    [HttpPost]
+    [ProducesResponseType<BlackoutDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<BlackoutDto>> Create(long roomId, CreateBlackoutRequest request, CancellationToken ct)
+        => await blackouts.CreateAsync(roomId, request, ct) is { } blackout
+            ? CreatedAtAction(nameof(Get), new { roomId, blackoutId = blackout.Id }, blackout)
+            : NotFound();
+
+    [HttpDelete("{blackoutId:long}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(long roomId, long blackoutId, CancellationToken ct)
+        => await blackouts.DeleteAsync(roomId, blackoutId, ct) ? NoContent() : NotFound();
+}
