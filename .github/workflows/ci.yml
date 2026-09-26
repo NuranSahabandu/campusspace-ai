@@ -77,14 +77,33 @@ jobs:
       # Tests set their own env and fake keys: no secrets, no model calls.
       - run: uv run pytest -q
 
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # Vitest + MSW: no real network, no .env.
+      - run: npm test -- --run
+
+      - run: npm run build
+
 # Jobs to add later (plan §17.2). Use the CLAUDE.md pins, which supersede the plan's
-# Node 20 and pip examples: Node 24, Python 3.11 via uv.
-#
-#   web (Phase 0.6):
-#     runs-on: ubuntu-latest
-#     defaults: { run: { working-directory: web } }
-#     steps: checkout, actions/setup-node (node-version: 24), npm ci, npm run lint,
-#            npm test -- --run, npm run build
+# Node 20 and pip examples.
 #
 #   mobile (Phase 0.7):
 #     runs-on: ubuntu-latest
