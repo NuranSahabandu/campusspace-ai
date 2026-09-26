@@ -1,0 +1,73 @@
+# CI for CampusSpace AI (plan §17.2, spec §13).
+# The branch ruleset requires the "backend" check by name, so do not rename that job.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Cancel superseded PR runs; let every push to main finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same SDK as local (8.0.423, pinned by global.json).
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('backend/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - run: dotnet restore backend
+
+      - run: dotnet build backend -c Release --no-restore -p:TreatWarningsAsErrors=true
+
+      # Integration tests start postgres:16 via Testcontainers (Docker is available on ubuntu-latest).
+      - run: >-
+          dotnet test backend -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: TestResults
+
+# Jobs to add later (plan §17.2). Use the CLAUDE.md pins, which supersede the plan's
+# Node 20 and pip examples: Node 24, Python 3.11 via uv.
+#
+#   agent (Phase 0.5):
+#     runs-on: ubuntu-latest
+#     defaults: { run: { working-directory: agent-service } }
+#     steps: checkout, astral-sh/setup-uv (Python 3.11), uv sync, uv run pytest -q
+#     # fake LLM: no API key needed
+#
+#   web (Phase 0.6):
+#     runs-on: ubuntu-latest
+#     defaults: { run: { working-directory: web } }
+#     steps: checkout, actions/setup-node (node-version: 24), npm ci, npm run lint,
+#            npm test -- --run, npm run build
+#
+#   mobile (Phase 0.7):
+#     runs-on: ubuntu-latest
+#     defaults: { run: { working-directory: mobile } }
+#     steps: checkout, subosito/flutter-action@v2 (3.47 stable), flutter pub get,
+#            flutter analyze, flutter test
