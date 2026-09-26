@@ -92,4 +92,118 @@ public class UsersEndpointsTests(PostgresFixture fixture)
         var problem = await response.ShouldBeProblemAsync(400);
         problem.GetProperty("errors").TryGetProperty(field, out _).Should().BeTrue();
     }
+
+    private static object NewUserBody(string role = Roles.Lecturer, string? email = null) => new
+    {
+        fullName = "  Dr. New Person ",
+        email = email ?? $"{Guid.NewGuid():N}@campus.test",
+        password = "initial-pass-1",
+        role,
+    };
+
+    [Fact]
+    public async Task Admin_creates_a_user_with_any_role_returns_201_with_location_and_can_get_it()
+    {
+        var admin = (await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Admin)).Client;
+        var email = $"{Guid.NewGuid():N}@campus.test";
+
+        var response = await admin.PostAsJsonAsync("/api/users", NewUserBody(Roles.FacilitiesOfficer, email.ToUpperInvariant()));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await response.ReadJsonAsync();
+        created.GetProperty("email").GetString().Should().Be(email);
+        created.GetProperty("fullName").GetString().Should().Be("Dr. New Person");
+        created.GetProperty("role").GetString().Should().Be(Roles.FacilitiesOfficer);
+        created.TryGetProperty("passwordHash", out _).Should().BeFalse();
+        var id = created.GetProperty("id").GetInt64();
+        response.Headers.Location!.AbsolutePath.Should().Be($"/api/users/{id}");
+
+        var fetched = await (await admin.GetAsync($"/api/users/{id}")).ReadJsonAsync();
+        fetched.GetProperty("email").GetString().Should().Be(email);
+
+        var login = await fixture.Factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = "initial-pass-1" });
+        login.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Creating_a_user_with_a_taken_email_returns_409()
+    {
+        var admin = (await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Admin)).Client;
+        var email = await RegisterAsync("Existing Person");
+
+        var response = await admin.PostAsJsonAsync("/api/users", NewUserBody(email: email.ToUpperInvariant()));
+
+        var problem = await response.ShouldBeProblemAsync(409);
+        problem.GetProperty("title").GetString().Should().Be("Email is already registered");
+    }
+
+    [Fact]
+    public async Task Create_validates_role_and_password_length()
+    {
+        var admin = TestAuth.CreateClient(fixture.Factory, Roles.Admin);
+
+        var response = await admin.PostAsJsonAsync("/api/users",
+            new { fullName = "X", email = $"{Guid.NewGuid():N}@campus.test", password = "short", role = "Janitor" });
+
+        var errors = (await response.ShouldBeProblemAsync(400)).GetProperty("errors");
+        errors.TryGetProperty("Role", out _).Should().BeTrue();
+        errors.TryGetProperty("Password", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Admin_updates_name_role_and_active_flag()
+    {
+        var admin = (await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Admin)).Client;
+        var id = (await (await admin.PostAsJsonAsync("/api/users", NewUserBody(Roles.Student))).ReadJsonAsync())
+            .GetProperty("id").GetInt64();
+
+        var response = await admin.PutAsJsonAsync($"/api/users/{id}",
+            new { fullName = "Renamed", role = Roles.LabTechnician, isActive = false });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.ReadJsonAsync();
+        body.GetProperty("fullName").GetString().Should().Be("Renamed");
+        body.GetProperty("role").GetString().Should().Be(Roles.LabTechnician);
+        body.GetProperty("isActive").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Admin_cannot_deactivate_themselves()
+    {
+        var (admin, adminId) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Admin);
+        var me = await (await admin.GetAsync($"/api/users/{adminId}")).ReadJsonAsync();
+
+        var response = await admin.PutAsJsonAsync($"/api/users/{adminId}",
+            new { fullName = me.GetProperty("fullName").GetString(), role = Roles.Admin, isActive = false });
+
+        var problem = await response.ShouldBeProblemAsync(400);
+        problem.GetProperty("title").GetString().Should().Be("You cannot deactivate your own account.");
+        problem.GetProperty("errors").TryGetProperty("IsActive", out _).Should().BeTrue();
+        (await (await admin.GetAsync($"/api/users/{adminId}")).ReadJsonAsync()).GetProperty("isActive").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Admin_cannot_change_their_own_role_but_can_rename_themselves()
+    {
+        var (admin, adminId) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Admin);
+
+        var demote = await admin.PutAsJsonAsync($"/api/users/{adminId}",
+            new { fullName = "Me", role = Roles.Student, isActive = true });
+        var rename = await admin.PutAsJsonAsync($"/api/users/{adminId}",
+            new { fullName = "Me Renamed", role = Roles.Admin, isActive = true });
+
+        var problem = await demote.ShouldBeProblemAsync(400);
+        problem.GetProperty("title").GetString().Should().Be("You cannot change your own role.");
+        rename.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Unknown_user_returns_404_and_student_gets_403_on_create()
+    {
+        var admin = TestAuth.CreateClient(fixture.Factory, Roles.Admin);
+        var student = TestAuth.CreateClient(fixture.Factory, Roles.Student);
+
+        await (await admin.GetAsync($"/api/users/{long.MaxValue}")).ShouldBeProblemAsync(404);
+        await (await student.PostAsJsonAsync("/api/users", NewUserBody())).ShouldBeProblemAsync(403);
+    }
 }

@@ -130,4 +130,26 @@ public class AuditEndpointsTests(PostgresFixture fixture)
         var problem = await response.ShouldBeProblemAsync(400);
         problem.GetProperty("errors").TryGetProperty(field, out _).Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Admin_creating_and_updating_a_user_is_audited_with_the_admin_and_changed_names_only()
+    {
+        var (admin, adminId) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Admin);
+        var created = await (await admin.PostAsJsonAsync("/api/users", new
+        {
+            fullName = "Audited Hire",
+            email = $"{Guid.NewGuid():N}@campus.test",
+            password = "initial-pass-1",
+            role = Roles.Lecturer,
+        })).ReadJsonAsync();
+        var id = created.GetProperty("id").GetInt64();
+
+        await admin.PutAsJsonAsync($"/api/users/{id}", new { fullName = "Audited Hire Renamed", role = Roles.Lecturer, isActive = true });
+
+        var logs = await LogsAsync(q => q.Where(a => a.EntityType == nameof(User) && a.EntityId == id.ToString()));
+        logs.Select(a => a.Action).Should().Equal(AuditActions.Created, AuditActions.Updated);
+        logs.Should().OnlyContain(a => a.UserId == adminId);
+        logs[1].DetailsJson.Should().Be("""{"changed": ["FullName"]}""");
+        logs.Should().OnlyContain(a => !a.DetailsJson.Contains("PasswordHash") && !a.DetailsJson.Contains("initial-pass-1"));
+    }
 }

@@ -1,12 +1,15 @@
+using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Users;
 using CampusSpace.Api.Extensions;
+using CampusSpace.Api.Middleware;
+using CampusSpace.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CampusSpace.Api.Services;
 
-public sealed class UserService(AppDbContext db) : IUserService
+public sealed class UserService(AppDbContext db, ICurrentUser currentUser) : IUserService
 {
     public Task<PagedResult<UserDto>> ListAsync(UsersQuery query, CancellationToken ct = default)
     {
@@ -38,5 +41,52 @@ public sealed class UserService(AppDbContext db) : IUserService
         return users
             .Select(u => new UserDto(u.Id, u.FullName, u.Email, u.Role, u.IsActive, u.CreatedAt))
             .ToPagedResultAsync(query, ct);
+    }
+
+    public async Task<UserDto?> GetAsync(long id, CancellationToken ct = default)
+    {
+        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == id, ct);
+        return user is null ? null : UserDto.FromEntity(user);
+    }
+
+    public async Task<UserDto> CreateAsync(CreateUserRequest request, CancellationToken ct = default)
+    {
+        var email = AuthService.NormalizeEmail(request.Email);
+        // Friendly check first. The unique index still catches a concurrent insert (23505 -> 409).
+        if (await db.Users.AnyAsync(u => u.Email == email, ct))
+            throw new ConflictException("Email is already registered");
+
+        var user = new User
+        {
+            FullName = request.FullName.Trim(),
+            Email = email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            Role = request.Role,
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync(ct);
+        return UserDto.FromEntity(user);
+    }
+
+    public async Task<UserDto?> UpdateAsync(long id, UpdateUserRequest request, CancellationToken ct = default)
+    {
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == id, ct);
+        if (user is null)
+            return null;
+
+        // Lock-out guard: an Admin editing their own account keeps it active and keeps the Admin role.
+        if (id == currentUser.UserId)
+        {
+            if (request.IsActive == false)
+                throw new BusinessRuleException(nameof(request.IsActive), "You cannot deactivate your own account.");
+            if (request.Role != user.Role)
+                throw new BusinessRuleException(nameof(request.Role), "You cannot change your own role.");
+        }
+
+        user.FullName = request.FullName.Trim();
+        user.Role = request.Role;
+        user.IsActive = request.IsActive!.Value;
+        await db.SaveChangesAsync(ct);
+        return UserDto.FromEntity(user);
     }
 }

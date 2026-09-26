@@ -47,7 +47,8 @@ public class AuthEndpointsTests(PostgresFixture fixture)
         var (body, response) = await RegisterAsync($"  {email.ToUpperInvariant()} ");
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
-        response.Headers.Location!.OriginalString.Should().Be("/api/auth/me");
+        response.Headers.Location!.AbsolutePath.Should()
+            .Be($"/api/users/{body.GetProperty("user").GetProperty("id").GetInt64()}");
         body.GetProperty("accessToken").GetString().Should().NotBeNullOrEmpty();
         body.GetProperty("expiresAt").GetDateTime().Should().BeAfter(DateTime.UtcNow);
         var user = body.GetProperty("user");
