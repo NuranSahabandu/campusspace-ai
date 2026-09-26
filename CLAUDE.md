@@ -147,6 +147,16 @@ dotnet ef database update --project backend/CampusSpace.Api
 dotnet list backend package --include-transitive | grep -E " 9\.| 10\."   # must print nothing Microsoft.*/Npgsql
 ```
 
+Agent service (run from `agent-service/`; reads the repo-root `.env`, and `AgentService__ServiceKey` must be ≥ 32 chars):
+
+```bash
+uv sync                                             # create .venv from uv.lock (Python 3.11)
+uv run uvicorn app.main:app --reload --port 8000    # http://localhost:8000 (/health, /docs)
+uv run ruff check .
+uv run pytest -q                                    # never reads the real .env
+curl -s localhost:8000/health                       # the API's /health shows it as check "agent-service"
+```
+
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 
 ```bash
