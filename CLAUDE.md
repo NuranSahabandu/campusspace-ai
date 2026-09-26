@@ -227,6 +227,13 @@ never values or `PasswordHash`). `ExecuteUpdate`/`ExecuteDelete` are not audited
 for a rule-based 400 with a field error. A DB rule that needs a specific 409 is mapped by `ConstraintName` in
 `GlobalExceptionHandler.Map`. Prefer EF-generated constraints and indexes over raw SQL.
 
+Facilities conventions (Component A): `RoomTypes` is the only list of room types (CHECK + `[ValidRoomType]`). A deleted
+row that is still referenced raises 23503, which maps to 409 "In use"; services check FKs before inserting and return a 400
+on the field instead. Time ranges (`RoomBlackouts.TimeRange`, and later bookings) are UTC `tstzrange` `[start, end)`, enforced by a
+CHECK; build them with `new NpgsqlRange<DateTime>(start.UtcDateTime, true, end.UtcDateTime, false)`. Rooms have no opening
+hours: `PolicySettings.opening_hours` (Component D) is the only source. Endpoint tests create their own building and rooms
+with `FacilitiesTestData` (the shared test database is not seeded).
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
