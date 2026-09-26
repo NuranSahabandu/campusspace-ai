@@ -110,6 +110,29 @@ The staff portal (Facilities Officers and Admins) is React 19 + Vite. It reads `
 Sign in as `perera@campusspace.local` or `admin@campusspace.local` (see "Test accounts"). Students, lecturers and
 technicians are refused: they use the mobile app. See [web/README.md](web/README.md) for the structure.
 
+## Run the mobile app
+
+The requester and technician app is Flutter (Android only). Students, lecturers and lab technicians sign in here;
+Facilities Officers and Admins are sent to the web portal. The API URL is set at build time with `--dart-define`.
+The Android emulator reaches your machine's `localhost` through `10.0.2.2`.
+
+1. Start the database and the API (see above).
+2. Start the emulator and run the app:
+   ```bash
+   cd mobile
+   flutter pub get
+   flutter emulators --launch Pixel_10       # or any Android emulator; `flutter devices` lists the ids
+   flutter run -d <emulator-id> --dart-define=API_URL=http://10.0.2.2:5080
+   ```
+3. Analyze and test. The tests use fakes and never touch the network:
+   ```bash
+   flutter analyze
+   flutter test
+   ```
+
+Debug builds allow plain HTTP only to `10.0.2.2` and `localhost`; release builds are HTTPS-only. Building a release
+APK comes in Phase 6. See [mobile/README.md](mobile/README.md) for the structure.
+
 ## Authentication
 
 Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous routes are `POST /api/auth/register`,

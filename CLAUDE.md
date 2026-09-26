@@ -184,6 +184,24 @@ from `src/auth/roles.ts`, and add the matching entry in `src/layout/navItems.tsx
 `parseProblem`/`applyFieldErrors`. Copy `features/users/` for new list pages. Never prefix a secret with `VITE_`.
 Tests use `renderApp(route, { role })` from `src/test/utils.tsx` and MSW handlers (`server.use(...)`).
 
+Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
+
+```bash
+flutter pub get
+flutter analyze                                     # must report no issues
+flutter test                                        # fakes + provider overrides; no network, no emulator
+flutter emulators --launch Pixel_10                 # then `flutter devices` for the emulator id
+flutter run -d <emulator-id> --dart-define=API_URL=http://10.0.2.2:5080   # needs the API on :5080
+```
+
+Mobile conventions: call the API only through `dioProvider` (`lib/core/api/dio_client.dart`) inside a feature
+repository. One plain `AsyncNotifier` per feature (ADR-2); no code generation (no freezed, riverpod_generator or
+build_runner) and hand-written `fromJson`. The session lives in `authControllerProvider` and only in
+flutter_secure_storage, never SharedPreferences. Add routes in `lib/core/router.dart`; the redirect guard handles
+auth. Show server errors with `Problem.from(e)` and `problem.fieldError('field')`. Validators mirror the DTO
+annotations in `lib/core/validators.dart`. Cleartext HTTP is allowed only in debug builds and only to
+`10.0.2.2`/`localhost`. Tests override `tokenStorageProvider`/`authRepositoryProvider` with fakes (`test/helpers.dart`).
+
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 
 ```bash
