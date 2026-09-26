@@ -5,10 +5,14 @@ import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/auth/token_storage.dart';
 import 'package:campusspace_mobile/features/rooms/facilities_repository.dart';
 import 'package:campusspace_mobile/features/rooms/models.dart';
+import 'package:campusspace_mobile/features/rooms/room_detail_screen.dart';
+import 'package:campusspace_mobile/features/rooms/rooms_screen.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
@@ -102,4 +106,32 @@ PagedResult<Room> roomsPage(int page, int total, {int pageSize = 20}) {
     pageSize: pageSize,
     total: total,
   );
+}
+
+/// Pumps [initialLocation] in a bare router with just the rooms screens (no auth), so screen
+/// tests only fake the facilities repository.
+Future<GoRouter> pumpRoomsScreens(WidgetTester tester, FacilitiesRepository repository,
+    {String initialLocation = '/rooms'}) async {
+  final router = GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      GoRoute(
+        path: '/rooms',
+        builder: (_, _) => const RoomsScreen(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (_, state) => RoomDetailScreen(id: int.tryParse(state.pathParameters['id']!)),
+          ),
+        ],
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [facilitiesRepositoryProvider.overrideWithValue(repository)],
+    child: MaterialApp.router(routerConfig: router),
+  ));
+  await tester.pumpAndSettle();
+  return router;
 }
