@@ -118,6 +118,7 @@ because annotations cannot read `PolicySettings`.
 - Run the build and tests before saying "done".
 - Never add a package or upgrade a major version without saying why.
 - Keep commits small and use Conventional Commits (`feat(b): ...`, `fix(api): ...`).
+- Project rules go in CLAUDE.md, never only in personal memory.
 - End every task with:
   1. Files changed
   2. How you verified
