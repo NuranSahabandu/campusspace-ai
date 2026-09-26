@@ -181,7 +181,10 @@ npm run build                                       # tsc -b && vite build
 Web conventions: call the API only through `api` in `src/api/client.ts`. Server data goes through TanStack Query and
 the session through `useAuthStore` (ADR-1). Guard routes with `<ProtectedRoute roles={...}>` using `Roles`/`STAFF_ROLES`
 from `src/auth/roles.ts`, and add the matching entry in `src/layout/navItems.tsx`. Show server errors with
-`parseProblem`/`applyFieldErrors`. Copy `features/users/` for new list pages. Never prefix a secret with `VITE_`.
+`parseProblem`/`applyFieldErrors`. Build list pages from `useServerTable` + `usePagedQuery` + `<ServerDataGrid>`
+(copy `features/users/` or `features/clubs/`). Do writes through `useApiMutation` (toast, invalidate, 400 field errors,
+409 `conflictField`, traceId toast). Confirm destructive actions with `ConfirmDialog`. Show timestamps with
+`formatDateTime` (Asia/Colombo), and turn date inputs into filters with `campusDayBounds`. Never prefix a secret with `VITE_`.
 Tests use `renderApp(route, { role })` from `src/test/utils.tsx` and MSW handlers (`server.use(...)`).
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
