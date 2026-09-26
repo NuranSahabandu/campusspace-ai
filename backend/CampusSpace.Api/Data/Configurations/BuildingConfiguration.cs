@@ -6,11 +6,14 @@ namespace CampusSpace.Api.Data.Configurations;
 
 public class BuildingConfiguration : IEntityTypeConfiguration<Building>
 {
+    /// <summary>Upper-case letters, digits and '-'. BuildingService checks it too, for a 400 instead of a 500.</summary>
+    public const string CodePattern = "^[A-Z0-9][A-Z0-9-]*$";
+
     public void Configure(EntityTypeBuilder<Building> builder)
     {
         builder.ToTable(t =>
         {
-            t.HasCheckConstraint("CK_Buildings_Code_Format", "\"Code\" ~ '^[A-Z0-9][A-Z0-9-]*$'");
+            t.HasCheckConstraint("CK_Buildings_Code_Format", $"\"Code\" ~ '{CodePattern}'");
             t.HasCheckConstraint("CK_Buildings_Name_NotBlank", "btrim(\"Name\") <> ''");
         });
 
