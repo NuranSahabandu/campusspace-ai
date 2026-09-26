@@ -14,9 +14,11 @@ builder.Services.AddPersistence();
 builder.Services.AddErrorHandling();
 builder.Services.AddFrontendCors(builder.Configuration);
 builder.Services.AddApiHealthChecks();
+builder.Services.AddJwtAuth();
+builder.Services.AddApplicationServices();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options => options.AddBearerSecurity());
 
 var app = builder.Build();
 
@@ -37,6 +39,7 @@ else
 }
 
 app.UseCors(ServiceCollectionExtensions.FrontendsCorsPolicy);
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapHealthChecks("/health", new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })

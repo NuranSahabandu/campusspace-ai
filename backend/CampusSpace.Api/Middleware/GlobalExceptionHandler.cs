@@ -37,6 +37,9 @@ public sealed class GlobalExceptionHandler(
 
     public static (int Status, string Title) Map(Exception exception)
     {
+        if (exception is ConflictException conflict)
+            return (StatusCodes.Status409Conflict, conflict.Message);
+
         // EF Core wraps database errors in DbUpdateException; look for the PostgresException inside.
         var postgres = exception as PostgresException ?? exception.InnerException as PostgresException;
         return postgres?.SqlState switch

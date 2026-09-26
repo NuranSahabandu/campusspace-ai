@@ -22,8 +22,12 @@ public static class PersistenceExtensions
     public static async Task MigrateAndSeedAsync(this WebApplication app)
     {
         await using var scope = app.Services.CreateAsyncScope();
+        var demoPassword = app.Configuration["Seed:DemoPassword"];
+        if (string.IsNullOrWhiteSpace(demoPassword))
+            throw new InvalidOperationException("Seed:DemoPassword is not set (see appsettings.Development.json).");
+
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
-        await Seed.SeedAsync(db);
+        await Seed.SeedAsync(db, demoPassword);
     }
 }

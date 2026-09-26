@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Middleware;
+using CampusSpace.Api.Services;
 
 namespace CampusSpace.Api.Extensions;
 
@@ -23,6 +24,14 @@ public static class ServiceCollectionExtensions
         var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
         services.AddCors(options => options.AddPolicy(FrontendsCorsPolicy, policy =>
             policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod()));
+        return services;
+    }
+
+    /// <summary>Business services (Controller -> IService -> AppDbContext). One scope per request.</summary>
+    public static IServiceCollection AddApplicationServices(this IServiceCollection services)
+    {
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
         return services;
     }
 

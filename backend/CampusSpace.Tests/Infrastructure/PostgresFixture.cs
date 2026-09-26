@@ -11,6 +11,9 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public CustomWebApplicationFactory Factory { get; private set; } = null!;
 
+    /// <summary>Connection string of the container's default database (the one Factory uses).</summary>
+    public string ConnectionString => _container.GetConnectionString();
+
     public async Task InitializeAsync()
     {
         await _container.StartAsync();

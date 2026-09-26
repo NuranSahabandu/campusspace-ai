@@ -145,6 +145,20 @@ dotnet ef database update --project backend/CampusSpace.Api
 dotnet list backend package --include-transitive | grep -E " 9\.| 10\."   # must print nothing Microsoft.*/Npgsql
 ```
 
+Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:5080/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"admin@campusspace.local","password":"CampusSpace#2026"}' | jq -r .accessToken)
+curl -s http://localhost:5080/api/auth/me -H "Authorization: Bearer $TOKEN"
+curl -s "http://localhost:5080/api/users?page=1&pageSize=20" -H "Authorization: Bearer $TOKEN"
+```
+
+Auth conventions: the fallback policy denies anonymous access, so only mark `[AllowAnonymous]` when you mean it. Use
+`[Authorize(Roles = Roles.X)]` (never string literals), `User.GetUserId()` for the caller's id, `ConflictException`
+for 409s from services, and `PageQuery`/`PagedResult<T>`/`ToPagedResultAsync` for list endpoints.
+Tests get tokens from `TestAuth.CreateClient(factory, Roles.X)`.
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
