@@ -1,7 +1,7 @@
-import type { GridSortModel } from '@mui/x-data-grid'
+import { makeToSortParam } from '../../ui/sortParam'
 
 // Grid column → server sort field (UsersQuery.SortFields in the API).
-const SORT_FIELDS: Record<string, string> = {
+export const USERS_SORT_FIELDS: Record<string, string> = {
   fullName: 'name',
   email: 'email',
   role: 'role',
@@ -9,9 +9,4 @@ const SORT_FIELDS: Record<string, string> = {
 }
 
 /** Grid sort model → the API's ?sort= value ("name", "-createdAt", ...). */
-export const toSortParam = (model: GridSortModel): string | undefined => {
-  const [first] = model
-  if (!first?.sort) return undefined
-  const field = SORT_FIELDS[first.field]
-  return first.sort === 'desc' ? `-${field}` : field
-}
+export const toSortParam = makeToSortParam(USERS_SORT_FIELDS)
