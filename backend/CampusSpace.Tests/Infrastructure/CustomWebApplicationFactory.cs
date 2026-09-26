@@ -1,7 +1,10 @@
+using System.Net;
 using System.Security.Cryptography;
 using CampusSpace.Api.Data;
+using CampusSpace.Api.Health;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +13,7 @@ namespace CampusSpace.Tests.Infrastructure;
 /// <summary>
 /// Runs the real API in memory against the test container. Uses the "Testing" environment,
 /// so user-secrets, Swagger and the Development auto-migration are all off.
+/// The agent-service HttpClient is stubbed to answer 200.
 /// </summary>
 public sealed class CustomWebApplicationFactory(string connectionString) : WebApplicationFactory<Program>
 {
@@ -26,6 +30,9 @@ public sealed class CustomWebApplicationFactory(string connectionString) : WebAp
         builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
         builder.UseSetting("Jwt:Audience", JwtAudience);
+        // The agent service is not running in tests: its /health always answers 200.
+        builder.ConfigureTestServices(services => services.AddHttpClient(AgentServiceHealthCheck.ClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))));
     }
 
     public async Task MigrateAsync()

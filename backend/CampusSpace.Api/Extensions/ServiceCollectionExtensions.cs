@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using CampusSpace.Api.Data;
+using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Services;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace CampusSpace.Api.Extensions;
 
@@ -37,9 +39,18 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddApiHealthChecks(this IServiceCollection services)
     {
+        services.AddHttpClient(AgentServiceHealthCheck.ClientName, (sp, client) =>
+        {
+            var baseUrl = sp.GetRequiredService<IConfiguration>()["AgentService:BaseUrl"]
+                ?? throw new InvalidOperationException("AgentService:BaseUrl is not configured.");
+            client.BaseAddress = new Uri(baseUrl);
+            client.Timeout = TimeSpan.FromSeconds(3);
+        });
+
         services.AddHealthChecks()
-            .AddDbContextCheck<AppDbContext>("database");
-        // Phase 0.5: add the agent-service check (GET {AgentService:BaseUrl}/health).
+            .AddDbContextCheck<AppDbContext>("database")
+            // Degraded, not Unhealthy: the API still serves everything except agent runs.
+            .AddCheck<AgentServiceHealthCheck>("agent-service", failureStatus: HealthStatus.Degraded);
         return services;
     }
 }

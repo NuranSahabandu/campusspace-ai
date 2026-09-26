@@ -66,6 +66,29 @@ Local ports: API `5080`, agent service `8000`, React `5173`, PostgreSQL `5432`.
    dotnet test backend
    ```
 
+## Run the agent service
+
+The API's `/health` includes an `agent-service` check. When the agent service is down, the overall status is
+`Degraded`, but the endpoint still returns HTTP 200.
+
+1. Install [uv](https://docs.astral.sh/uv/). It installs Python 3.11 by itself.
+2. In `.env`, set `AgentService__ServiceKey` to at least 32 characters (`openssl rand -hex 32`). The service refuses to start otherwise.
+   Re-run `./scripts/dev-secrets.sh` so the API has the same key.
+3. Run it and check it:
+   ```bash
+   cd agent-service
+   uv sync
+   uv run uvicorn app.main:app --reload --port 8000
+   curl -s localhost:8000/health
+   ```
+4. Lint and test. The tests set their own fake keys and never read `.env`:
+   ```bash
+   uv run ruff check .
+   uv run pytest -q
+   ```
+
+See [agent-service/README.md](agent-service/README.md) for configuration and endpoints.
+
 ## Authentication
 
 Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous routes are `POST /api/auth/register`,

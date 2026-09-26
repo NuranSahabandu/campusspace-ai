@@ -36,6 +36,10 @@ docs/                        plan, addendum, ADRs, ER diagram, report assets
 | Mobile | Flutter 3.47 stable (Android only) |
 | Agent service | Python 3.11 via `uv` |
 
+- Every `Microsoft.*` and `Npgsql` package stays on 8.x, **including transitive ones**. Before adding a third-party package,
+  check its net8.0 dependencies. For example, use Serilog.AspNetCore 8.0.3, not 10.0.0, because 10.0.0 pulls in Microsoft.Extensions.* 10.x.
+- After adding a package, run the `--include-transitive` check in Commands and show its (empty) output.
+
 ## Local ports (fixed)
 
 | Service | Port |
@@ -84,6 +88,12 @@ Addendum rules:
 DTOs are `record`s with data annotations (`[Required]`, `[Range]`, `[EmailAddress]`). Policy-driven checks belong in services,
 because annotations cannot read `PolicySettings`.
 
+## Agent service conventions
+
+- Anchor file paths to the source file (`Path(__file__).resolve().parents[N] / ...`), never to the working directory.
+  Never write `"../.env"`. This applies to `.env`, eval datasets and prompt files.
+- Tests that load files use `monkeypatch.chdir` plus a temporary file, and never read the real `.env`.
+
 ## Secrets
 
 - Never commit secrets to Git.
@@ -108,6 +118,7 @@ because annotations cannot read `PolicySettings`.
 - Run the build and tests before saying "done".
 - Never add a package or upgrade a major version without saying why.
 - Keep commits small and use Conventional Commits (`feat(b): ...`, `fix(api): ...`).
+- Project rules go in CLAUDE.md, never only in personal memory.
 - End every task with:
   1. Files changed
   2. How you verified
@@ -145,6 +156,16 @@ dotnet run --project backend/CampusSpace.Api        # http://localhost:5080 (/he
 dotnet ef migrations add <Name> --project backend/CampusSpace.Api -o Data/Migrations
 dotnet ef database update --project backend/CampusSpace.Api
 dotnet list backend package --include-transitive | grep -E " 9\.| 10\."   # must print nothing Microsoft.*/Npgsql
+```
+
+Agent service (run from `agent-service/`; reads the repo-root `.env`, and `AgentService__ServiceKey` must be ≥ 32 chars):
+
+```bash
+uv sync                                             # create .venv from uv.lock (Python 3.11)
+uv run uvicorn app.main:app --reload --port 8000    # http://localhost:8000 (/health, /docs)
+uv run ruff check .
+uv run pytest -q                                    # never reads the real .env
+curl -s localhost:8000/health                       # the API's /health shows it as check "agent-service"
 ```
 
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):

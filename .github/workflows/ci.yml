@@ -51,14 +51,34 @@ jobs:
           name: backend-test-results
           path: TestResults
 
+  agent:
+    name: agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: agent-service
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-uv publishes no floating major tag (v8+), so pin the exact release.
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: agent-service/uv.lock
+
+      - run: uv python install 3.11
+
+      # --locked fails if uv.lock is out of date with pyproject.toml.
+      - run: uv sync --locked
+
+      - run: uv run ruff check .
+
+      # Tests set their own env and fake keys: no secrets, no model calls.
+      - run: uv run pytest -q
+
 # Jobs to add later (plan §17.2). Use the CLAUDE.md pins, which supersede the plan's
 # Node 20 and pip examples: Node 24, Python 3.11 via uv.
-#
-#   agent (Phase 0.5):
-#     runs-on: ubuntu-latest
-#     defaults: { run: { working-directory: agent-service } }
-#     steps: checkout, astral-sh/setup-uv (Python 3.11), uv sync, uv run pytest -q
-#     # fake LLM: no API key needed
 #
 #   web (Phase 0.6):
 #     runs-on: ubuntu-latest
