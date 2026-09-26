@@ -185,6 +185,8 @@ from `src/auth/roles.ts`, and add the matching entry in `src/layout/navItems.tsx
 (copy `features/users/` or `features/clubs/`). Do writes through `useApiMutation` (toast, invalidate, 400 field errors,
 409 `conflictField`, traceId toast). Confirm destructive actions with `ConfirmDialog`. Show timestamps with
 `formatDateTime` (Asia/Colombo), and turn date inputs into filters with `campusDayBounds`. Never prefix a secret with `VITE_`.
+Turn a native `datetime-local` value into an API instant with `campusLocalToIso` (campus time, `+05:30`). For a 409 that
+belongs to no form field (for example deleting a row that is still in use), pass `conflictMessage` to `useApiMutation`.
 Tests use `renderApp(route, { role })` from `src/test/utils.tsx` and MSW handlers (`server.use(...)`).
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
