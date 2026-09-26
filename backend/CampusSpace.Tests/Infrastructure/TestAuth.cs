@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using CampusSpace.Api.Data;
 using CampusSpace.Api.Models;
 using CampusSpace.Api.Options;
 using CampusSpace.Api.Services;
@@ -38,6 +39,26 @@ public static class TestAuth
 
     public static HttpClient CreateClient(CustomWebApplicationFactory factory, string role, long userId = 1)
         => WithToken(factory.CreateClient(), Token(factory, role, userId));
+
+    /// <summary>
+    /// Inserts a real, active user with <paramref name="role"/> and returns a client signed in as them.
+    /// Use it for writes: audited changes store the caller's id, which is an FK to Users.
+    /// </summary>
+    public static async Task<(HttpClient Client, long UserId)> CreateUserClientAsync(CustomWebApplicationFactory factory, string role)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = new User
+        {
+            FullName = $"Test {role} {Guid.NewGuid():N}"[..40],
+            Email = $"{Guid.NewGuid():N}@campus.test",
+            PasswordHash = "not-a-real-hash",
+            Role = role,
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        return (CreateClient(factory, role, user.Id), user.Id);
+    }
 
     public static HttpClient WithToken(HttpClient client, string token)
     {
