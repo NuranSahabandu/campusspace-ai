@@ -27,6 +27,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
     public DbSet<RequestedEquipmentLine> RequestedEquipmentLines => Set<RequestedEquipmentLine>();
     public DbSet<RequestStatusHistory> RequestStatusHistory => Set<RequestStatusHistory>();
+    public DbSet<Booking> Bookings => Set<Booking>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

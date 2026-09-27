@@ -74,6 +74,18 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task A_double_booking_on_no_room_overlap_maps_to_409_time_slot_was_just_booked()
+    {
+        var exception = new DbUpdateException("save failed",
+            Postgres(PostgresErrorCodes.ExclusionViolation, BookingConfiguration.NoRoomOverlapConstraint));
+
+        var (status, body) = await HandleAsync(exception);
+
+        status.Should().Be(StatusCodes.Status409Conflict);
+        body.GetProperty("title").GetString().Should().Be("Time slot was just booked");
+    }
+
+    [Fact]
     public async Task ConflictException_maps_to_409_with_its_message_as_title()
     {
         var (status, body) = await HandleAsync(new ConflictException("Email is already registered"));
