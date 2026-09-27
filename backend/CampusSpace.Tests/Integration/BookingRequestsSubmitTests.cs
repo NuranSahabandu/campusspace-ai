@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using CampusSpace.Api.Data;
+using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
 using CampusSpace.Api.Services;
 using CampusSpace.Tests.Infrastructure;
@@ -29,7 +30,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         await FacilitiesTestData.EnsureFeaturesAsync(Factory);
         var type = await EquipmentTestData.CreateTypeAsync(Factory);
         var (client, userId, clubId) = await StudentRepAsync(Factory);
-        var start = FutureStart(daysAhead: 25, hour: 14);
+        var start = FutureStart(weekdaysAhead: 25, hour: 14);
 
         var response = await client.PostAsJsonAsync(Url, Body(clubId, purpose: "  Robotics workshop  ", start: start,
             features: ["Computers", " projector ", "computers"], equipment: [Line(type.Id, 2)], notes: "prefer near the main building"));
@@ -110,7 +111,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         var zeroLength = Body(clubId, hours: 0);
         (await ErrorsAsync(await client.PostAsJsonAsync(Url, zeroLength))).TryGetProperty("RequestedEnd", out _).Should().BeTrue();
 
-        var past = Body(clubId, start: DateTimeOffset.UtcNow.AddHours(-1));
+        var past = Body(clubId, start: PastStart());
         (await ErrorAsync(await client.PostAsJsonAsync(Url, past), "RequestedStart")).Should().Be("Start must be in the future.");
     }
 
@@ -120,7 +121,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         await FacilitiesTestData.EnsureFeaturesAsync(Factory);
         var (client, _) = await TestAuth.CreateUserClientAsync(Factory, Roles.Student);
 
-        var response = await client.PostAsJsonAsync(Url, Body(clubId: null, start: DateTimeOffset.UtcNow.AddDays(-1),
+        var response = await client.PostAsJsonAsync(Url, Body(clubId: null, start: PastStart(),
             budget: 10.005m, features: ["projector", "hologram", "Jetpack"]));
 
         var errors = await ErrorsAsync(response);
@@ -241,6 +242,64 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         var leaks = await db.Database.SqlQuery<int>(
             $"""SELECT count(*)::int AS "Value" FROM "AuditLogs" WHERE "DetailsJson"::text LIKE {"%" + secret + "%"}""").SingleAsync();
         leaks.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Each_booking_slot_rule_is_a_400_on_the_right_field_with_the_mobile_message()
+    {
+        var (client, _, clubId) = await StudentRepAsync(Factory);
+
+        async Task ExpectAsync(DateTimeOffset start, double hours, string field, string message) =>
+            (await ErrorAsync(await client.PostAsJsonAsync(Url, Body(clubId, start: start, hours: hours)), field))
+                .Should().Be(message, $"{start:ddd HH:mm} for {hours} h");
+
+        await ExpectAsync(Next(DayOfWeek.Sunday, "10:00"), 3, "RequestedStart", "The campus is closed on Sundays");
+        await ExpectAsync(Next(DayOfWeek.Monday, "14:15"), 2, "RequestedStart", "Must be on a 30-minute boundary");
+        await ExpectAsync(Next(DayOfWeek.Monday, "14:00"), 2.25, "RequestedEnd", "Must be on a 30-minute boundary");
+        await ExpectAsync(Next(DayOfWeek.Saturday, "07:30"), 2, "RequestedStart", "Opens at 08:00 on Saturdays");
+        await ExpectAsync(Next(DayOfWeek.Saturday, "16:00"), 1, "RequestedStart", "Closes at 16:00 on Saturdays");
+        await ExpectAsync(Next(DayOfWeek.Saturday, "15:00"), 2, "RequestedEnd", "Must end by 16:00 on Saturdays");
+        await ExpectAsync(Next(DayOfWeek.Monday, "09:00"), 8.5, "RequestedEnd", "Bookings can be at most 8 hours");
+        await ExpectAsync(Next(DayOfWeek.Monday, "19:00"), 6, "RequestedEnd", "Must end on the same day as the start");
+
+        // The limits themselves are fine: Saturday 08:00–16:00 is 8 hours, from opening to closing.
+        (await client.PostAsJsonAsync(Url, Body(clubId, start: Next(DayOfWeek.Saturday, "08:00"), hours: 8)))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    /// <summary>Wednesday 2031-03-12 10:00 campus time: the frozen "now" of the timing tests.</summary>
+    private static readonly DateOnly FrozenToday = new(2031, 3, 12);
+
+    private static DateTimeOffset Frozen(int daysLater, string time) => CampusTime.At(FrozenToday.AddDays(daysLater), TimeOnly.Parse(time));
+
+    [Fact]
+    public async Task Lead_time_uses_the_current_policy_and_the_boundary_itself_is_allowed()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync(new FixedTimeProvider(Frozen(0, "10:00")));
+        var (client, _, clubId) = await StudentRepAsync(factory);
+
+        // Thursday 10:00 is 24 h away; the seeded min_lead_time_hours is 48.
+        (await ErrorAsync(await client.PostAsJsonAsync(Url, Body(clubId, start: Frozen(1, "10:00"))), "RequestedStart"))
+            .Should().Be("Must start at least 48 hours from now");
+        // Friday 10:00 is exactly 48 h away.
+        (await client.PostAsJsonAsync(Url, Body(clubId, start: Frozen(2, "10:00"))))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task The_advance_window_depends_on_the_requester_role()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync(new FixedTimeProvider(Frozen(0, "10:00")));
+        var (student, _, clubId) = await StudentRepAsync(factory);
+        var (lecturer, _) = await TestAuth.CreateUserClientAsync(factory, Roles.Lecturer);
+
+        // Monday 2031-05-12 is 61 days ahead: past the student's 60, inside the lecturer's 90.
+        (await ErrorAsync(await student.PostAsJsonAsync(Url, Body(clubId, start: Frozen(61, "10:00"))), "RequestedStart"))
+            .Should().Be("Can be booked at most 60 days ahead");
+        (await student.PostAsJsonAsync(Url, Body(clubId, start: Frozen(58, "10:00"))))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await lecturer.PostAsJsonAsync(Url, Body(clubId: null, start: Frozen(61, "10:00"))))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
     private static Task<HttpResponseMessage> SetMaxOpenRequestsAsync(HttpClient officer, int value) =>

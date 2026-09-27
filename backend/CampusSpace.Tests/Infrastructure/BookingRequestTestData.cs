@@ -15,14 +15,48 @@ public static class BookingRequestTestData
 {
     public const string Url = "/api/booking-requests";
 
-    /// <summary>10:00 campus time, <paramref name="daysAhead"/> days from today.</summary>
-    public static DateTimeOffset FutureStart(int daysAhead = 30, int hour = 10) =>
-        new(CampusTime.Today(TimeProvider.System).AddDays(daysAhead).ToDateTime(new TimeOnly(hour, 0)), CampusTime.Offset);
+    /// <summary>
+    /// A whole hour (default 10:00) campus time on the <paramref name="weekdaysAhead"/>-th weekday after today, so it
+    /// is always an open day and on the slot granularity whatever day the tests run. Counting only weekdays keeps
+    /// distinct arguments on distinct days.
+    /// </summary>
+    public static DateTimeOffset FutureStart(int weekdaysAhead = 30, int hour = 10)
+    {
+        // At least 3 weekdays ahead stays outside the 48 h lead time (Monday 15:00 → Wednesday 10:00 is only 43 h), and
+        // at most 40 (≤ 56 calendar days) stays inside the 60-day student advance window.
+        ArgumentOutOfRangeException.ThrowIfLessThan(weekdaysAhead, 3);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(weekdaysAhead, 40);
+        return CampusTime.At(Weekday(CampusTime.Today(TimeProvider.System), weekdaysAhead), new TimeOnly(hour, 0));
+    }
+
+    /// <summary>The <paramref name="count"/>-th Monday-to-Friday date after <paramref name="from"/> (negative counts back).</summary>
+    public static DateOnly Weekday(DateOnly from, int count)
+    {
+        var date = from;
+        for (var left = Math.Abs(count); left > 0;)
+        {
+            date = date.AddDays(Math.Sign(count));
+            if (date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))
+                left--;
+        }
+        return date;
+    }
+
+    /// <summary>10:00 campus time on the weekday before today: in the past, but otherwise a valid slot.</summary>
+    public static DateTimeOffset PastStart() => CampusTime.At(Weekday(CampusTime.Today(TimeProvider.System), -1), new TimeOnly(10, 0));
+
+    /// <summary>The next <paramref name="day"/> after today, at <paramref name="time"/> campus time (for example "14:15").</summary>
+    public static DateTimeOffset Next(DayOfWeek day, string time, int weeksLater = 1)
+    {
+        var today = CampusTime.Today(TimeProvider.System);
+        var date = today.AddDays(((int)day - (int)today.DayOfWeek + 7) % 7 + 7 * weeksLater);
+        return CampusTime.At(date, TimeOnly.Parse(time));
+    }
 
     /// <summary>A valid body. Times are sent with +05:30, as Flutter sends them.</summary>
     public static Dictionary<string, object?> Body(
         long? clubId = null, string purpose = "Robotics workshop", int attendees = 45, DateTimeOffset? start = null,
-        int hours = 3, decimal budget = 8000m, string[]? features = null, object[]? equipment = null, string? notes = null)
+        double hours = 3, decimal budget = 8000m, string[]? features = null, object[]? equipment = null, string? notes = null)
     {
         var s = start ?? FutureStart();
         return new Dictionary<string, object?>
