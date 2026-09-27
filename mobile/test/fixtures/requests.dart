@@ -268,6 +268,10 @@ const requestsPageJson = r'''
       "budgetLkr": 0.00,
       "clubName": null,
       "requesterName": "Dr. Nimal Fernando",
+      "requesterEmail": "lecturer@campusspace.local",
+      "cancelledAt": null,
+      "isLateCancellation": false,
+      "cancelledByOfficer": false,
       "createdAt": "2026-09-27T13:02:47.677815Z"
     }
   ],
@@ -323,8 +327,62 @@ const requestDetailJson = r'''
     }
   ],
   "latestProposal": null,
+  "cancelledAt": null,
+  "isLateCancellation": false,
+  "cancelledByOfficer": false,
   "createdAt": "2026-09-27T13:02:47.677815Z",
   "updatedAt": "2026-09-27T13:02:47.677815Z"
+}
+''';
+
+/// POST /api/booking-requests/6/cancel as lecturer@ with {"reason": "Speaker unavailable"} (200).
+const cancelledRequestJson = r'''
+{
+  "id": 6,
+  "purpose": "Guest lecture: AI in agriculture",
+  "status": "Cancelled",
+  "attendees": 120,
+  "requestedStart": "2026-10-27T04:30:00Z",
+  "requestedEnd": "2026-10-27T06:30:00Z",
+  "budgetLkr": 0.00,
+  "notes": null,
+  "requester": {
+    "id": 2,
+    "name": "Dr. Nimal Fernando",
+    "email": "lecturer@campusspace.local"
+  },
+  "club": null,
+  "requiredFeatures": [
+    {
+      "code": "projector",
+      "name": "Projector"
+    }
+  ],
+  "equipment": [],
+  "history": [
+    {
+      "fromStatus": null,
+      "toStatus": "Submitted",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": null,
+      "changedAt": "2026-09-27T18:38:15.371093Z"
+    },
+    {
+      "fromStatus": "Submitted",
+      "toStatus": "Cancelled",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": "Speaker unavailable",
+      "changedAt": "2026-09-27T18:38:15.500101Z"
+    }
+  ],
+  "latestProposal": null,
+  "cancelledAt": "2026-09-27T18:38:15.495828Z",
+  "isLateCancellation": false,
+  "cancelledByOfficer": false,
+  "createdAt": "2026-09-27T18:38:15.386347Z",
+  "updatedAt": "2026-09-27T18:38:15.500103Z"
 }
 ''';
 

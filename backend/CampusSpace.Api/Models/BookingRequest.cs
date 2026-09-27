@@ -23,6 +23,14 @@ public class BookingRequest : ITimestamped, IAuditable
     public string? Notes { get; set; }
     /// <summary>One of <see cref="RequestStatuses.All"/>.</summary>
     public string Status { get; set; } = RequestStatuses.Submitted;
+    /// <summary>When the request was cancelled through the cancel operation (UC07). Null otherwise.</summary>
+    public DateTime? CancelledAt { get; set; }
+    /// <summary>
+    /// The owner cancelled an Approved booking later than free_cancellation_hours before its start. Flagged, not charged.
+    /// </summary>
+    public bool IsLateCancellation { get; set; }
+    /// <summary>A Facilities Officer cancelled it (never late: the requester isn't at fault).</summary>
+    public bool CancelledByOfficer { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

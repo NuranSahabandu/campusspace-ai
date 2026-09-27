@@ -32,10 +32,14 @@ public record CreateBookingRequestRequest(
     }
 }
 
-/// <summary>A request in a list. Times are UTC. RequesterEmail tells apart requesters with the same name.</summary>
+/// <summary>
+/// A request in a list. Times are UTC. RequesterEmail tells apart requesters with the same name. The cancellation
+/// fields are set by POST .../cancel (CancelledAt null and both flags false otherwise).
+/// </summary>
 public record BookingRequestSummaryDto(
     long Id, string Purpose, string Status, DateTime RequestedStart, DateTime RequestedEnd, int Attendees,
-    decimal BudgetLkr, string? ClubName, string RequesterName, string RequesterEmail, DateTime CreatedAt);
+    decimal BudgetLkr, string? ClubName, string RequesterName, string RequesterEmail,
+    DateTime? CancelledAt, bool IsLateCancellation, bool CancelledByOfficer, DateTime CreatedAt);
 
 public record RequesterDto(long Id, string Name, string Email);
 
@@ -54,13 +58,21 @@ public record RequestStatusHistoryDto(
 
 /// <summary>
 /// A request with everything the requester entered, and its history oldest first. Times are UTC.
-/// LatestProposal is always null until the agent workflow exists (Phase 3).
+/// LatestProposal is always null until the agent workflow exists (Phase 3). IsLateCancellation flags an owner's late
+/// cancellation (it is not charged); CancelledByOfficer marks an officer's.
 /// </summary>
 public record BookingRequestDetailDto(
     long Id, string Purpose, string Status, int Attendees, DateTime RequestedStart, DateTime RequestedEnd,
     decimal BudgetLkr, string? Notes, RequesterDto Requester, ClubRefDto? Club,
     IReadOnlyList<RequiredFeatureDto> RequiredFeatures, IReadOnlyList<RequestedEquipmentDto> Equipment,
-    IReadOnlyList<RequestStatusHistoryDto> History, object? LatestProposal, DateTime CreatedAt, DateTime UpdatedAt);
+    IReadOnlyList<RequestStatusHistoryDto> History, object? LatestProposal,
+    DateTime? CancelledAt, bool IsLateCancellation, bool CancelledByOfficer, DateTime CreatedAt, DateTime UpdatedAt);
+
+/// <summary>
+/// POST /api/booking-requests/{id}/cancel. Reason is untrusted plain text, trimmed; optional for the owner and
+/// required for a Facilities Officer. The body itself may be omitted.
+/// </summary>
+public record CancelBookingRequestRequest([MaxLength(BookingRequestConfiguration.CancelReasonMaxLength)] string? Reason);
 
 /// <summary>
 /// GET /api/booking-requests/eligibility: what the new-request form needs. Clubs are the active clubs the caller

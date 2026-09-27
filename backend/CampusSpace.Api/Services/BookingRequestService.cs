@@ -14,10 +14,27 @@ public sealed class BookingRequestService(
     ICurrentUser currentUser,
     IPolicySettingsService policy,
     IRequestStateMachine stateMachine,
-    IBookingWindowRules windowRules) : IBookingRequestService
+    IBookingWindowRules windowRules,
+    TimeProvider clock) : IBookingRequestService
 {
     public const string NotRepresentativeMessage = "You must be the registered representative of an active club";
     public const string LecturerClubMessage = "Lecturer bookings are academic and can't name a club";
+    public const string CancelOwnMessage = "You can only cancel your own requests";
+    public const string OfficerReasonMessage = "A reason is required when an officer cancels a request.";
+    public const string ProcessingMessage = "The request is being processed; try again in a moment";
+    public const string RevisionMessage = "The request is being revised; try again once the new proposal is ready";
+    public const string AgentFailedMessage = "The request is waiting for an officer to retry planning; it can't be cancelled now";
+    public const string BookingStartedMessage = "The booking has already started";
+    public const string BookingNotCancellableMessage = "The booking is no longer cancellable";
+
+    /// <summary>The 409 message for a status the state machine can't move to Cancelled.</summary>
+    public static string NotCancellableMessage(string status) => status switch
+    {
+        RequestStatuses.AgentProcessing => ProcessingMessage,
+        RequestStatuses.RevisionRequested => RevisionMessage,
+        RequestStatuses.AgentFailed => AgentFailedMessage,
+        _ => $"The request is already {status.ToLowerInvariant()}",
+    };
 
     private long CallerId => currentUser.UserId
         ?? throw new InvalidOperationException("Booking requests need an authenticated user.");
@@ -137,7 +154,8 @@ public sealed class BookingRequestService(
 
         return requests.Select(r => new BookingRequestSummaryDto(
                 r.Id, r.Purpose, r.Status, r.RequestedStart, r.RequestedEnd, r.Attendees, r.BudgetLkr,
-                r.Club != null ? r.Club.Name : null, r.Requester.FullName, r.Requester.Email, r.CreatedAt))
+                r.Club != null ? r.Club.Name : null, r.Requester.FullName, r.Requester.Email,
+                r.CancelledAt, r.IsLateCancellation, r.CancelledByOfficer, r.CreatedAt))
             .ToPagedResultAsync(query, ct);
     }
 
@@ -146,6 +164,74 @@ public sealed class BookingRequestService(
 
     public async Task<IReadOnlyList<RequestStatusHistoryDto>?> GetHistoryAsync(long id, CancellationToken ct = default) =>
         await EnsureCanReadAsync(id, ct) ? await HistoryQuery(id).ToListAsync(ct) : null;
+
+    public async Task<BookingRequestDetailDto?> CancelAsync(long id, CancelBookingRequestRequest? request, CancellationToken ct = default)
+    {
+        var callerId = CallerId;
+        var officer = CallerIsOfficer;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var entity = await LockForUpdateAsync(id, ct);
+        if (entity is null)
+            return null;
+        if (!officer && entity.RequesterId != callerId)
+            throw new ForbiddenException(CancelOwnMessage);
+
+        // Untrusted text: stored in the history row as given (trimmed), never interpreted, logged or echoed.
+        var reason = string.IsNullOrWhiteSpace(request?.Reason) ? null : request.Reason.Trim();
+        if (officer && reason is null)
+            throw new BusinessRuleException(nameof(CancelBookingRequestRequest.Reason), OfficerReasonMessage);
+
+        // The status read under the lock is the current one: a concurrent cancel has either committed or waits for us.
+        if (!RequestStateMachine.CanTransition(entity.Status, RequestStatuses.Cancelled))
+            throw new ConflictException(NotCancellableMessage(entity.Status));
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        var late = false;
+        if (entity.Status == RequestStatuses.Approved)
+        {
+            var booking = await db.Bookings
+                .FromSql($"""SELECT * FROM "Bookings" WHERE "RequestId" = {id} FOR UPDATE""")
+                .SingleOrDefaultAsync(ct);
+            if (booking is null || booking.Status != BookingStatuses.Confirmed)
+                throw new ConflictException(BookingNotCancellableMessage);
+            var start = booking.TimeRange.LowerBound;
+            if (now >= start)
+                throw new ConflictException(BookingStartedMessage);
+
+            // Only the owner can be late (an officer's cancel isn't the requester's fault). The boundary itself is free.
+            var freeHours = (await policy.GetAsync(ct)).FreeCancellationHours;
+            late = !officer && now > start.AddHours(-freeHours);
+
+            // A cancelled booking leaves no_room_overlap and its equipment reservations stop counting: both cover
+            // active bookings only, so the reservation rows are kept as history.
+            booking.Status = BookingStatuses.Cancelled;
+        }
+        else if (entity.Status == RequestStatuses.PendingApproval)
+        {
+            // TODO(Phase 3): end the paused workflow run (the interrupted LangGraph thread) of this request.
+        }
+
+        await QuotationService.VoidLiveAsync(db, id, ct);
+        entity.CancelledAt = now;
+        entity.IsLateCancellation = late;
+        entity.CancelledByOfficer = officer;
+        stateMachine.Transition(entity, RequestStatuses.Cancelled, callerId, reason);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        return await LoadDetailAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Loads the request tracked and row-locked (SELECT … FOR UPDATE) in the caller's transaction, so operations that
+    /// change one request's status serialise and each sees the status the previous one committed. Cancel takes it
+    /// first; the Phase 3 approve and reject must take it first too.
+    /// </summary>
+    private Task<BookingRequest?> LockForUpdateAsync(long id, CancellationToken ct) =>
+        db.BookingRequests
+            .FromSql($"""SELECT * FROM "BookingRequests" WHERE "Id" = {id} FOR UPDATE""")
+            .SingleOrDefaultAsync(ct);
 
     public async Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default)
     {
@@ -202,7 +288,7 @@ public sealed class BookingRequestService(
             r.RequiredFeatures,
             Equipment = r.EquipmentLines.OrderBy(l => l.Type.Code)
                 .Select(l => new RequestedEquipmentDto(l.TypeId, l.Type.Code, l.Type.Name, l.Quantity)).ToList(),
-            r.CreatedAt, r.UpdatedAt,
+            r.CancelledAt, r.IsLateCancellation, r.CancelledByOfficer, r.CreatedAt, r.UpdatedAt,
         }).SingleOrDefaultAsync(ct);
         if (row is null)
             return null;
@@ -215,7 +301,8 @@ public sealed class BookingRequestService(
             row.Requester, row.Club,
             // Feature codes can't change and a feature in use can't be deleted, so every code has a name.
             row.RequiredFeatures.Select(code => new RequiredFeatureDto(code, names.GetValueOrDefault(code, code))).ToList(),
-            row.Equipment, history, LatestProposal: null, row.CreatedAt, row.UpdatedAt);
+            row.Equipment, history, LatestProposal: null,
+            row.CancelledAt, row.IsLateCancellation, row.CancelledByOfficer, row.CreatedAt, row.UpdatedAt);
     }
 
     /// <summary>Normalised like FeatureService (trimmed, lower-case), de-duplicated in order. Unknown codes are listed.</summary>

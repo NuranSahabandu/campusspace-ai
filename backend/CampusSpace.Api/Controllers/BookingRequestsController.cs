@@ -4,11 +4,13 @@ using CampusSpace.Api.Models;
 using CampusSpace.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace CampusSpace.Api.Controllers;
 
 /// <summary>
-/// Booking requests (§9 Component C). Students and Lecturers submit and read their own; Facilities Officers read all.
+/// Booking requests (§9 Component C). Students and Lecturers submit, read and cancel their own; Facilities Officers
+/// read and cancel all.
 /// Stacked [Authorize] attributes must all pass, so submit and eligibility are for requesters only.
 /// </summary>
 [ApiController]
@@ -64,4 +66,19 @@ public class BookingRequestsController(IBookingRequestService requests) : Contro
         var created = await requests.CreateAsync(request, ct);
         return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
     }
+
+    /// <summary>
+    /// UC07: cancels the request. The owner may give a reason; a Facilities Officer must. Returns the updated request.
+    /// An Approved request's booking is released and its quote voided; an owner's late cancel is flagged, not charged.
+    /// </summary>
+    [HttpPost("{id:long}/cancel")]
+    [ProducesResponseType<BookingRequestDetailDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<BookingRequestDetailDto>> Cancel(
+        long id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CancelBookingRequestRequest? request, CancellationToken ct)
+        => await requests.CancelAsync(id, request, ct) is { } detail ? Ok(detail) : NotFound();
 }

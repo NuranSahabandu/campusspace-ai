@@ -25,6 +25,15 @@ public interface IBookingRequestService
     /// </summary>
     Task<bool> EnsureCanReadAsync(long id, CancellationToken ct = default);
 
+    /// <summary>
+    /// UC07: cancels the request for its owner (reason optional) or a Facilities Officer (reason required, 400). Null
+    /// when it doesn't exist (404); another requester's request is a ForbiddenException (403). A status the state
+    /// machine can't cancel, or an Approved booking that has started, is a ConflictException (409). An Approved
+    /// request's booking is cancelled and its live quote voided in the same transaction. An owner cancelling an Approved
+    /// booking later than free_cancellation_hours before its start is flagged late (not charged).
+    /// </summary>
+    Task<BookingRequestDetailDto?> CancelAsync(long id, CancelBookingRequestRequest? request, CancellationToken ct = default);
+
     /// <summary>Whether the caller can submit now, and the clubs they can submit for.</summary>
     Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default);
 }

@@ -68,6 +68,9 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
         var me = await client.GetFromJsonAsync<JsonElement>("/api/auth/me");
         row.GetProperty("requesterEmail").GetString().Should().Be(me.GetProperty("email").GetString());
         row.GetProperty("createdAt").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+        row.GetProperty("cancelledAt").ValueKind.Should().Be(JsonValueKind.Null);
+        row.GetProperty("isLateCancellation").GetBoolean().Should().BeFalse();
+        row.GetProperty("cancelledByOfficer").GetBoolean().Should().BeFalse();
         userId.Should().BePositive();
     }
 
@@ -185,8 +188,13 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
 
         detail.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
             "id", "purpose", "status", "attendees", "requestedStart", "requestedEnd", "budgetLkr", "notes", "requester",
-            "club", "requiredFeatures", "equipment", "history", "latestProposal", "createdAt", "updatedAt");
+            "club", "requiredFeatures", "equipment", "history", "latestProposal",
+            "cancelledAt", "isLateCancellation", "cancelledByOfficer", "createdAt", "updatedAt");
         detail.GetProperty("status").GetString().Should().Be(RequestStatuses.Cancelled);
+        // Moved to Cancelled directly, not through the cancel operation: the cancellation fields keep their defaults.
+        detail.GetProperty("cancelledAt").ValueKind.Should().Be(JsonValueKind.Null);
+        detail.GetProperty("isLateCancellation").GetBoolean().Should().BeFalse();
+        detail.GetProperty("cancelledByOfficer").GetBoolean().Should().BeFalse();
         detail.GetProperty("requester").EnumerateObject().Select(p => p.Name).Should().Equal("id", "name", "email");
         detail.GetProperty("requester").GetProperty("id").GetInt64().Should().Be(userId);
         detail.GetProperty("club").EnumerateObject().Select(p => p.Name).Should().Equal("id", "name");

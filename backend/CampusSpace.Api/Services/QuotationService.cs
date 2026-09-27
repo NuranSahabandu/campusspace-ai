@@ -59,6 +59,20 @@ public sealed class QuotationService(
             q.Subtotal, q.Discount, q.DiscountReason, q.IsExempt, q.Total, QuotationDto.Lkr))
             .SingleOrDefaultAsync(ct);
 
+    /// <summary>
+    /// Marks the request's live (Draft or Issued) quotes Void, for a cancelled request. The rows are tracked, so the
+    /// caller's SaveChanges saves and audits them with the rest of its change; nothing is saved here. Static because
+    /// BookingRequestService calls it, and this service already depends on IBookingRequestService.
+    /// </summary>
+    public static async Task VoidLiveAsync(AppDbContext db, long requestId, CancellationToken ct = default)
+    {
+        var live = await db.Quotations
+            .Where(q => q.RequestId == requestId && QuotationStatuses.Live.Contains(q.Status))
+            .ToListAsync(ct);
+        foreach (var quotation in live)
+            quotation.Status = QuotationStatuses.Void;
+    }
+
     public async Task<Quotation> CreateDraftAsync(long requestId, QuoteResult quote, CancellationToken ct = default)
     {
         if (db.Database.CurrentTransaction is null)
