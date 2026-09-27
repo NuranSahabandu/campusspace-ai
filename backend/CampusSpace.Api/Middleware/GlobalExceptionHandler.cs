@@ -49,6 +49,8 @@ public sealed class GlobalExceptionHandler(
             return (StatusCodes.Status409Conflict, conflict.Message);
         if (exception is BusinessRuleException rule)
             return (StatusCodes.Status400BadRequest, rule.Message);
+        if (exception is ForbiddenException forbidden)
+            return (StatusCodes.Status403Forbidden, forbidden.Message);
 
         // EF Core wraps database errors in DbUpdateException; look for the PostgresException inside.
         var postgres = exception as PostgresException ?? exception.InnerException as PostgresException;

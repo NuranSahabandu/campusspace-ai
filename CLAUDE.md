@@ -262,6 +262,15 @@ New policy keys need a migration (the CHECK lists them) plus a `PolicySettingDef
 need exact pricing statuses use `fixture.CreateIsolatedFactoryAsync()` (their own database); pricing tests on the shared
 database use `PricingTestData.UniqueFutureDate()`.
 
+Booking request conventions (Component C): Request status changes only through IRequestStateMachine (never assign
+Status directly); every change writes a RequestStatusHistory row in the same SaveChanges. `RequestStatuses` is the only
+status list, and `RequestStatuses.Open` is what counts toward `max_open_requests`. Object-level checks (a requester
+reading someone else's request) throw `ForbiddenException` (403). Submit takes a per-requester
+`pg_advisory_xact_lock` in its own transaction, so the open-request count and the insert are atomic. Request times are
+accepted with any offset and returned as UTC. `Notes` is untrusted text: never interpret, log or echo it in messages.
+`RequiredFeatures` is a `text[]` with no FK, so FeatureService checks it before a feature's delete or code change.
+Endpoint tests use `BookingRequestTestData` (`StudentRepAsync`, `Body`, `MoveAsync` through the real state machine).
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 

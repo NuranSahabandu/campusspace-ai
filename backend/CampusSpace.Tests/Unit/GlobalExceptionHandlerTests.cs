@@ -33,6 +33,17 @@ public class GlobalExceptionHandlerTests
     private static PostgresException Postgres(string sqlState, string? constraintName = null) =>
         new("secret internal detail", "ERROR", "ERROR", sqlState, constraintName: constraintName);
 
+    [Fact]
+    public async Task ForbiddenException_maps_to_403_with_its_message()
+    {
+        var (status, body) = await HandleAsync(new ForbiddenException("You can't view this request"));
+
+        status.Should().Be(StatusCodes.Status403Forbidden);
+        body.GetProperty("status").GetInt32().Should().Be(403);
+        body.GetProperty("title").GetString().Should().Be("You can't view this request");
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
     [Theory]
     [InlineData(PostgresErrorCodes.UniqueViolation, "Duplicate value")]
     [InlineData(PostgresErrorCodes.ExclusionViolation, "Time slot was just booked")]

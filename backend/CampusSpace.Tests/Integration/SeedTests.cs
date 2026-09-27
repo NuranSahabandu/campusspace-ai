@@ -1,4 +1,5 @@
 using CampusSpace.Api.Data;
+using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
 using CampusSpace.Tests.Infrastructure;
 using FluentAssertions;
@@ -201,5 +202,54 @@ public class SeedTests(PostgresFixture fixture)
         (await db.PolicySettings.CountAsync()).Should().Be(PolicyKeys.All.Count);
         (await db.PolicySettings.SingleAsync(s => s.Key == PolicyKeys.MaxCapacityRatio)).Value.Should().Be("2");
         (await db.PolicySettings.SingleAsync(s => s.Key == PolicyKeys.MaxOpenRequests)).Value.Should().Be("3");
+    }
+
+    [Fact]
+    public async Task Seeds_two_submitted_requests_once_with_history_and_none_for_kavindi()
+    {
+        await using var db = await CreateEmptyDatabaseAsync();
+
+        await Seed.SeedAsync(db, DemoPassword);
+        await Seed.SeedAsync(db, DemoPassword);
+
+        var requests = await db.BookingRequests.AsNoTracking()
+            .Include(r => r.Requester).Include(r => r.Club).Include(r => r.StatusHistory)
+            .Include(r => r.EquipmentLines).ThenInclude(l => l.Type)
+            .ToListAsync();
+        requests.Should().HaveCount(2).And.OnlyContain(r => r.Status == RequestStatuses.Submitted
+            && r.StatusHistory.Count == 1
+            && r.StatusHistory[0].FromStatus == null
+            && r.StatusHistory[0].ToStatus == RequestStatuses.Submitted
+            && r.StatusHistory[0].ChangedById == r.RequesterId);
+
+        var drama = requests.Single(r => r.Purpose == "Drama Society rehearsal");
+        drama.Requester.Email.Should().Be("nethmi@campusspace.local");
+        drama.Club!.Name.Should().Be("Drama Society");
+        drama.Attendees.Should().Be(30);
+        drama.BudgetLkr.Should().Be(3000m);
+        drama.EquipmentLines.Select(l => (l.Type.Code, l.Quantity)).Should().Equal(("MIC-WIRED", 1));
+
+        var lecture = requests.Single(r => r.Purpose == "Guest lecture: AI in agriculture");
+        lecture.Requester.Email.Should().Be("lecturer@campusspace.local");
+        lecture.ClubId.Should().BeNull();
+        lecture.Attendees.Should().Be(120);
+        lecture.BudgetLkr.Should().Be(0m);
+        lecture.RequiredFeatures.Should().Equal("projector", "sound_system");
+        lecture.EquipmentLines.Select(l => (l.Type.Code, l.Quantity)).Should().Equal(("MIC-WIRELESS", 2));
+
+        // Every feature code exists, and both run 10:00-12:00 campus time on a weekday about four weeks ahead.
+        var codes = await db.Features.Select(f => f.Code).ToListAsync();
+        requests.SelectMany(r => r.RequiredFeatures).Should().OnlyContain(c => codes.Contains(c));
+        foreach (var r in requests)
+        {
+            var local = new DateTimeOffset(r.RequestedStart).ToOffset(CampusTime.Offset);
+            local.TimeOfDay.Should().Be(TimeSpan.FromHours(10));
+            (r.RequestedEnd - r.RequestedStart).Should().Be(TimeSpan.FromHours(2));
+            local.DayOfWeek.Should().NotBe(DayOfWeek.Saturday).And.NotBe(DayOfWeek.Sunday);
+            (DateOnly.FromDateTime(local.DateTime).DayNumber - CampusTime.Today(TimeProvider.System).DayNumber).Should().BeInRange(28, 30);
+        }
+
+        var kavindi = await db.Users.SingleAsync(u => u.Email == "kavindi@campusspace.local");
+        (await db.BookingRequests.CountAsync(r => r.RequesterId == kavindi.Id && RequestStatuses.Open.Contains(r.Status))).Should().Be(0);
     }
 }

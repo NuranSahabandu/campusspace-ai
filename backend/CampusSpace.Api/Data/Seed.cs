@@ -1,5 +1,6 @@
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using NpgsqlTypes;
 
@@ -9,7 +10,8 @@ namespace CampusSpace.Api.Data;
 /// Development seed data. Each step checks its own table (users by email, clubs by "is the table empty",
 /// features, buildings, rooms and equipment types by code, equipment items by asset tag, substitutes by pair,
 /// blackouts by "is the table empty",
-/// pricing rules by (room type, role, start date), policy settings by key and never overwriting an edited value),
+/// pricing rules by (room type, role, start date), policy settings by key and never overwriting an edited value,
+/// booking requests by (requester, purpose)),
 /// so startup can call this every time and it also fills in a database that already has some rows.
 /// </summary>
 public static class Seed
@@ -135,6 +137,16 @@ public static class Seed
         (RoomTypes.Auditorium, RequesterRoles.Lecturer, 0m, true),
     ];
 
+    /// <summary>
+    /// Two Submitted requests so the request lists have data. Neither is Kavindi's: she submits the demo request herself
+    /// and needs all her open-request slots. Nethmi represents the Drama Society.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Email, string? Club, string Purpose, int Attendees, string[] Features, (string Type, int Quantity)[] Equipment, decimal Budget)> DemoBookingRequests =
+    [
+        ("nethmi@campusspace.local", "Drama Society", "Drama Society rehearsal", 30, ["smart_board", "ac"], [("MIC-WIRED", 1)], 3000m),
+        ("lecturer@campusspace.local", null, "Guest lecture: AI in agriculture", 120, ["projector", "sound_system"], [("MIC-WIRELESS", 2)], 0m),
+    ];
+
     public static async Task SeedAsync(AppDbContext db, string demoPassword, CancellationToken ct = default)
     {
         await SeedUsersAsync(db, demoPassword, ct);
@@ -148,6 +160,62 @@ public static class Seed
         await SeedEquipmentSubstitutesAsync(db, ct);
         await SeedPricingRulesAsync(db, ct);
         await SeedPolicySettingsAsync(db, ct);
+        await SeedBookingRequestsAsync(db, ct);
+    }
+
+    /// <summary>
+    /// Adds each demo request that is missing (same requester and purpose), on a weekday about four weeks after the seed
+    /// runs, 10:00–12:00 campus time, so it still satisfies the Phase 2 timing rules. The dates are fixed when the row is
+    /// inserted; resetting the dev database gives new ones. A request whose requester, club or type is missing is skipped.
+    /// </summary>
+    public static async Task SeedBookingRequestsAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        var day = CampusTime.Today(TimeProvider.System).AddDays(28);
+        if (day.DayOfWeek == DayOfWeek.Saturday)
+            day = day.AddDays(2);
+        else if (day.DayOfWeek == DayOfWeek.Sunday)
+            day = day.AddDays(1);
+        var start = new DateTimeOffset(day.ToDateTime(new TimeOnly(10, 0)), CampusTime.Offset);
+        var end = start.AddHours(2);
+
+        var emails = DemoBookingRequests.Select(r => r.Email).ToList();
+        var userIds = await db.Users.Where(u => emails.Contains(u.Email)).ToDictionaryAsync(u => u.Email, u => u.Id, ct);
+        var clubIds = await db.Clubs.ToDictionaryAsync(c => c.Name, c => c.Id, ct);
+        var typeIds = await db.EquipmentTypes.ToDictionaryAsync(t => t.Code, t => t.Id, ct);
+        var existing = (await db.BookingRequests.Select(r => new { r.RequesterId, r.Purpose }).ToListAsync(ct))
+            .Select(r => (r.RequesterId, r.Purpose)).ToHashSet();
+        var stateMachine = new RequestStateMachine(TimeProvider.System);
+
+        foreach (var r in DemoBookingRequests)
+        {
+            if (!userIds.TryGetValue(r.Email, out var requesterId) || existing.Contains((requesterId, r.Purpose)))
+                continue;
+            long? clubId = null;
+            if (r.Club is not null)
+            {
+                if (!clubIds.TryGetValue(r.Club, out var id))
+                    continue;
+                clubId = id;
+            }
+            if (r.Equipment.Any(e => !typeIds.ContainsKey(e.Type)))
+                continue;
+
+            var request = new BookingRequest
+            {
+                RequesterId = requesterId,
+                ClubId = clubId,
+                Purpose = r.Purpose,
+                Attendees = r.Attendees,
+                RequestedStart = start.UtcDateTime,
+                RequestedEnd = end.UtcDateTime,
+                BudgetLkr = r.Budget,
+                RequiredFeatures = [.. r.Features],
+                EquipmentLines = r.Equipment.Select(e => new RequestedEquipmentLine { TypeId = typeIds[e.Type], Quantity = e.Quantity }).ToList(),
+            };
+            stateMachine.Start(request, requesterId);
+            db.BookingRequests.Add(request);
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Adds the missing demo rules. A rule that exists (same room type, role and start date) is left as it is.</summary>
