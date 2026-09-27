@@ -168,6 +168,22 @@ export interface BlackoutDto {
   createdAt: string
 }
 
+/** An active booking of the blackout's room that overlaps it (UC14). Start/end are UTC. */
+export interface BlackoutClashDto {
+  bookingId: number
+  requestId: number
+  start: string
+  end: string
+  status: string
+  requesterName: string
+  requesterEmail: string
+}
+
+/** POST /api/rooms/{id}/blackouts: the blackout plus the bookings it clashes with (never cancelled automatically). */
+export interface BlackoutWithClashesDto extends BlackoutDto {
+  clashes: BlackoutClashDto[]
+}
+
 /** Times carry an offset (campusLocalToIso gives +05:30); the server stores UTC. */
 export interface CreateBlackoutRequest {
   start: string

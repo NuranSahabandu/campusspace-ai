@@ -1,9 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using CampusSpace.Api.Data;
 using CampusSpace.Api.Models;
 using CampusSpace.Tests.Infrastructure;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using static CampusSpace.Tests.Infrastructure.BookingTestData;
 
 namespace CampusSpace.Tests.Integration;
 
@@ -103,5 +108,97 @@ public class RoomBlackoutsEndpointsTests(PostgresFixture fixture)
             start = "2026-11-01T08:00:00Z", end = "2026-11-01T09:00:00Z", reason = "x",
         })).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await officer.GetAsync("/api/rooms/999999999/blackouts")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private static readonly DateOnly ClashDay = new(2031, 3, 12);
+
+    private static object BlackoutBody(string from, string to) =>
+        new { start = CampusSlot(ClashDay, from, to).Start, end = CampusSlot(ClashDay, from, to).End, reason = "Rewiring" };
+
+    private async Task<(string Name, string Email)> RequesterOfAsync(long bookingId)
+    {
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await db.Bookings.Where(b => b.Id == bookingId).Select(b => b.Request.Requester).SingleAsync();
+        return (user.FullName, user.Email);
+    }
+
+    private static List<long> BookingIds(JsonElement clashes) =>
+        clashes.EnumerateArray().Select(c => c.GetProperty("bookingId").GetInt64()).ToList();
+
+    [Fact]
+    public async Task Creating_a_blackout_over_active_bookings_returns_them_as_clashes_and_keeps_them()
+    {
+        var (officer, officerId) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.FacilitiesOfficer);
+        var roomId = await RoomAsync();
+        var otherRoomId = await RoomAsync();
+        async Task<long> Book(long room, string from, string to, string status = BookingStatuses.Confirmed)
+        {
+            var (start, end) = CampusSlot(ClashDay, from, to);
+            return await InsertBookingAsync(fixture.Factory, room, start, end, status);
+        }
+        var confirmed = await Book(roomId, "09:00", "11:00");
+        var checkedIn = await Book(roomId, "12:00", "14:00", BookingStatuses.CheckedIn);
+        await Book(roomId, "10:00", "12:00", BookingStatuses.Cancelled);
+        await Book(roomId, "14:00", "16:00");
+        await Book(roomId, "08:00", "09:00");
+        await Book(otherRoomId, "10:00", "12:00");
+
+        // [10:00, 14:00) overlaps 09:00-11:00 and 12:00-14:00; the adjacent 08:00-09:00 and 14:00-16:00 don't.
+        var response = await officer.PostAsJsonAsync($"/api/rooms/{roomId}/blackouts", BlackoutBody("10:00", "14:00"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await response.ReadJsonAsync();
+        body.GetProperty("roomId").GetInt64().Should().Be(roomId);
+        body.GetProperty("reason").GetString().Should().Be("Rewiring");
+        body.GetProperty("createdById").GetInt64().Should().Be(officerId);
+        var clashes = body.GetProperty("clashes");
+        BookingIds(clashes).Should().Equal(confirmed, checkedIn);
+
+        var first = clashes[0];
+        var (name, email) = await RequesterOfAsync(confirmed);
+        first.GetProperty("requesterName").GetString().Should().Be(name);
+        first.GetProperty("requesterEmail").GetString().Should().Be(email);
+        first.GetProperty("status").GetString().Should().Be(BookingStatuses.Confirmed);
+        first.GetProperty("requestId").GetInt64().Should().BePositive();
+        first.GetProperty("start").GetDateTime().Should().Be(CampusSlot(ClashDay, "09:00", "11:00").Start.UtcDateTime);
+        first.GetProperty("end").GetDateTime().Should().Be(CampusSlot(ClashDay, "09:00", "11:00").End.UtcDateTime);
+        clashes[1].GetProperty("status").GetString().Should().Be(BookingStatuses.CheckedIn);
+
+        // The clashes endpoint returns the same list; the bookings were not cancelled.
+        var blackoutId = body.GetProperty("id").GetInt64();
+        var listed = await (await officer.GetAsync($"/api/rooms/{roomId}/blackouts/{blackoutId}/clashes")).ReadJsonAsync();
+        listed.GetRawText().Should().Be(clashes.GetRawText());
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        (await db.Bookings.CountAsync(b => b.RoomId == roomId && BookingStatuses.Active.Contains(b.Status))).Should().Be(4);
+    }
+
+    [Fact]
+    public async Task A_blackout_on_an_empty_slot_has_no_clashes()
+    {
+        var (officer, _) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.FacilitiesOfficer);
+        var roomId = await RoomAsync();
+
+        var body = await (await officer.PostAsJsonAsync($"/api/rooms/{roomId}/blackouts", BlackoutBody("10:00", "12:00"))).ReadJsonAsync();
+
+        body.GetProperty("clashes").GetArrayLength().Should().Be(0);
+        var id = body.GetProperty("id").GetInt64();
+        (await (await officer.GetAsync($"/api/rooms/{roomId}/blackouts/{id}/clashes")).ReadJsonAsync()).GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Clashes_are_for_officers_only_and_404_for_a_missing_blackout()
+    {
+        var (officer, _) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.FacilitiesOfficer);
+        var roomId = await RoomAsync();
+        var otherRoomId = await RoomAsync();
+        var id = (await (await officer.PostAsJsonAsync($"/api/rooms/{roomId}/blackouts", BlackoutBody("10:00", "12:00"))).ReadJsonAsync())
+            .GetProperty("id").GetInt64();
+
+        (await TestAuth.CreateClient(fixture.Factory, Roles.Student).GetAsync($"/api/rooms/{roomId}/blackouts/{id}/clashes"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await officer.GetAsync($"/api/rooms/{roomId}/blackouts/999999999/clashes")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await officer.GetAsync($"/api/rooms/{otherRoomId}/blackouts/{id}/clashes")).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

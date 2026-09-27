@@ -47,6 +47,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRoomService, RoomService>();
         services.AddScoped<IRoomBlackoutService, RoomBlackoutService>();
         services.AddScoped<IRoomAvailabilityService, RoomAvailabilityService>();
+        services.AddScoped<IEquipmentAvailabilityService, EquipmentAvailabilityService>();
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
         services.AddScoped<IPricingRuleService, PricingRuleService>();

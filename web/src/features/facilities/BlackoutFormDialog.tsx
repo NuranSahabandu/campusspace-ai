@@ -1,11 +1,24 @@
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material'
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  List,
+  ListItem,
+  ListItemText,
+  Stack,
+  TextField,
+} from '@mui/material'
 import { z } from 'zod'
 import { api } from '../../api/client'
-import type { BlackoutDto, RoomDto } from '../../api/types'
+import type { BlackoutClashDto, BlackoutWithClashesDto, RoomDto } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
-import { campusLocalToIso } from '../../ui/formatDateTime'
+import { campusLocalToIso, formatCampusTimeRange } from '../../ui/formatDateTime'
 import { roomsKeys } from './useFacilities'
 
 // Mirrors CreateBlackoutRequest. Both values are datetime-local strings (YYYY-MM-DDTHH:mm) in campus time,
@@ -20,26 +33,61 @@ const schema = z
 
 type BlackoutForm = z.infer<typeof schema>
 
-/** Adds a maintenance blackout [start, end) to a room (UC14). Times are entered in campus time. */
+/**
+ * Adds a maintenance blackout [start, end) to a room (UC14). Times are entered in campus time. When the blackout
+ * overlaps active bookings, the dialog stays open and lists them: they are not cancelled, the officer handles them.
+ */
 export function BlackoutFormDialog({ room, onClose }: { room: RoomDto; onClose: () => void }) {
+  const [clashes, setClashes] = useState<BlackoutClashDto[] | null>(null)
   const { register, handleSubmit, setError, formState: { errors } } = useForm<BlackoutForm>({
     resolver: zodResolver(schema),
     defaultValues: { start: '', end: '', reason: '' },
   })
-  const mutation = useApiMutation<BlackoutForm, BlackoutDto, BlackoutForm>({
+  const mutation = useApiMutation<BlackoutForm, BlackoutWithClashesDto, BlackoutForm>({
     mutationFn: async ({ start, end, reason }) =>
       (
-        await api.post<BlackoutDto>(`/api/rooms/${room.id}/blackouts`, {
+        await api.post<BlackoutWithClashesDto>(`/api/rooms/${room.id}/blackouts`, {
           start: campusLocalToIso(start),
           end: campusLocalToIso(end),
           reason,
         })
       ).data,
+    // Runs before onSuccess in both cases, so the new blackout shows in the list behind a clash warning too.
     invalidate: [roomsKeys.all],
     successMessage: 'Blackout added',
     form: { setError, fields: ['start', 'end', 'reason'] },
-    onSuccess: onClose,
+    onSuccess: (blackout) => (blackout.clashes.length > 0 ? setClashes(blackout.clashes) : onClose()),
   })
+
+  if (clashes) {
+    return (
+      <Dialog open onClose={onClose} fullWidth maxWidth="sm" aria-labelledby="blackout-form-title">
+        <DialogTitle id="blackout-form-title">Add blackout to {room.code}</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            Blackout added. It clashes with {clashes.length} active booking{clashes.length === 1 ? '' : 's'}; they were
+            not cancelled.
+          </Alert>
+          {/* Names and emails are plain React text children, never HTML. */}
+          <List dense aria-label="Clashing bookings">
+            {clashes.map((c) => (
+              <ListItem key={c.bookingId} disableGutters>
+                <ListItemText
+                  primary={`${formatCampusTimeRange(c.start, c.end)} · ${c.status}`}
+                  secondary={`${c.requesterName} (${c.requesterEmail}) · request #${c.requestId}`}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </DialogContent>
+        <DialogActions>
+          <Button variant="contained" onClick={onClose}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="xs" aria-labelledby="blackout-form-title">

@@ -91,7 +91,7 @@ public sealed class EquipmentTypeService(AppDbContext db) : IEquipmentTypeServic
         return await GetAsync(id, ct);
     }
 
-    /// <summary>A type that still has items fails with 23503, which GlobalExceptionHandler maps to 409 "In use".</summary>
+    /// <summary>A type that still has items or reservations fails with 23503, which GlobalExceptionHandler maps to 409 "In use".</summary>
     public async Task<bool> DeleteAsync(long id, CancellationToken ct = default)
     {
         var type = await db.EquipmentTypes.SingleOrDefaultAsync(t => t.Id == id, ct);

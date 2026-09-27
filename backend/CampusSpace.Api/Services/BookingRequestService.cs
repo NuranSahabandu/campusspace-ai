@@ -58,7 +58,7 @@ public sealed class BookingRequestService(
         // id) makes a second submit by the same user wait until the first commits, so it counts the new row.
         // Other users are not blocked. SaveChangesAsync reuses this transaction for the request and its audit rows.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({requesterId})", ct);
+        await AdvisoryLocks.LockAsync(db.Database, AdvisoryLocks.RequesterOpenRequests, requesterId, ct);
 
         var open = await CountOpenAsync(requesterId, ct);
         var max = snapshot.MaxOpenRequests;

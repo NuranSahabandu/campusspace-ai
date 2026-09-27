@@ -1,5 +1,6 @@
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CampusSpace.Tests.Infrastructure;
@@ -41,5 +42,18 @@ public static class EquipmentTestData
         db.EquipmentItems.Add(item);
         await db.SaveChangesAsync();
         return item;
+    }
+
+    /// <summary>
+    /// Reserves <paramref name="quantity"/> of a type for an existing booking, copying the booking's range (as ReserveAsync
+    /// does). Inserted directly, without the guard, so tests can build states such as over-allocation.
+    /// </summary>
+    public static async Task InsertReservationAsync(CustomWebApplicationFactory factory, long bookingId, long typeId, int quantity)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var range = await db.Bookings.Where(b => b.Id == bookingId).Select(b => b.TimeRange).SingleAsync();
+        db.EquipmentReservations.Add(new EquipmentReservation { BookingId = bookingId, TypeId = typeId, Quantity = quantity, TimeRange = range });
+        await db.SaveChangesAsync();
     }
 }
