@@ -38,7 +38,7 @@ describe('RoomDetailPage', () => {
     expect(await screen.findByRole('heading', { name: 'A301 · Computer Lab A301' })).toBeInTheDocument()
     expect(screen.getByText('MB · Main Building')).toBeInTheDocument()
     expect(screen.getByText('computers')).toBeInTheDocument()
-    expect(screen.getByText('Clashing bookings will be flagged here in Phase 2.')).toBeInTheDocument()
+    expect(screen.getByText('Adding a blackout lists the active bookings it clashes with. They are not cancelled automatically.')).toBeInTheDocument()
     // 02:30Z–06:30Z is 08:00–12:00 in Colombo.
     expect(await screen.findByText('Projector maintenance')).toBeInTheDocument()
     expect(screen.getByText(/08:00/)).toBeInTheDocument()
@@ -91,7 +91,7 @@ describe('RoomDetailPage', () => {
     server.use(
       http.post(`${API}/api/rooms/1/blackouts`, async ({ request }) => {
         body = await request.json()
-        return HttpResponse.json(BLACKOUTS[0], { status: 201 })
+        return HttpResponse.json({ ...BLACKOUTS[0], clashes: [] }, { status: 201 })
       }),
     )
     const { user, dialog } = await openAddBlackout()
@@ -104,6 +104,51 @@ describe('RoomDetailPage', () => {
     await waitFor(() =>
       expect(body).toEqual({ start: '2026-09-28T08:00:00+05:30', end: '2026-09-28T12:30:00+05:30', reason: 'Painting' }),
     )
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('keeps the dialog open with a warning listing the clashing bookings, and refreshes the list behind it', async () => {
+    const requests = roomHandlers()
+    server.use(
+      http.post(`${API}/api/rooms/1/blackouts`, () =>
+        HttpResponse.json(
+          {
+            ...BLACKOUTS[0],
+            clashes: [
+              {
+                bookingId: 31,
+                requestId: 12,
+                start: '2026-09-28T03:30:00Z',
+                end: '2026-09-28T05:30:00Z',
+                status: 'Confirmed',
+                requesterName: '<b>Kavindi</b>',
+                requesterEmail: 'kavindi@campusspace.local',
+              },
+            ],
+          },
+          { status: 201 },
+        ),
+      ),
+    )
+    const { user, dialog } = await openAddBlackout()
+    await waitFor(() => expect(requests).toHaveLength(1))
+
+    setValue(within(dialog).getByLabelText('Start'), '2026-09-28T08:00')
+    setValue(within(dialog).getByLabelText('End'), '2026-09-28T12:00')
+    await user.type(within(dialog).getByLabelText('Reason'), 'Painting')
+    await user.click(within(dialog).getByRole('button', { name: 'Add' }))
+
+    const open = await screen.findByRole('dialog', { name: 'Add blackout to A301' })
+    expect(
+      await within(open).findByText('Blackout added. It clashes with 1 active booking; they were not cancelled.'),
+    ).toBeInTheDocument()
+    const list = within(open).getByRole('list', { name: 'Clashing bookings' })
+    // 03:30Z–05:30Z is 09:00–11:00 in Colombo. The name is shown as text, not rendered as HTML.
+    expect(within(list).getByText(/09:00–11:00 · Confirmed/)).toBeInTheDocument()
+    expect(within(list).getByText('<b>Kavindi</b> (kavindi@campusspace.local) · request #12')).toBeInTheDocument()
+    await waitFor(() => expect(requests.length).toBeGreaterThan(1))
+
+    await user.click(within(open).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 

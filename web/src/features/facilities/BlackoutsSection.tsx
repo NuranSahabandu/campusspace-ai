@@ -76,7 +76,7 @@ export function BlackoutsSection({ room }: { room: RoomDto }) {
           </Button>
         </Stack>
       </Stack>
-      <Alert severity="info">Clashing bookings will be flagged here in Phase 2.</Alert>
+      <Alert severity="info">Adding a blackout lists the active bookings it clashes with. They are not cancelled automatically.</Alert>
 
       <ServerDataGrid
         query={query}
