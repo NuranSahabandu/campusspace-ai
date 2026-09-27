@@ -28,6 +28,8 @@ const EquipmentTypesPage = lazy(() =>
 const EquipmentItemsPage = lazy(() =>
   import('./features/equipment/EquipmentItemsPage').then((m) => ({ default: m.EquipmentItemsPage })),
 )
+const PricingPage = lazy(() => import('./features/pricing/PricingPage').then((m) => ({ default: m.PricingPage })))
+const PolicyPage = lazy(() => import('./features/policy/PolicyPage').then((m) => ({ default: m.PolicyPage })))
 
 /** A lazy page: the role guard for its path (ROUTE_ROLES) plus a Suspense boundary for the lazy chunk. */
 function GuardedPage({ path, children }: { path: AppPath; children: ReactNode }) {
@@ -52,6 +54,8 @@ export function AppRoutes() {
           <Route path="equipment" element={<Navigate to="/equipment/types" replace />} />
           <Route path="equipment/types" element={<GuardedPage path="/equipment/types"><EquipmentTypesPage /></GuardedPage>} />
           <Route path="equipment/items" element={<GuardedPage path="/equipment/items"><EquipmentItemsPage /></GuardedPage>} />
+          <Route path="pricing" element={<GuardedPage path="/pricing"><PricingPage /></GuardedPage>} />
+          <Route path="policy" element={<GuardedPage path="/policy"><PolicyPage /></GuardedPage>} />
           <Route path="requests" element={<ComingSoonPage title="Requests" owner="C" />} />
           <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
           <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />

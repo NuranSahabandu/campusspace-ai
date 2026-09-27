@@ -6,6 +6,8 @@ describe('routeAccess', () => {
     expect(rolesForPath('/rooms/12')).toEqual([Roles.FacilitiesOfficer])
     expect(rolesForPath('/clubs/3')).toEqual([Roles.Admin])
     expect(rolesForPath('/equipment/items')).toEqual([Roles.FacilitiesOfficer])
+    expect(rolesForPath('/pricing')).toEqual([Roles.FacilitiesOfficer])
+    expect(rolesForPath('/policy')).toEqual([Roles.FacilitiesOfficer])
   })
 
   it.each(['/login', '/forbidden', '/no-such-page', 'https://evil.example/', '//evil.example/rooms'])(

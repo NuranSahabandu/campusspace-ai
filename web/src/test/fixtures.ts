@@ -6,10 +6,13 @@ import type {
   ClubDetailDto,
   ClubDto,
   ClubMemberDto,
+  CurrentPricingRuleDto,
   EquipmentItemDto,
   EquipmentTypeDto,
   FeatureDto,
   PagedResult,
+  PolicySettingDto,
+  PricingRuleDto,
   RoomDto,
   UserDto,
 } from '../api/types'
@@ -227,4 +230,84 @@ export const EQUIPMENT_ITEMS: EquipmentItemDto[] = [
     notes: 'Scratched lens cover',
   }),
   makeItem({ id: 4, assetTag: 'EQ-PROJ-002', typeId: 2, typeCode: 'PROJ-PORTABLE', typeName: 'Portable projector', status: 'Retired' }),
+]
+
+/** Campus "today" for pricing tests: 27 Sep 2026, 11:30 in Colombo. Pin it with vi.setSystemTime. */
+export const PRICING_NOW = new Date('2026-09-27T06:00:00Z')
+
+export const makePricingRule = (overrides: Partial<PricingRuleDto> = {}): PricingRuleDto => ({
+  id: 1,
+  roomType: 'ComputerLab',
+  requesterRole: 'Student',
+  hourlyRate: 1500,
+  isExempt: false,
+  validFrom: '2026-01-01',
+  status: 'Current',
+  ...overrides,
+})
+
+// Mirrors the seed (from 2026-01-01; lecturers exempt), plus one superseded and one scheduled rule.
+export const PRICING_RULES: PricingRuleDto[] = [
+  makePricingRule(),
+  makePricingRule({ id: 5, requesterRole: 'Lecturer', hourlyRate: 0, isExempt: true }),
+  makePricingRule({ id: 3, roomType: 'SeminarRoom', hourlyRate: 400, validFrom: '2025-06-01', status: 'Superseded' }),
+  makePricingRule({ id: 7, roomType: 'SeminarRoom', hourlyRate: 500 }),
+  makePricingRule({ id: 9, roomType: 'SeminarRoom', hourlyRate: 750, validFrom: '2026-11-01', status: 'Scheduled' }),
+]
+
+const current = (roomType: string, requesterRole: string, id: number | null, hourlyRate: number | null): CurrentPricingRuleDto => ({
+  roomType,
+  requesterRole,
+  id,
+  hourlyRate,
+  isExempt: hourlyRate === null ? null : hourlyRate === 0,
+  validFrom: id === null ? null : '2026-01-01',
+})
+
+/** GET /api/pricing-rules/current: Auditorium/Lecturer is a gap. */
+export const CURRENT_PRICES: CurrentPricingRuleDto[] = [
+  current('Auditorium', 'Student', 4, 3000),
+  current('Auditorium', 'Lecturer', null, null),
+  current('ComputerLab', 'Student', 1, 1500),
+  current('ComputerLab', 'Lecturer', 5, 0),
+  current('LectureHall', 'Student', 2, 1000),
+  current('LectureHall', 'Lecturer', 6, 0),
+  current('SeminarRoom', 'Student', 7, 500),
+  current('SeminarRoom', 'Lecturer', 8, 0),
+]
+
+/** The seeded opening hours (PolicySettingDefaults.OpeningHoursJson). */
+export const DEFAULT_OPENING_HOURS =
+  '{"mon":{"open":"08:00","close":"20:00"},"tue":{"open":"08:00","close":"20:00"},"wed":{"open":"08:00","close":"20:00"},' +
+  '"thu":{"open":"08:00","close":"20:00"},"fri":{"open":"08:00","close":"20:00"},"sat":{"open":"08:00","close":"16:00"},"sun":null}'
+
+const setting = (key: string, valueType: string, value: string, description: string): PolicySettingDto => ({
+  key,
+  value,
+  valueType,
+  description,
+  updatedAt: '2026-09-20T04:00:00Z',
+  updatedByName: null,
+})
+
+/** The nine default settings (PolicySettingDefaults), in PolicyKeys.All order; one was changed by the officer. */
+export const POLICY_SETTINGS: PolicySettingDto[] = [
+  setting('opening_hours', 'json', DEFAULT_OPENING_HOURS, 'Opening hours per weekday in campus time (null = closed)'),
+  setting('min_lead_time_hours', 'int', '48', 'Minimum hours between submitting a request and the booking start'),
+  setting('max_advance_days_student', 'int', '60', 'How many days ahead a student can book'),
+  setting('max_advance_days_lecturer', 'int', '90', 'How many days ahead a lecturer can book'),
+  setting('max_duration_hours', 'int', '8', 'Longest booking, in hours'),
+  {
+    ...setting('max_capacity_ratio', 'decimal', '3', 'A room may seat at most this many times the attendees'),
+    updatedAt: '2026-09-26T08:45:00Z',
+    updatedByName: 'Mr. Perera',
+  },
+  setting('slot_granularity_minutes', 'int', '30', 'Booking start and end times fall on multiples of this many minutes'),
+  setting(
+    'free_cancellation_hours',
+    'int',
+    '24',
+    'Cancelling more than this many hours before the start is free; later is flagged as late',
+  ),
+  setting('max_open_requests', 'int', '3', 'Most open requests a requester can have at once'),
 ]
