@@ -88,7 +88,7 @@ namespace CampusSpace.Api.Data.Migrations
                     { "max_duration_hours", "8", "int", "Longest booking, in hours", seededAt, null },
                     { "max_capacity_ratio", "3", "decimal", "A room may seat at most this many times the attendees", seededAt, null },
                     { "slot_granularity_minutes", "30", "int", "Booking start and end times fall on multiples of this many minutes", seededAt, null },
-                    { "free_cancellation_hours", "24", "int", "Cancelling at least this many hours before the start is free; later is flagged as late", seededAt, null },
+                    { "free_cancellation_hours", "24", "int", "Cancelling more than this many hours before the start is free; later is flagged as late", seededAt, null },
                     { "max_open_requests", "3", "int", "Most open requests a requester can have at once", seededAt, null },
                 });
         }

@@ -31,7 +31,7 @@ public static class PolicySettingDefaults
         (PolicyKeys.SlotGranularityMinutes, PolicyValueTypes.Int, "30",
             "Booking start and end times fall on multiples of this many minutes"),
         (PolicyKeys.FreeCancellationHours, PolicyValueTypes.Int, "24",
-            "Cancelling at least this many hours before the start is free; later is flagged as late"),
+            "Cancelling more than this many hours before the start is free; later is flagged as late"),
         (PolicyKeys.MaxOpenRequests, PolicyValueTypes.Int, "3",
             "Most open requests a requester can have at once"),
     ];

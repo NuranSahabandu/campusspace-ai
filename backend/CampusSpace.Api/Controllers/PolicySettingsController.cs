@@ -9,11 +9,12 @@ namespace CampusSpace.Api.Controllers;
 /// <summary>Booking policy (addendum A.1, UC29). Facilities Officers read and change it; everyone signed in reads the values.</summary>
 [ApiController]
 [Route("api/policy-settings")]
-[Authorize(Roles = Roles.FacilitiesOfficer)]
+[Authorize]
 public class PolicySettingsController(IPolicySettingsService policy) : ControllerBase
 {
     /// <summary>Every setting with its type, description and who changed it last.</summary>
     [HttpGet]
+    [Authorize(Roles = Roles.FacilitiesOfficer)]
     [ProducesResponseType<IReadOnlyList<PolicySettingDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
@@ -25,6 +26,7 @@ public class PolicySettingsController(IPolicySettingsService policy) : Controlle
     /// Each changed key writes one audit row with its old and new value.
     /// </summary>
     [HttpPut]
+    [Authorize(Roles = Roles.FacilitiesOfficer)]
     [ProducesResponseType<IReadOnlyList<PolicySettingDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
@@ -37,8 +39,8 @@ public class PolicySettingsController(IPolicySettingsService policy) : Controlle
     /// granularity). This is the addendum's Open question 1, option (a). Built from the same snapshot as every other
     /// consumer, so it always agrees with the officer view.
     /// </summary>
+    // Class-level [Authorize] only: a role attribute on the class would also apply here (attributes combine).
     [HttpGet("public")]
-    [Authorize]
     [ProducesResponseType<IReadOnlyDictionary<string, object>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IReadOnlyDictionary<string, object?>>> Public(CancellationToken ct)
