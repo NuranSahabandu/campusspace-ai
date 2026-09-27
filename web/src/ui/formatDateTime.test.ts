@@ -36,9 +36,8 @@ describe('campusLocalToIso', () => {
 })
 
 describe('formatDateOnly', () => {
-  const originalTz = process.env.TZ
   afterEach(() => {
-    process.env.TZ = originalTz
+    vi.unstubAllEnvs()
   })
 
   it('shows a DateOnly as day, short month and year', () => {
@@ -48,7 +47,8 @@ describe('formatDateOnly', () => {
 
   it('does not shift the date west of UTC', () => {
     // new Date('2026-01-01') would be 31 Dec 2025 here.
-    process.env.TZ = 'America/Los_Angeles'
+    vi.stubEnv('TZ', 'America/Los_Angeles')
+    expect(new Date('2026-01-01').getDate()).toBe(31)
     expect(formatDateOnly('2026-01-01')).toBe('1 Jan 2026')
   })
 })
