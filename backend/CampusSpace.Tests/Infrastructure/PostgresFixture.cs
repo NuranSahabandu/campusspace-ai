@@ -1,3 +1,6 @@
+using CampusSpace.Api.Data;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace CampusSpace.Tests.Infrastructure;
@@ -20,6 +23,32 @@ public sealed class PostgresFixture : IAsyncLifetime
         Factory = new CustomWebApplicationFactory(_container.GetConnectionString());
         await Factory.MigrateAsync();
     }
+
+    /// <summary>
+    /// A new, migrated database on the shared container, for tests that need a table to themselves (seeding,
+    /// pricing statuses, policy changes). Returns its connection string.
+    /// </summary>
+    public async Task<string> CreateDatabaseAsync()
+    {
+        var name = $"test_{Guid.NewGuid():N}";
+        await using (var connection = new NpgsqlConnection(ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{name}\"", connection);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        var connectionString = new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name }.ToString();
+        await using var db = CreateDbContext(connectionString);
+        await db.Database.MigrateAsync();
+        return connectionString;
+    }
+
+    /// <summary>The real API on its own new database. Dispose it at the end of the test.</summary>
+    public async Task<CustomWebApplicationFactory> CreateIsolatedFactoryAsync() => new(await CreateDatabaseAsync());
+
+    public static AppDbContext CreateDbContext(string connectionString) =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
 
     public async Task DisposeAsync()
     {
