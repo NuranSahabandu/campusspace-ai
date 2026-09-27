@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPricingRuleService, PricingRuleService>();
         services.AddScoped<IPolicySettingsService, PolicySettingsService>();
         services.AddScoped<IRequestStateMachine, RequestStateMachine>();
+        services.AddScoped<IBookingRequestService, BookingRequestService>();
         return services;
     }
 
