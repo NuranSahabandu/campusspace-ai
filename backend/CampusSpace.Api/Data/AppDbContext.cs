@@ -22,6 +22,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<EquipmentType> EquipmentTypes => Set<EquipmentType>();
     public DbSet<EquipmentItem> EquipmentItems => Set<EquipmentItem>();
     public DbSet<EquipmentSubstitute> EquipmentSubstitutes => Set<EquipmentSubstitute>();
+    public DbSet<PricingRule> PricingRules => Set<PricingRule>();
+    public DbSet<PolicySetting> PolicySettings => Set<PolicySetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -128,18 +130,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     private void ApplyTimestamps()
     {
         var now = DateTime.UtcNow;
-        foreach (var entry in ChangeTracker.Entries<ITimestamped>())
+        foreach (var entry in ChangeTracker.Entries<IHasUpdatedAt>())
         {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+                continue;
+
+            entry.Entity.UpdatedAt = now;
+            if (entry.Entity is not ITimestamped timestamped)
+                continue;
             if (entry.State == EntityState.Added)
-            {
-                entry.Entity.CreatedAt = now;
-                entry.Entity.UpdatedAt = now;
-            }
-            else if (entry.State == EntityState.Modified)
-            {
-                entry.Entity.UpdatedAt = now;
-                entry.Property(e => e.CreatedAt).IsModified = false;
-            }
+                timestamped.CreatedAt = now;
+            else
+                entry.Property(nameof(ITimestamped.CreatedAt)).IsModified = false;
         }
     }
 }

@@ -4,6 +4,7 @@ using CampusSpace.Api.Data;
 using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Services;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace CampusSpace.Api.Extensions;
@@ -34,6 +35,8 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
         services.AddHttpContextAccessor();
+        // "Today" for pricing and policy rules. Also registered by AddJwtAuth; TryAdd keeps one instance either way.
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<ICurrentUser, CurrentUser>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IAuthService, AuthService>();
@@ -45,6 +48,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRoomBlackoutService, RoomBlackoutService>();
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
+        services.AddScoped<IPricingRuleService, PricingRuleService>();
+        services.AddScoped<IPolicySettingsService, PolicySettingsService>();
         return services;
     }
 

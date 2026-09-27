@@ -13,21 +13,8 @@ public class SeedTests(PostgresFixture fixture)
     private const string DemoPassword = "demo-password-1";
 
     /// <summary>A fresh, migrated database on the shared container, because the default one already has users.</summary>
-    private async Task<AppDbContext> CreateEmptyDatabaseAsync()
-    {
-        var name = $"seed_{Guid.NewGuid():N}";
-        await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
-        {
-            await connection.OpenAsync();
-            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{name}\"", connection);
-            await create.ExecuteNonQueryAsync();
-        }
-
-        var connectionString = new NpgsqlConnectionStringBuilder(fixture.ConnectionString) { Database = name }.ToString();
-        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);
-        await db.Database.MigrateAsync();
-        return db;
-    }
+    private async Task<AppDbContext> CreateEmptyDatabaseAsync() =>
+        PostgresFixture.CreateDbContext(await fixture.CreateDatabaseAsync());
 
     [Fact]
     public async Task Seeds_every_demo_account_active_with_the_demo_password_and_is_idempotent()
@@ -177,5 +164,42 @@ public class SeedTests(PostgresFixture fixture)
         (await db.EquipmentItems.SingleAsync(i => i.AssetTag == "EQ-MICW-001")).Status.Should().Be(EquipmentItemStatuses.Retired);
         (await db.EquipmentItems.AnyAsync(i => i.AssetTag == "EQ-CLK-004")).Should().BeTrue();
         (await db.EquipmentSubstitutes.CountAsync()).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Seeds_the_demo_pricing_rules_once()
+    {
+        await using var db = await CreateEmptyDatabaseAsync();
+
+        await Seed.SeedAsync(db, DemoPassword);
+        await Seed.SeedAsync(db, DemoPassword);
+
+        var rules = await db.PricingRules.AsNoTracking().ToListAsync();
+        rules.Should().HaveCount(RoomTypes.All.Count * RequesterRoles.All.Count);
+        rules.Should().OnlyContain(r => r.ValidFrom == new DateOnly(2026, 1, 1));
+        // The demo quote: 3 h x 1500 + 2 microphones x 500 = 5,500.
+        rules.Single(r => r.RoomType == RoomTypes.ComputerLab && r.RequesterRole == RequesterRoles.Student).HourlyRate.Should().Be(1500m);
+        rules.Where(r => r.RequesterRole == RequesterRoles.Student).Select(r => (r.RoomType, r.HourlyRate)).Should().BeEquivalentTo(new[]
+        {
+            (RoomTypes.ComputerLab, 1500m), (RoomTypes.LectureHall, 1000m), (RoomTypes.SeminarRoom, 500m), (RoomTypes.Auditorium, 3000m),
+        });
+        rules.Where(r => r.RequesterRole == RequesterRoles.Lecturer).Should().HaveCount(4).And.OnlyContain(r => r.IsExempt && r.HourlyRate == 0);
+    }
+
+    [Fact]
+    public async Task Policy_seed_never_overwrites_an_edited_value_and_restores_a_missing_key()
+    {
+        await using var db = await CreateEmptyDatabaseAsync();
+        await Seed.SeedAsync(db, DemoPassword);
+        (await db.PolicySettings.SingleAsync(s => s.Key == PolicyKeys.MaxCapacityRatio)).Value = "2";
+        db.PolicySettings.Remove(await db.PolicySettings.SingleAsync(s => s.Key == PolicyKeys.MaxOpenRequests));
+        await db.SaveChangesAsync();
+
+        await Seed.SeedAsync(db, DemoPassword);
+
+        db.ChangeTracker.Clear();
+        (await db.PolicySettings.CountAsync()).Should().Be(PolicyKeys.All.Count);
+        (await db.PolicySettings.SingleAsync(s => s.Key == PolicyKeys.MaxCapacityRatio)).Value.Should().Be("2");
+        (await db.PolicySettings.SingleAsync(s => s.Key == PolicyKeys.MaxOpenRequests)).Value.Should().Be("3");
     }
 }

@@ -49,6 +49,7 @@ public class GlobalExceptionHandlerTests
 
     [Theory]
     [InlineData(ClubMemberConfiguration.OneRepresentativeIndex, "Club already has a representative")]
+    [InlineData(PricingRuleConfiguration.UniqueRuleIndex, "A rule for this room type, role and date already exists")]
     [InlineData("IX_Users_Email", "Duplicate value")]
     [InlineData("AK_Features_Code", "Duplicate value")]
     public async Task Unique_violations_are_mapped_by_constraint_name(string constraintName, string title)
@@ -81,6 +82,23 @@ public class GlobalExceptionHandlerTests
         body.GetProperty("errors").GetProperty("IsActive")[0].GetString()
             .Should().Be("You cannot deactivate your own account.");
         body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Fact]
+    public async Task BusinessRuleException_with_several_fields_returns_every_error()
+    {
+        var errors = new Dictionary<string, string[]>
+        {
+            ["opening_hours"] = ["sat: opening time must be before closing time.", "At least one day must be open."],
+            ["max_duration_hours"] = ["Must be between 1 and 24."],
+        };
+
+        var (status, body) = await HandleAsync(new BusinessRuleException(errors));
+
+        status.Should().Be(StatusCodes.Status400BadRequest);
+        body.GetProperty("title").GetString().Should().Be("sat: opening time must be before closing time.");
+        body.GetProperty("errors").GetProperty("opening_hours").GetArrayLength().Should().Be(2);
+        body.GetProperty("errors").GetProperty("max_duration_hours")[0].GetString().Should().Be("Must be between 1 and 24.");
     }
 
     [Fact]

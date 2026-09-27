@@ -24,7 +24,7 @@ public sealed class GlobalExceptionHandler(
         var (status, title) = Map(exception);
         var problem = exception is BusinessRuleException rule
             // Same shape as a data-annotation failure, so clients reuse their field-error handling.
-            ? new HttpValidationProblemDetails(new Dictionary<string, string[]> { [rule.Field] = [rule.Message] })
+            ? new HttpValidationProblemDetails(rule.Errors.ToDictionary(e => e.Key, e => e.Value))
             : new ProblemDetails();
         problem.Status = status;
         problem.Title = title;
@@ -56,6 +56,8 @@ public sealed class GlobalExceptionHandler(
         {
             UniqueViolation when postgres.ConstraintName == ClubMemberConfiguration.OneRepresentativeIndex =>
                 (StatusCodes.Status409Conflict, "Club already has a representative"),
+            UniqueViolation when postgres.ConstraintName == PricingRuleConfiguration.UniqueRuleIndex =>
+                (StatusCodes.Status409Conflict, PricingRuleConfiguration.DuplicateRuleMessage),
             UniqueViolation => (StatusCodes.Status409Conflict, "Duplicate value"),
             ExclusionViolation => (StatusCodes.Status409Conflict, "Time slot was just booked"),
             // Services check FKs before inserting (400 on the field), so this is a delete of a row that is still referenced.
