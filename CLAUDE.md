@@ -191,6 +191,10 @@ Tests use `renderApp(route, { role })` from `src/test/utils.tsx` and MSW handler
 Equipment type pickers use `useEquipmentTypeOptions` (one request with pageSize=100, the PageQuery max; never loop over
 pages). Read a filter that another page links to from the URL with `useSearchParams`, ignoring invalid values (see
 `?typeId=` on /equipment/items). Show money with `formatLkr` (`src/ui/formatLkr.ts`).
+Show an API `DateOnly` ("yyyy-MM-dd") with `formatDateOnly` (never `new Date()`, which shifts it west of UTC), and use
+`campusToday()` for a date input's `min` and past-date checks. Policy forms name their fields by the snake_case setting keys,
+because `parseProblem` only lower-cases the first letter (`max_duration_hours` stays as is). Put extra content in a
+`ConfirmDialog` (for example a list of changes) as its `children`.
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
 
