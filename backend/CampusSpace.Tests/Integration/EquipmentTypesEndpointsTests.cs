@@ -54,6 +54,24 @@ public class EquipmentTypesEndpointsTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Deleting_a_type_used_by_a_booking_request_line_returns_409_In_use()
+    {
+        var type = await EquipmentTestData.CreateTypeAsync(fixture.Factory);
+        var (student, _, clubId) = await BookingRequestTestData.StudentRepAsync(fixture.Factory);
+        (await student.PostAsJsonAsync(BookingRequestTestData.Url,
+                BookingRequestTestData.Body(clubId, equipment: [BookingRequestTestData.Line(type.Id, 2)])))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var (officer, _) = await OfficerAsync();
+
+        var response = await officer.DeleteAsync($"/api/equipment-types/{type.Id}");
+
+        // RequestedEquipmentLines.TypeId is RESTRICT, so PostgreSQL rejects the delete (23503).
+        (await response.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be("In use");
+        await using var scope = fixture.Factory.Services.CreateAsyncScope();
+        (await scope.ServiceProvider.GetRequiredService<AppDbContext>().EquipmentTypes.AnyAsync(t => t.Id == type.Id)).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Officer_creates_updates_and_deletes_a_type()
     {
         await FacilitiesTestData.EnsureFeaturesAsync(fixture.Factory);

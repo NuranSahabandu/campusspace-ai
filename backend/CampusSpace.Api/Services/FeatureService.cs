@@ -53,22 +53,31 @@ public sealed class FeatureService(AppDbContext db) : IFeatureService
         return ToDto(feature);
     }
 
-    /// <summary>A feature that a room still has fails with 23503, which GlobalExceptionHandler maps to 409 "In use".</summary>
+    /// <summary>
+    /// A feature that a room still has fails with 23503, which GlobalExceptionHandler maps to 409 "In use".
+    /// BookingRequests.RequiredFeatures is a text[] with no FK, so requests are checked here.
+    /// </summary>
     public async Task<bool> DeleteAsync(long id, CancellationToken ct = default)
     {
         var feature = await db.Features.SingleOrDefaultAsync(f => f.Id == id, ct);
         if (feature is null)
             return false;
+        if (await IsRequestedAsync(feature.Code, ct))
+            throw new ConflictException("In use");
 
         db.Features.Remove(feature);
         await db.SaveChangesAsync(ct);
         return true;
     }
 
-    /// <summary>Used by a room, or covering an equipment type.</summary>
+    /// <summary>Used by a room, covering an equipment type, or required by a booking request.</summary>
     private async Task<bool> IsReferencedAsync(Feature feature, CancellationToken ct) =>
         await db.RoomFeatures.AnyAsync(rf => rf.FeatureId == feature.Id, ct)
-        || await db.EquipmentTypes.AnyAsync(t => t.CoveredByFeatureCode == feature.Code, ct);
+        || await db.EquipmentTypes.AnyAsync(t => t.CoveredByFeatureCode == feature.Code, ct)
+        || await IsRequestedAsync(feature.Code, ct);
+
+    private Task<bool> IsRequestedAsync(string code, CancellationToken ct) =>
+        db.BookingRequests.AnyAsync(r => r.RequiredFeatures.Contains(code), ct);
 
     private static FeatureDto ToDto(Feature f) => new(f.Id, f.Code, f.Name);
 
