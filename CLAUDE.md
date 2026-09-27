@@ -295,6 +295,17 @@ The room schedule labels bookings only "Booked" (never the requester or purpose)
 the Phase 3 approval; tests insert them with `BookingTestData.InsertBookingAsync`. Tests about "now" (lead time,
 advance window) use `fixture.CreateIsolatedFactoryAsync(new FixedTimeProvider(...))` instead of changing the policy.
 
+Equipment reservations and blackout clashes: Equipment is held by EquipmentReservations of Active bookings; availability =
+serviceable (Available + OnLoan) - reserved in overlapping windows, computed in SQL (`IEquipmentAvailabilityService`).
+A reservation's TimeRange is always a copy of its booking's TimeRange, kept only for the GiST (TypeId, TimeRange) index.
+Over-allocation is prevented by ReserveAsync: per-type advisory locks in ascending TypeId order inside the approval
+transaction. It never calls SaveChanges (the caller commits) and skips qty-0 (`room_builtin`) lines. All advisory locks
+use AdvisoryLocks namespaces (two-int key form, `AdvisoryLocks.LockAsync`). The approval transaction runs at READ
+COMMITTED: the exclusion constraint guards rooms and advisory locks guard equipment. Do not use Serializable (plan App.
+A.3 is superseded here); ReserveAsync refuses any other isolation level. A blackout never cancels bookings automatically;
+it reports clashes for the officer to handle (`clashes` on the create response, `GET .../blackouts/{id}/clashes`).
+Tests insert reservations with `EquipmentTestData.InsertReservationAsync` (copies the booking's range).
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
