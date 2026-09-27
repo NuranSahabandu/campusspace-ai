@@ -306,6 +306,11 @@ export interface BookingRequestSummaryDto {
   clubName: string | null
   requesterName: string
   requesterEmail: string
+  /** Set by POST /api/booking-requests/{id}/cancel; null otherwise. */
+  cancelledAt: string | null
+  /** An owner's late cancellation of an approved booking (flagged, not charged). */
+  isLateCancellation: boolean
+  cancelledByOfficer: boolean
   createdAt: string
 }
 
@@ -361,6 +366,9 @@ export interface BookingRequestDetailDto {
   equipment: RequestedEquipmentDto[]
   history: RequestStatusHistoryDto[]
   latestProposal: unknown
+  cancelledAt: string | null
+  isLateCancellation: boolean
+  cancelledByOfficer: boolean
   createdAt: string
   updatedAt: string
 }

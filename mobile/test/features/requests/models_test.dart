@@ -55,6 +55,9 @@ void main() {
     expect(first.requestedStart.isUtc, isTrue);
     expect(first.status, 'Submitted');
     expect(first.clubName, isNull);
+    expect(first.cancelledAt, isNull);
+    expect(first.isLateCancellation, isFalse);
+    expect(first.cancelledByOfficer, isFalse);
   });
 
   test('a detail parses with its history and the changer id', () {
@@ -66,6 +69,28 @@ void main() {
     expect(detail.history.single.changedById, detail.requester.id);
     expect(detail.history.single.fromStatus, isNull);
     expect(detail.budgetLkr, 0);
+    expect(detail.cancelledAt, isNull);
+    expect(detail.isLateCancellation, isFalse);
+  });
+
+  test('a cancelled detail reads the cancellation fields and the reason', () {
+    final detail = RequestDetail.fromJson(json(cancelledRequestJson));
+    expect(detail.status, 'Cancelled');
+    expect(detail.cancelledAt, DateTime.utc(2026, 9, 27, 18, 38, 15, 495, 828));
+    expect(detail.isLateCancellation, isFalse);
+    expect(detail.cancelledByOfficer, isFalse);
+    expect(detail.history.last.reason, 'Speaker unavailable');
+    expect(detail.history.last.changedById, detail.requester.id);
+  });
+
+  test('a response without the cancellation fields still parses', () {
+    final map = json(requestDetailJson)
+      ..remove('cancelledAt')
+      ..remove('isLateCancellation')
+      ..remove('cancelledByOfficer');
+    final detail = RequestDetail.fromJson(map);
+    expect(detail.cancelledAt, isNull);
+    expect(detail.cancelledByOfficer, isFalse);
   });
 
   test('the captured 400 maps to camelCase field errors', () {

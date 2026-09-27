@@ -8,6 +8,8 @@ import '../auth/models.dart';
 
 DateTime _instant(Object? value) => DateTime.parse(value as String).toUtc();
 
+DateTime? _optionalInstant(Object? value) => value == null ? null : _instant(value);
+
 double _money(Object? value) => (value as num).toDouble();
 
 /// A club the caller can book for (ClubRefDto).
@@ -157,6 +159,9 @@ class RequestSummary {
     required this.budgetLkr,
     this.clubName,
     required this.requesterName,
+    this.cancelledAt,
+    this.isLateCancellation = false,
+    this.cancelledByOfficer = false,
     required this.createdAt,
   });
 
@@ -170,6 +175,9 @@ class RequestSummary {
         budgetLkr: _money(json['budgetLkr']),
         clubName: json['clubName'] as String?,
         requesterName: json['requesterName'] as String,
+        cancelledAt: _optionalInstant(json['cancelledAt']),
+        isLateCancellation: json['isLateCancellation'] as bool? ?? false,
+        cancelledByOfficer: json['cancelledByOfficer'] as bool? ?? false,
         createdAt: _instant(json['createdAt']),
       );
 
@@ -184,6 +192,13 @@ class RequestSummary {
   /// Null for an academic (Lecturer) booking.
   final String? clubName;
   final String requesterName;
+
+  /// Set when the request was cancelled through the cancel operation.
+  final DateTime? cancelledAt;
+
+  /// An owner's late cancellation of an approved booking (flagged, not charged).
+  final bool isLateCancellation;
+  final bool cancelledByOfficer;
   final DateTime createdAt;
 }
 
@@ -271,6 +286,9 @@ class RequestDetail {
     this.requiredFeatures = const [],
     this.equipment = const [],
     this.history = const [],
+    this.cancelledAt,
+    this.isLateCancellation = false,
+    this.cancelledByOfficer = false,
     required this.createdAt,
   });
 
@@ -292,6 +310,9 @@ class RequestDetail {
           for (final e in json['equipment'] as List) RequestedEquipment.fromJson(e as Map<String, dynamic>),
         ],
         history: [for (final h in json['history'] as List) StatusChange.fromJson(h as Map<String, dynamic>)],
+        cancelledAt: _optionalInstant(json['cancelledAt']),
+        isLateCancellation: json['isLateCancellation'] as bool? ?? false,
+        cancelledByOfficer: json['cancelledByOfficer'] as bool? ?? false,
         createdAt: _instant(json['createdAt']),
       );
 
@@ -308,6 +329,9 @@ class RequestDetail {
   final List<RequiredFeature> requiredFeatures;
   final List<RequestedEquipment> equipment;
   final List<StatusChange> history;
+  final DateTime? cancelledAt;
+  final bool isLateCancellation;
+  final bool cancelledByOfficer;
   final DateTime createdAt;
 }
 
