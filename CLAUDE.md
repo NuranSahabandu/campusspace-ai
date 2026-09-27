@@ -284,6 +284,14 @@ accepted with any offset and returned as UTC. `Notes` is untrusted text: never i
 `RequiredFeatures` is a `text[]` with no FK, so FeatureService checks it before a feature's delete or code change.
 Endpoint tests use `BookingRequestTestData` (`StudentRepAsync`, `Body`, `MoveAsync` through the real state machine).
 `FutureStart(n)` is 10:00 on the n-th weekday ahead (3–40, so outside the lead time and inside the student window).
+Cancellation (`POST /api/booking-requests/{id}/cancel`): the owner (reason optional) or a Facilities Officer (reason
+required). Free until `free_cancellation_hours` before the start; an owner's later cancellation of an Approved request
+sets `IsLateCancellation`. Late cancellations are flagged, not charged. Officer cancellations set `CancelledByOfficer`
+and are never late, and pre-approval cancellations are never late. Cancellable statuses come only from the state
+machine table. Cancel locks the request row (`SELECT … FOR UPDATE`) first, and Phase 3 approve/reject must take the same
+lock. An Approved cancel sets the booking to Cancelled (releases room and equipment), voids the live quote
+(`QuotationService.VoidLiveAsync`, static because QuotationService already depends on IBookingRequestService), and moves
+the request, all in one transaction. Tests insert an owned Approved booking with `BookingTestData.InsertApprovedBookingAsync`.
 
 Bookings and availability: Booking-time rules (V05/V06) live only in IBookingWindowRules; submit, availability and the
 approval re-check call it (`CheckSlot` = V05, `CheckTiming` = V06; availability uses only `CheckSlot`). Its messages match
