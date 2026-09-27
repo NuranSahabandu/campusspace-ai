@@ -197,11 +197,13 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
         history.GetRawText().Should().Be(detail.GetProperty("history").GetRawText());
         history.GetArrayLength().Should().Be(2);
         history[0].EnumerateObject().Select(p => p.Name)
-            .Should().Equal("fromStatus", "toStatus", "changedByName", "reason", "changedAt");
+            .Should().Equal("fromStatus", "toStatus", "changedById", "changedByName", "reason", "changedAt");
         history[0].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Submitted);
+        history[0].GetProperty("changedById").GetInt64().Should().Be(userId);
         history[0].GetProperty("changedByName").GetString().Should().StartWith("Test Student");
         history[1].GetProperty("fromStatus").GetString().Should().Be(RequestStatuses.Submitted);
         history[1].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Cancelled);
+        history[1].GetProperty("changedById").ValueKind.Should().Be(JsonValueKind.Null);
         history[1].GetProperty("changedByName").ValueKind.Should().Be(JsonValueKind.Null);
         history[1].GetProperty("reason").GetString().Should().Be("test");
     }
