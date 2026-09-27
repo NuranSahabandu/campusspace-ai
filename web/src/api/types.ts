@@ -232,3 +232,48 @@ export interface EquipmentItemRequest {
   status: string
   notes: string | null
 }
+
+/** A pricing rule. validFrom is a campus date ("yyyy-MM-dd"); status is one of PRICING_STATUSES (computed on read). */
+export interface PricingRuleDto {
+  id: number
+  roomType: string
+  requesterRole: string
+  hourlyRate: number
+  isExempt: boolean
+  validFrom: string
+  status: string
+}
+
+/** One room type and requester role with the rule in effect today. The rule fields are null for a gap. */
+export interface CurrentPricingRuleDto {
+  roomType: string
+  requesterRole: string
+  id: number | null
+  hourlyRate: number | null
+  isExempt: boolean | null
+  validFrom: string | null
+}
+
+/** hourlyRate is 0 when isExempt. validFrom is today (campus) or later. */
+export interface PricingRuleRequest {
+  roomType: string
+  requesterRole: string
+  hourlyRate: number
+  isExempt: boolean
+  validFrom: string
+}
+
+/** One booking-policy setting as stored: value is text (opening_hours is JSON text). updatedByName is null for seed values. */
+export interface PolicySettingDto {
+  key: string
+  value: string
+  valueType: string
+  description: string
+  updatedAt: string
+  updatedByName: string | null
+}
+
+/** PUT /api/policy-settings: only the keys to change. */
+export interface PolicySettingsUpdateRequest {
+  settings: { key: string; value: string }[]
+}
