@@ -28,15 +28,27 @@ public class RoomBlackoutsController(IRoomBlackoutService blackouts) : Controlle
     public async Task<ActionResult<BlackoutDto>> Get(long roomId, long blackoutId, CancellationToken ct)
         => await blackouts.GetAsync(roomId, blackoutId, ct) is { } blackout ? Ok(blackout) : NotFound();
 
+    /// <summary>
+    /// Business op (UC14): adds the blackout and returns it with the Active bookings it clashes with. Clashing bookings
+    /// are not cancelled; the officer handles them.
+    /// </summary>
     [HttpPost]
-    [ProducesResponseType<BlackoutDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<BlackoutWithClashesDto>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<BlackoutDto>> Create(long roomId, CreateBlackoutRequest request, CancellationToken ct)
+    public async Task<ActionResult<BlackoutWithClashesDto>> Create(long roomId, CreateBlackoutRequest request, CancellationToken ct)
         => await blackouts.CreateAsync(roomId, request, ct) is { } blackout
             ? CreatedAtAction(nameof(Get), new { roomId, blackoutId = blackout.Id }, blackout)
             : NotFound();
+
+    /// <summary>The Active bookings of the room that overlap the blackout, by start time (for refreshing the warning).</summary>
+    [HttpGet("{blackoutId:long}/clashes")]
+    [ProducesResponseType<IReadOnlyList<BlackoutClashDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<BlackoutClashDto>>> Clashes(long roomId, long blackoutId, CancellationToken ct)
+        => await blackouts.GetClashesAsync(roomId, blackoutId, ct) is { } clashes ? Ok(clashes) : NotFound();
 
     [HttpDelete("{blackoutId:long}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

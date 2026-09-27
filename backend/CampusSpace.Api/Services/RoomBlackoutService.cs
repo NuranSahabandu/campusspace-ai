@@ -36,7 +36,7 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
     public Task<BlackoutDto?> GetAsync(long roomId, long blackoutId, CancellationToken ct = default) =>
         ToDtos(db.RoomBlackouts.AsNoTracking().Where(b => b.Id == blackoutId && b.RoomId == roomId)).SingleOrDefaultAsync(ct);
 
-    public async Task<BlackoutDto?> CreateAsync(long roomId, CreateBlackoutRequest request, CancellationToken ct = default)
+    public async Task<BlackoutWithClashesDto?> CreateAsync(long roomId, CreateBlackoutRequest request, CancellationToken ct = default)
     {
         if (!await db.Rooms.AnyAsync(r => r.Id == roomId, ct))
             return null;
@@ -51,7 +51,21 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
         };
         db.RoomBlackouts.Add(blackout);
         await db.SaveChangesAsync(ct);
-        return await GetAsync(roomId, blackout.Id, ct);
+
+        var dto = (await GetAsync(roomId, blackout.Id, ct))!;
+        var clashes = await ClashesOf(roomId, blackout.TimeRange).ToListAsync(ct);
+        return new BlackoutWithClashesDto(
+            dto.Id, dto.RoomId, dto.Start, dto.End, dto.Reason, dto.CreatedById, dto.CreatedByName, dto.CreatedAt, clashes);
+    }
+
+    public async Task<IReadOnlyList<BlackoutClashDto>?> GetClashesAsync(long roomId, long blackoutId, CancellationToken ct = default)
+    {
+        var range = await db.RoomBlackouts.Where(b => b.Id == blackoutId && b.RoomId == roomId)
+            .Select(b => (NpgsqlRange<DateTime>?)b.TimeRange).SingleOrDefaultAsync(ct);
+        if (range is null)
+            return null;
+
+        return await ClashesOf(roomId, range.Value).ToListAsync(ct);
     }
 
     public async Task<bool> DeleteAsync(long roomId, long blackoutId, CancellationToken ct = default)
@@ -64,6 +78,14 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    /// <summary>Active bookings of the room overlapping <paramref name="range"/> (&& in SQL). They are reported, never cancelled.</summary>
+    private IQueryable<BlackoutClashDto> ClashesOf(long roomId, NpgsqlRange<DateTime> range) => db.Bookings.AsNoTracking()
+        .Where(b => b.RoomId == roomId && BookingStatuses.Active.Contains(b.Status) && b.TimeRange.Overlaps(range))
+        .OrderBy(b => b.TimeRange.LowerBound).ThenBy(b => b.Id)
+        .Select(b => new BlackoutClashDto(
+            b.Id, b.RequestId, b.TimeRange.LowerBound, b.TimeRange.UpperBound, b.Status,
+            b.Request.Requester.FullName, b.Request.Requester.Email));
 
     private static IQueryable<BlackoutDto> ToDtos(IQueryable<RoomBlackout> blackouts) => blackouts.Select(b => new BlackoutDto(
         b.Id, b.RoomId, b.TimeRange.LowerBound, b.TimeRange.UpperBound, b.Reason, b.CreatedById, b.CreatedBy.FullName, b.CreatedAt));

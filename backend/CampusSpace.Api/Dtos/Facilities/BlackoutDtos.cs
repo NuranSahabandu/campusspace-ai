@@ -7,6 +7,22 @@ namespace CampusSpace.Api.Dtos.Facilities;
 public record BlackoutDto(
     long Id, long RoomId, DateTime Start, DateTime End, string Reason, long CreatedById, string CreatedByName, DateTime CreatedAt);
 
+/// <summary>
+/// An Active booking of the blackout's room whose [Start, End) overlaps it (UC14). Officer-only data, so it names the
+/// requester. Start and End are UTC.
+/// </summary>
+public record BlackoutClashDto(
+    long BookingId, long RequestId, DateTime Start, DateTime End, string Status, string RequesterName, string RequesterEmail);
+
+/// <summary>
+/// The create response: the blackout plus the bookings it clashes with. A blackout never cancels bookings; the officer
+/// handles each clash.
+/// </summary>
+public record BlackoutWithClashesDto(
+    long Id, long RoomId, DateTime Start, DateTime End, string Reason, long CreatedById, string CreatedByName, DateTime CreatedAt,
+    IReadOnlyList<BlackoutClashDto> Clashes)
+    : BlackoutDto(Id, RoomId, Start, End, Reason, CreatedById, CreatedByName, CreatedAt);
+
 /// <summary>Times may carry any offset (for example +05:30); they are stored as UTC.</summary>
 public record CreateBlackoutRequest(
     [Required] DateTimeOffset? Start,
