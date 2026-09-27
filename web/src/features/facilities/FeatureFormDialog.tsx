@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { api } from '../../api/client'
 import type { FeatureDto } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
+import { equipmentTypesKeys } from '../equipment/useEquipment'
 import { featuresKeys, roomsKeys } from './useFacilities'
 
 export const FEATURE_CODE_HINT = 'lowercase_snake_case, used by the AI agents'
@@ -35,7 +36,8 @@ export function FeatureFormDialog({ feature, onClose }: { feature?: FeatureDto; 
         ? // A disabled field is not submitted, so send the stored code.
           (await api.put<FeatureDto>(`/api/features/${feature.id}`, { ...values, code: feature.code })).data
         : (await api.post<FeatureDto>('/api/features', values)).data,
-    invalidate: [featuresKeys.all, roomsKeys.all],
+    // Equipment types embed the name of the feature that covers them.
+    invalidate: [featuresKeys.all, roomsKeys.all, equipmentTypesKeys.all],
     successMessage: feature ? 'Feature updated' : 'Feature created',
     form: { setError, fields: ['code', 'name'] },
     conflictField: 'code',

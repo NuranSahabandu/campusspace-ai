@@ -5,6 +5,7 @@ describe('routeAccess', () => {
   it('finds the roles of a page, including routes with parameters', () => {
     expect(rolesForPath('/rooms/12')).toEqual([Roles.FacilitiesOfficer])
     expect(rolesForPath('/clubs/3')).toEqual([Roles.Admin])
+    expect(rolesForPath('/equipment/items')).toEqual([Roles.FacilitiesOfficer])
   })
 
   it.each(['/login', '/forbidden', '/no-such-page', 'https://evil.example/', '//evil.example/rooms'])(
@@ -17,6 +18,7 @@ describe('routeAccess', () => {
 
   it('returns to an allowed page with its query string', () => {
     expect(returnPathFor('/rooms?page=2', Roles.FacilitiesOfficer)).toBe('/rooms?page=2')
+    expect(returnPathFor('/equipment/items?typeId=1', Roles.FacilitiesOfficer)).toBe('/equipment/items?typeId=1')
   })
 
   it("goes to the dashboard when the role cannot open the page, or there is none", () => {

@@ -21,6 +21,7 @@ import { parseProblem } from '../../api/problem'
 import type { BuildingDto, FeatureDto } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { equipmentTypesKeys } from '../equipment/useEquipment'
 import { BuildingFormDialog } from './BuildingFormDialog'
 import { FEATURE_CODE_HINT, FeatureFormDialog } from './FeatureFormDialog'
 import { IN_USE_MESSAGE, buildingsKeys, featuresKeys, roomsKeys, useBuildings, useFeatures } from './useFacilities'
@@ -142,7 +143,7 @@ export function ReferencePage() {
   })
   const deleteFeature = useApiMutation<number>({
     mutationFn: (id) => api.delete(`/api/features/${id}`),
-    invalidate: [featuresKeys.all, roomsKeys.all],
+    invalidate: [featuresKeys.all, roomsKeys.all, equipmentTypesKeys.all],
     successMessage: 'Feature deleted',
     conflictMessage: IN_USE_MESSAGE,
   })

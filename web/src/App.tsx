@@ -1,6 +1,6 @@
 import { lazy, type ReactNode, Suspense } from 'react'
 import { LinearProgress } from '@mui/material'
-import { Route, Routes } from 'react-router'
+import { Navigate, Route, Routes } from 'react-router'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { type AppPath, ROUTE_ROLES } from './auth/routeAccess'
 import { LoginPage } from './features/auth/LoginPage'
@@ -22,6 +22,12 @@ const RoomDetailPage = lazy(() =>
 const ReferencePage = lazy(() =>
   import('./features/facilities/ReferencePage').then((m) => ({ default: m.ReferencePage })),
 )
+const EquipmentTypesPage = lazy(() =>
+  import('./features/equipment/EquipmentTypesPage').then((m) => ({ default: m.EquipmentTypesPage })),
+)
+const EquipmentItemsPage = lazy(() =>
+  import('./features/equipment/EquipmentItemsPage').then((m) => ({ default: m.EquipmentItemsPage })),
+)
 
 /** A lazy page: the role guard for its path (ROUTE_ROLES) plus a Suspense boundary for the lazy chunk. */
 function GuardedPage({ path, children }: { path: AppPath; children: ReactNode }) {
@@ -42,7 +48,10 @@ export function AppRoutes() {
           <Route index element={<DashboardPage />} />
           <Route path="rooms" element={<GuardedPage path="/rooms"><RoomsPage /></GuardedPage>} />
           <Route path="rooms/:id" element={<GuardedPage path="/rooms/:id"><RoomDetailPage /></GuardedPage>} />
-          <Route path="equipment" element={<ComingSoonPage title="Equipment" owner="B" />} />
+          {/* Not a page of its own: the target's guard decides access. */}
+          <Route path="equipment" element={<Navigate to="/equipment/types" replace />} />
+          <Route path="equipment/types" element={<GuardedPage path="/equipment/types"><EquipmentTypesPage /></GuardedPage>} />
+          <Route path="equipment/items" element={<GuardedPage path="/equipment/items"><EquipmentItemsPage /></GuardedPage>} />
           <Route path="requests" element={<ComingSoonPage title="Requests" owner="C" />} />
           <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
           <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />

@@ -174,3 +174,61 @@ export interface CreateBlackoutRequest {
   end: string
   reason: string
 }
+
+/** How many items of an equipment type are in each status. */
+export interface EquipmentItemCountsDto {
+  total: number
+  available: number
+  onLoan: number
+  underRepair: number
+  retired: number
+}
+
+/** An equipment type in a list. coveredByFeatureName is null when coveredByFeatureCode is. */
+export interface EquipmentTypeDto {
+  id: number
+  code: string
+  name: string
+  category: string
+  feePerBooking: number
+  coveredByFeatureCode: string | null
+  coveredByFeatureName: string | null
+  itemCounts: EquipmentItemCountsDto
+}
+
+export interface EquipmentTypeRefDto {
+  id: number
+  code: string
+  name: string
+}
+
+/** The code cannot change on update. coveredByFeatureCode null means none. */
+export interface EquipmentTypeRequest {
+  code: string
+  name: string
+  category: string
+  feePerBooking: number
+  coveredByFeatureCode: string | null
+}
+
+/** An equipment item. condition is one of EQUIPMENT_CONDITIONS, status one of EQUIPMENT_STATUSES. */
+export interface EquipmentItemDto {
+  id: number
+  assetTag: string
+  typeId: number
+  typeCode: string
+  typeName: string
+  condition: string
+  status: string
+  notes: string | null
+  updatedAt: string
+}
+
+/** typeId cannot change on update; status OnLoan is set only by loans. */
+export interface EquipmentItemRequest {
+  assetTag: string
+  typeId: number
+  condition: string
+  status: string
+  notes: string | null
+}

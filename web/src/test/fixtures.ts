@@ -6,6 +6,8 @@ import type {
   ClubDetailDto,
   ClubDto,
   ClubMemberDto,
+  EquipmentItemDto,
+  EquipmentTypeDto,
   FeatureDto,
   PagedResult,
   RoomDto,
@@ -152,4 +154,77 @@ export const BLACKOUTS: BlackoutDto[] = [
     createdByName: 'Mr. Perera',
     createdAt: '2026-09-20T08:00:00Z',
   },
+]
+
+export const EQUIPMENT_CATEGORIES = ['Audio', 'Visual', 'Computing', 'Presentation', 'Accessory']
+
+const counts = (available: number, onLoan: number, underRepair: number, retired: number) => ({
+  total: available + onLoan + underRepair + retired,
+  available,
+  onLoan,
+  underRepair,
+  retired,
+})
+
+/** Mirrors the demo seed: MIC-WIRELESS (500, 7 of 8 available) and PROJ-PORTABLE (1500, covered by projector). */
+export const EQUIPMENT_TYPES: EquipmentTypeDto[] = [
+  {
+    id: 1,
+    code: 'MIC-WIRELESS',
+    name: 'Wireless microphone',
+    category: 'Audio',
+    feePerBooking: 500,
+    coveredByFeatureCode: null,
+    coveredByFeatureName: null,
+    itemCounts: counts(7, 0, 1, 0),
+  },
+  {
+    id: 2,
+    code: 'PROJ-PORTABLE',
+    name: 'Portable projector',
+    category: 'Visual',
+    feePerBooking: 1500,
+    coveredByFeatureCode: 'projector',
+    coveredByFeatureName: 'Projector',
+    itemCounts: counts(4, 1, 0, 0),
+  },
+  {
+    id: 3,
+    code: 'CLICKER',
+    name: 'Presentation clicker',
+    category: 'Presentation',
+    feePerBooking: 100,
+    coveredByFeatureCode: null,
+    coveredByFeatureName: null,
+    itemCounts: counts(0, 0, 0, 0),
+  },
+]
+
+export const makeItem = (overrides: Partial<EquipmentItemDto> = {}): EquipmentItemDto => ({
+  id: 1,
+  assetTag: 'EQ-MICW-001',
+  typeId: 1,
+  typeCode: 'MIC-WIRELESS',
+  typeName: 'Wireless microphone',
+  condition: 'Good',
+  status: 'Available',
+  notes: null,
+  updatedAt: '2026-09-26T08:45:00Z',
+  ...overrides,
+})
+
+export const EQUIPMENT_ITEMS: EquipmentItemDto[] = [
+  makeItem(),
+  makeItem({ id: 2, assetTag: 'EQ-MICW-002', condition: 'Damaged', status: 'UnderRepair', notes: 'Cracked grille' }),
+  makeItem({
+    id: 3,
+    assetTag: 'EQ-PROJ-001',
+    typeId: 2,
+    typeCode: 'PROJ-PORTABLE',
+    typeName: 'Portable projector',
+    condition: 'MinorWear',
+    status: 'OnLoan',
+    notes: 'Scratched lens cover',
+  }),
+  makeItem({ id: 4, assetTag: 'EQ-PROJ-002', typeId: 2, typeCode: 'PROJ-PORTABLE', typeName: 'Portable projector', status: 'Retired' }),
 ]
