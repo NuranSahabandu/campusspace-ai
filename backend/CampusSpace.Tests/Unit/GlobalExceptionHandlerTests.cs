@@ -50,6 +50,7 @@ public class GlobalExceptionHandlerTests
     [Theory]
     [InlineData(ClubMemberConfiguration.OneRepresentativeIndex, "Club already has a representative")]
     [InlineData("IX_Users_Email", "Duplicate value")]
+    [InlineData("AK_Features_Code", "Duplicate value")]
     public async Task Unique_violations_are_mapped_by_constraint_name(string constraintName, string title)
     {
         var exception = new DbUpdateException("save failed", Postgres(PostgresErrorCodes.UniqueViolation, constraintName));

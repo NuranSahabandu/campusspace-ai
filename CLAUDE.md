@@ -239,7 +239,9 @@ row that is still referenced raises 23503, which maps to 409 "In use"; services 
 on the field instead. Time ranges (`RoomBlackouts.TimeRange`, and later bookings) are UTC `tstzrange` `[start, end)`, enforced by a
 CHECK; build them with `new NpgsqlRange<DateTime>(start.UtcDateTime, true, end.UtcDateTime, false)`. Rooms have no opening
 hours: `PolicySettings.opening_hours` (Component D) is the only source. Endpoint tests create their own building and rooms
-with `FacilitiesTestData` (the shared test database is not seeded).
+with `FacilitiesTestData` (the shared test database is not seeded). Feature and EquipmentType codes are immutable after
+creation, because other tables and the agent service reference them by code. A changed Feature code is a 409 "In use" when it
+is referenced, otherwise a 400 on Code. A changed EquipmentType code is always a 400 on Code.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).

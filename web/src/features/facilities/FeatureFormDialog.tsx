@@ -8,6 +8,7 @@ import { useApiMutation } from '../../api/useApiMutation'
 import { featuresKeys, roomsKeys } from './useFacilities'
 
 export const FEATURE_CODE_HINT = 'lowercase_snake_case, used by the AI agents'
+export const FEATURE_CODE_LOCKED = "Codes can't be changed"
 
 // Mirrors FeatureRequest. The server lower-cases the code, so check it lower-cased.
 const schema = z.object({
@@ -22,7 +23,7 @@ const schema = z.object({
 
 type FeatureForm = z.infer<typeof schema>
 
-/** New feature when `feature` is omitted, otherwise Edit. A code that rooms still use cannot be renamed (409). */
+/** New feature when `feature` is omitted, otherwise Edit. Codes are immutable, so Edit locks the Code field. */
 export function FeatureFormDialog({ feature, onClose }: { feature?: FeatureDto; onClose: () => void }) {
   const { register, handleSubmit, setError, formState: { errors } } = useForm<FeatureForm>({
     resolver: zodResolver(schema),
@@ -31,7 +32,8 @@ export function FeatureFormDialog({ feature, onClose }: { feature?: FeatureDto; 
   const mutation = useApiMutation<FeatureForm, FeatureDto, FeatureForm>({
     mutationFn: async (values) =>
       feature
-        ? (await api.put<FeatureDto>(`/api/features/${feature.id}`, values)).data
+        ? // A disabled field is not submitted, so send the stored code.
+          (await api.put<FeatureDto>(`/api/features/${feature.id}`, { ...values, code: feature.code })).data
         : (await api.post<FeatureDto>('/api/features', values)).data,
     invalidate: [featuresKeys.all, roomsKeys.all],
     successMessage: feature ? 'Feature updated' : 'Feature created',
@@ -50,8 +52,9 @@ export function FeatureFormDialog({ feature, onClose }: { feature?: FeatureDto; 
             <TextField
               label="Code"
               {...register('code')}
+              disabled={!!feature}
               error={!!errors.code}
-              helperText={errors.code?.message ?? FEATURE_CODE_HINT}
+              helperText={errors.code?.message ?? (feature ? FEATURE_CODE_LOCKED : FEATURE_CODE_HINT)}
             />
             <TextField label="Name" {...register('name')} error={!!errors.name} helperText={errors.name?.message} />
           </Stack>

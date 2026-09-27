@@ -104,6 +104,66 @@ public class BuildingsFeaturesEndpointsTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Changing_the_code_of_an_unused_feature_returns_400_on_code()
+    {
+        var officer = await OfficerAsync();
+        var code = UniqueFeatureCode();
+        var id = (await (await officer.PostAsJsonAsync("/api/features", new { code, name = "Temp" })).ReadJsonAsync()).GetProperty("id").GetInt64();
+
+        var response = await officer.PutAsJsonAsync($"/api/features/{id}", new { code = UniqueFeatureCode(), name = "Temp" });
+
+        var errors = (await response.ShouldBeProblemAsync(400)).GetProperty("errors");
+        errors.GetProperty("Code")[0].GetString().Should().Be("Codes can't be changed");
+        (await (await officer.GetAsync($"/api/features/{id}")).ReadJsonAsync()).GetProperty("code").GetString().Should().Be(code);
+    }
+
+    [Fact]
+    public async Task Editing_only_the_name_of_an_in_use_feature_returns_200()
+    {
+        var officer = await OfficerAsync();
+        var code = UniqueFeatureCode();
+        var id = (await (await officer.PostAsJsonAsync("/api/features", new { code, name = "Temp" })).ReadJsonAsync()).GetProperty("id").GetInt64();
+        var buildingId = await FacilitiesTestData.CreateBuildingAsync(fixture.Factory, FacilitiesTestData.UniquePrefix());
+        await FacilitiesTestData.CreateRoomAsync(
+            fixture.Factory, buildingId, FacilitiesTestData.UniquePrefix(), RoomTypes.SeminarRoom, 20, [code]);
+
+        // The same code in other casing and with spaces normalizes to the stored one, so it is not a change.
+        var response = await officer.PutAsJsonAsync($"/api/features/{id}", new { code = $" {code.ToUpperInvariant()} ", name = "Renamed" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.ReadJsonAsync();
+        body.GetProperty("code").GetString().Should().Be(code);
+        body.GetProperty("name").GetString().Should().Be("Renamed");
+    }
+
+    [Fact]
+    public async Task Duplicate_feature_code_on_create_returns_409()
+    {
+        var officer = await OfficerAsync();
+        var code = UniqueFeatureCode();
+        (await officer.PostAsJsonAsync("/api/features", new { code, name = "A" })).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var duplicate = await officer.PostAsJsonAsync("/api/features", new { code, name = "B" });
+
+        (await duplicate.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be("Feature code is already taken");
+    }
+
+    [Fact]
+    public async Task A_feature_covering_an_equipment_type_cannot_be_recoded_or_deleted()
+    {
+        var officer = await OfficerAsync();
+        var code = UniqueFeatureCode();
+        var id = (await (await officer.PostAsJsonAsync("/api/features", new { code, name = "Temp" })).ReadJsonAsync()).GetProperty("id").GetInt64();
+        await EquipmentTestData.CreateTypeAsync(fixture.Factory, coveredByFeatureCode: code);
+
+        var recode = await officer.PutAsJsonAsync($"/api/features/{id}", new { code = UniqueFeatureCode(), name = "Temp" });
+        var delete = await officer.DeleteAsync($"/api/features/{id}");
+
+        (await recode.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be("In use");
+        (await delete.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be("In use");
+    }
+
+    [Fact]
     public async Task Deleting_an_unused_feature_returns_204()
     {
         var officer = await OfficerAsync();
