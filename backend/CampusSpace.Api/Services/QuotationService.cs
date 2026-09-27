@@ -2,14 +2,63 @@ using System.Text.Json;
 using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Data.Configurations;
+using CampusSpace.Api.Dtos.Quotations;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CampusSpace.Api.Services;
 
-public sealed class QuotationService(AppDbContext db, ICurrentUser currentUser) : IQuotationService
+public sealed class QuotationService(
+    AppDbContext db,
+    ICurrentUser currentUser,
+    IQuotationCalculator calculator,
+    IBookingRequestService requests) : IQuotationService
 {
+    public const string OwnRoleMessage = "You can only preview prices for your own role.";
+    public const string RoleRequiredMessage = "Choose the requester role to price for.";
+
+    public async Task<QuotationDto?> PreviewAsync(QuotePreviewRequest request, CancellationToken ct = default)
+    {
+        string role;
+        if (currentUser.IsInRole(Roles.FacilitiesOfficer))
+            role = request.RequesterRole ?? throw new BusinessRuleException(nameof(request.RequesterRole), RoleRequiredMessage);
+        else
+        {
+            role = currentUser.IsInRole(Roles.Lecturer) ? RequesterRoles.Lecturer : RequesterRoles.Student;
+            if (request.RequesterRole is { } asked && asked != role)
+                throw new BusinessRuleException(nameof(request.RequesterRole), OwnRoleMessage);
+        }
+
+        var equipment = (request.Equipment ?? []).Select(l => new QuoteEquipmentLine(l.TypeId, l.Quantity)).ToList();
+        var quote = await calculator.CalculateAsync(
+            new QuoteInput(request.RoomId!.Value, request.Start!.Value, request.End!.Value, role, equipment), ct);
+        return quote is null ? null : new QuotationDto(null, null, null,
+            quote.Lines.Select(l => new QuotationLineDto(l.Kind, l.Description, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
+            quote.Subtotal, quote.Discount, quote.DiscountReason, quote.Exempt, quote.Total);
+    }
+
+    public async Task<QuotationDto?> GetAsync(long id, CancellationToken ct = default)
+    {
+        var requestId = await db.Quotations.Where(q => q.Id == id).Select(q => (long?)q.RequestId).SingleOrDefaultAsync(ct);
+        // The same rule as request detail: the owner or an Officer.
+        return requestId is { } rid && await requests.EnsureCanReadAsync(rid, ct)
+            ? await LoadAsync(db.Quotations.Where(q => q.Id == id), ct)
+            : null;
+    }
+
+    public async Task<QuotationDto?> GetForRequestAsync(long requestId, CancellationToken ct = default) =>
+        await requests.EnsureCanReadAsync(requestId, ct)
+            ? await LoadAsync(db.Quotations.Where(q => q.RequestId == requestId && QuotationStatuses.Live.Contains(q.Status)), ct)
+            : null;
+
+    private static Task<QuotationDto?> LoadAsync(IQueryable<Quotation> quotations, CancellationToken ct) =>
+        quotations.AsNoTracking().Select(q => new QuotationDto(
+            q.Id, q.RequestId, q.Status,
+            q.Lines.OrderBy(l => l.Id).Select(l => new QuotationLineDto(l.Kind, l.Description, l.Qty, l.UnitPrice, l.LineTotal)).ToList(),
+            q.Subtotal, q.Discount, q.DiscountReason, q.IsExempt, q.Total, QuotationDto.Lkr))
+            .SingleOrDefaultAsync(ct);
+
     public async Task<Quotation> CreateDraftAsync(long requestId, QuoteResult quote, CancellationToken ct = default)
     {
         if (db.Database.CurrentTransaction is null)

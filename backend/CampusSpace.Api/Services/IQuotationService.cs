@@ -12,4 +12,19 @@ public interface IQuotationService
     /// added to the context, so the caller's SaveChanges and commit make them atomic. An Issued quote is a 409.
     /// </summary>
     Task<Quotation> CreateDraftAsync(long requestId, QuoteResult quote, CancellationToken ct = default);
+
+    /// <summary>
+    /// Prices a slot for the caller without saving. Students and Lecturers are priced as their own role (a different
+    /// RequesterRole is a 400); an Officer must name the role. Null when the room is unknown or inactive (404).
+    /// </summary>
+    Task<QuotationDto?> PreviewAsync(QuotePreviewRequest request, CancellationToken ct = default);
+
+    /// <summary>Null if not found. Throws ForbiddenException for a requester who doesn't own the request.</summary>
+    Task<QuotationDto?> GetAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// The request's live (Draft or Issued) quote. Null if the request doesn't exist or has none. Throws
+    /// ForbiddenException for a requester who doesn't own the request.
+    /// </summary>
+    Task<QuotationDto?> GetForRequestAsync(long requestId, CancellationToken ct = default);
 }

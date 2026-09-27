@@ -175,8 +175,7 @@ public sealed class BookingRequestService(
     private Task<int> CountOpenAsync(long requesterId, CancellationToken ct) =>
         db.BookingRequests.CountAsync(r => r.RequesterId == requesterId && RequestStatuses.Open.Contains(r.Status), ct);
 
-    /// <summary>False when the request doesn't exist. Throws ForbiddenException for a requester who isn't the owner.</summary>
-    private async Task<bool> EnsureCanReadAsync(long id, CancellationToken ct)
+    public async Task<bool> EnsureCanReadAsync(long id, CancellationToken ct = default)
     {
         var ownerId = await db.BookingRequests.Where(r => r.Id == id).Select(r => (long?)r.RequesterId).SingleOrDefaultAsync(ct);
         if (ownerId is null)
