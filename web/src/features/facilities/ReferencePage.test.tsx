@@ -85,4 +85,37 @@ describe('ReferencePage', () => {
     expect(await within(dialog).findByText('Use snake_case, for example sound_system')).toBeInTheDocument()
     expect(posted).toBe(false)
   })
+
+  it('locks the feature code when editing and still sends it', async () => {
+    let body: unknown
+    server.use(
+      ...listHandlers,
+      http.put(`${API}/api/features/3`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({ id: 3, code: 'projector', name: 'Beamer' })
+      }),
+    )
+    const { user } = renderApp('/facilities/reference', { role: Roles.FacilitiesOfficer })
+
+    await user.click(await screen.findByRole('button', { name: 'Edit projector' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit projector' })
+    expect(within(dialog).getByLabelText('Code')).toBeDisabled()
+    expect(within(dialog).getByText("Codes can't be changed")).toBeInTheDocument()
+    await user.clear(within(dialog).getByLabelText('Name'))
+    await user.type(within(dialog).getByLabelText('Name'), 'Beamer')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(body).toEqual({ code: 'projector', name: 'Beamer' }))
+  })
+
+  it('leaves the feature code editable when creating', async () => {
+    server.use(...listHandlers)
+    const { user } = renderApp('/facilities/reference', { role: Roles.FacilitiesOfficer })
+
+    await user.click(await screen.findByRole('button', { name: 'New feature' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New feature' })
+
+    expect(within(dialog).getByLabelText('Code')).toBeEnabled()
+    expect(within(dialog).queryByText("Codes can't be changed")).not.toBeInTheDocument()
+  })
 })
