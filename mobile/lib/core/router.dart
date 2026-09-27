@@ -7,6 +7,9 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/auth/models.dart';
 import '../features/home/home_screen.dart';
+import '../features/requests/my_requests_screen.dart';
+import '../features/requests/new_request_screen.dart';
+import '../features/requests/request_detail_screen.dart';
 import '../features/rooms/room_detail_screen.dart';
 import '../features/rooms/rooms_screen.dart';
 
@@ -16,17 +19,20 @@ abstract final class AppRoutes {
   static const register = '/register';
   static const home = '/home';
   static const rooms = '/rooms';
+  static const requests = '/requests';
+  static const newRequest = '/requests/new';
 
   static String room(int id) => '$rooms/$id';
+  static String request(int id) => '$requests/$id';
 }
 
 const _publicRoutes = {AppRoutes.login, AppRoutes.register};
 
-/// Browsing rooms is for requesters (UC02); lab technicians do not book rooms.
+/// Browsing rooms (UC02) and booking requests (UC05, UC06) are for requesters; lab technicians do not book rooms.
 const _requesterRoles = {Roles.student, Roles.lecturer};
 
-bool _isRequesterOnly(String location) =>
-    location == AppRoutes.rooms || location.startsWith('${AppRoutes.rooms}/');
+bool _isRequesterOnly(String location) => [AppRoutes.rooms, AppRoutes.requests]
+    .any((root) => location == root || location.startsWith('$root/'));
 
 /// Where the user may be, given the auth state. Null means "stay". An error counts as signed out.
 /// Signed-in users who may not open a requester-only screen go home.
@@ -61,6 +67,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: ':id',
             builder: (_, state) => RoomDetailScreen(id: int.tryParse(state.pathParameters['id']!)),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: AppRoutes.requests,
+        builder: (_, _) => const MyRequestsScreen(),
+        routes: [
+          // Before ':id', which would also match "new".
+          GoRoute(path: 'new', builder: (_, _) => const NewRequestScreen()),
+          GoRoute(
+            path: ':id',
+            builder: (_, state) => RequestDetailScreen(id: int.tryParse(state.pathParameters['id']!)),
           ),
         ],
       ),
