@@ -246,6 +246,18 @@ with `FacilitiesTestData` (the shared test database is not seeded). Feature and 
 creation, because other tables and the agent service reference them by code. A changed Feature code is a 409 "In use" when it
 is referenced, otherwise a 400 on Code. A changed EquipmentType code is always a 400 on Code.
 
+Pricing and policy conventions (Component D): Booking limits (lead time, advance window, duration, capacity ratio,
+granularity, opening hours, cancellation, open-request cap) are read only through IPolicySettingsService. Never hard-code
+48 h, 60/90 days, 8 h, 3×, 30 min. `GetAsync()` returns a typed `PolicySnapshot` read from the DB on every call; any
+signed-in client reads the values from `GET /api/policy-settings/public` (the officer route has the metadata). Pricing
+rules in effect are read-only. Change a price by adding a rule with a later ValidFrom. Price a booking with
+`IPricingRuleService.GetEffectiveRuleAsync` (latest ValidFrom on or before the booking's campus date). Audit logs store
+property names only, except PolicySettings, which log old/new values per changed key (addendum A.1; they aren't personal
+data or secrets). Campus dates come from `CampusTime` (`Today(TimeProvider)`, `DateOf(instant)`), never from the UTC date.
+New policy keys need a migration (the CHECK lists them) plus a `PolicySettingDefaults` entry. Tests that change policy or
+need exact pricing statuses use `fixture.CreateIsolatedFactoryAsync()` (their own database); pricing tests on the shared
+database use `PricingTestData.UniqueFutureDate()`.
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
