@@ -25,3 +25,27 @@ export const campusDayBounds = (date: string) => ({
  * for example "2026-09-28T08:00:00+05:30". Seconds in the input, if any, are dropped.
  */
 export const campusLocalToIso = (value: string) => `${value.slice(0, 16)}:00${CAMPUS_UTC_OFFSET}`
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * An API DateOnly ("yyyy-MM-dd", a campus calendar date) for display, for example "1 Jan 2026". Parsed from the text,
+ * never through new Date(): that reads a date-only string as UTC midnight, which is the previous day west of UTC.
+ */
+export const formatDateOnly = (date: string): string => {
+  const [year, month, day] = date.split('-').map(Number)
+  return `${day} ${MONTHS[month - 1]} ${year}`
+}
+
+const campusDateFormat = new Intl.DateTimeFormat('en-CA', {
+  timeZone: CAMPUS_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/** Today's campus date as "yyyy-MM-dd" (the server's CampusTime.Today), for a date input's min and date checks. */
+export const campusToday = (): string => {
+  const parts = Object.fromEntries(campusDateFormat.formatToParts(new Date()).map((p) => [p.type, p.value]))
+  return `${parts.year}-${parts.month}-${parts.day}`
+}

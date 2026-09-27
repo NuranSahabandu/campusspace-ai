@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle } from '@mui/material'
 
 interface Props {
@@ -11,14 +12,17 @@ interface Props {
   pending?: boolean
   onConfirm: () => void
   onClose: () => void
+  /** Extra content under the message, for example a list of changes. */
+  children?: ReactNode
 }
 
-export function ConfirmDialog({ open, title, message, confirmLabel, destructive, pending, onConfirm, onClose }: Props) {
+export function ConfirmDialog({ open, title, message, confirmLabel, destructive, pending, onConfirm, onClose, children }: Props) {
   return (
     <Dialog open={open} onClose={pending ? undefined : onClose} aria-labelledby="confirm-dialog-title">
       <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
       <DialogContent>
         <DialogContentText>{message}</DialogContentText>
+        {children}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={pending}>
