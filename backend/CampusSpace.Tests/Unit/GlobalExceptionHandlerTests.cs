@@ -61,6 +61,7 @@ public class GlobalExceptionHandlerTests
     [Theory]
     [InlineData(ClubMemberConfiguration.OneRepresentativeIndex, "Club already has a representative")]
     [InlineData(PricingRuleConfiguration.UniqueRuleIndex, "A rule for this room type, role and date already exists")]
+    [InlineData(QuotationConfiguration.LiveQuoteIndex, "Request already has a live quotation")]
     [InlineData("IX_Users_Email", "Duplicate value")]
     [InlineData("AK_Features_Code", "Duplicate value")]
     public async Task Unique_violations_are_mapped_by_constraint_name(string constraintName, string title)
