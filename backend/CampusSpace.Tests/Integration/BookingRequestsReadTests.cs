@@ -65,6 +65,8 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
         row.GetProperty("budgetLkr").GetDecimal().Should().Be(1500.5m);
         row.GetProperty("clubName").GetString().Should().StartWith("Club ");
         row.GetProperty("requesterName").GetString().Should().StartWith("Test Student");
+        var me = await client.GetFromJsonAsync<JsonElement>("/api/auth/me");
+        row.GetProperty("requesterEmail").GetString().Should().Be(me.GetProperty("email").GetString());
         row.GetProperty("createdAt").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
         userId.Should().BePositive();
     }

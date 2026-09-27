@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { GridColDef } from '@mui/x-data-grid'
 import { http, HttpResponse } from 'msw'
+import { MemoryRouter } from 'react-router'
 import { usePagedQuery } from '../api/list'
 import { useServerTable } from '../hooks/useServerTable'
 import { AppProviders } from '../providers'
@@ -17,14 +18,15 @@ interface Thing {
 const columns: GridColDef<Thing>[] = [{ field: 'name', headerName: 'Name', flex: 1 }]
 const SORT_FIELDS = { name: 'name' }
 
-function ThingsGrid() {
-  const table = useServerTable({ sortFields: SORT_FIELDS, pageSize: 10 })
+function ThingsGrid({ urlState }: { urlState: boolean }) {
+  const table = useServerTable({ sortFields: SORT_FIELDS, pageSize: 10, urlState })
   const query = usePagedQuery<Thing>(['things', table.params], '/api/things', table.params)
   return <ServerDataGrid query={query} columns={columns} gridProps={table.gridProps} noun="things" emptyText="None" />
 }
 
 describe('ServerDataGrid + useServerTable', () => {
-  it('sends page and sort changes as API query params', async () => {
+  // urlState keeps the same behaviour, with the state in the URL instead of the component.
+  it.each([false, true])('sends page and sort changes as API query params (urlState %s)', async (urlState) => {
     const requests: URLSearchParams[] = []
     server.use(
       http.get(`${API}/api/things`, ({ request }) => {
@@ -38,7 +40,9 @@ describe('ServerDataGrid + useServerTable', () => {
     const user = userEvent.setup()
     render(
       <AppProviders client={createQueryClient({ retry: false })}>
-        <ThingsGrid />
+        <MemoryRouter>
+          <ThingsGrid urlState={urlState} />
+        </MemoryRouter>
       </AppProviders>,
     )
 

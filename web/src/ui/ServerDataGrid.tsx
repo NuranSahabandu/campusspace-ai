@@ -1,9 +1,9 @@
 import { Alert, Box, Button, Paper, Skeleton, Stack, Typography } from '@mui/material'
-import { DataGrid, type GridColDef, type GridValidRowModel } from '@mui/x-data-grid'
+import { DataGrid, type GridColDef, type GridRowParams, type GridValidRowModel } from '@mui/x-data-grid'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { parseProblem } from '../api/problem'
 import type { PagedResult } from '../api/types'
-import type { ServerTableGridProps } from '../hooks/useServerTable'
+import { PAGE_SIZE_OPTIONS, type ServerTableGridProps } from '../hooks/useServerTable'
 
 interface Props<T extends GridValidRowModel> {
   query: UseQueryResult<PagedResult<T>>
@@ -14,6 +14,10 @@ interface Props<T extends GridValidRowModel> {
   emptyText: string
   getRowId?: (row: T) => string | number
   height?: number
+  /** Opens a row (for example its detail page). Rows then show a pointer cursor. */
+  onRowClick?: (row: T) => void
+  /** Fixed row height, for cells with two lines. */
+  rowHeight?: number
 }
 
 /**
@@ -28,8 +32,10 @@ export function ServerDataGrid<T extends GridValidRowModel>({
   emptyText,
   getRowId,
   height = 600,
+  onRowClick,
+  rowHeight,
 }: Props<T>) {
-  const { data, isPending, isFetching, isError, error, refetch } = query
+  const { data, isPending, isFetching, isError, error, refetch, fetchStatus } = query
 
   if (isError) {
     return (
@@ -46,7 +52,10 @@ export function ServerDataGrid<T extends GridValidRowModel>({
     )
   }
 
-  if (isPending) {
+  // A disabled query that has never loaded (for example while a filter is invalid) is not loading: show an empty grid.
+  const neverLoaded = isPending && fetchStatus === 'idle'
+
+  if (isPending && !neverLoaded) {
     return (
       <Box aria-label={`Loading ${noun}`}>
         {Array.from({ length: 6 }, (_, i) => (
@@ -65,15 +74,18 @@ export function ServerDataGrid<T extends GridValidRowModel>({
   return (
     <Paper variant="outlined" sx={{ height, width: '100%' }}>
       <DataGrid
-        rows={data.items}
+        rows={data?.items ?? []}
         columns={columns}
         getRowId={getRowId}
-        rowCount={data.total}
+        rowCount={data?.total ?? 0}
         loading={isFetching}
         paginationMode="server"
         sortingMode="server"
         {...gridProps}
-        pageSizeOptions={[10, 20, 50, 100]}
+        pageSizeOptions={[...PAGE_SIZE_OPTIONS]}
+        rowHeight={rowHeight}
+        onRowClick={onRowClick ? (params: GridRowParams<T>) => onRowClick(params.row) : undefined}
+        sx={onRowClick ? { '& .MuiDataGrid-row': { cursor: 'pointer' } } : undefined}
         disableColumnFilter
         disableRowSelectionOnClick
         // Pages are at most 100 rows, so virtualization buys nothing; turning it off

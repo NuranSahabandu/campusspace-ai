@@ -1,5 +1,7 @@
 import type {
   AuditLogDto,
+  BookingRequestDetailDto,
+  BookingRequestSummaryDto,
   AuthResponse,
   BlackoutDto,
   BuildingDto,
@@ -311,3 +313,139 @@ export const POLICY_SETTINGS: PolicySettingDto[] = [
   ),
   setting('max_open_requests', 'int', '3', 'Most open requests a requester can have at once'),
 ]
+
+/** Active clubs as an officer reads them from GET /api/clubs (the request list's Club filter). */
+export const REQUEST_CLUBS: ClubDto[] = [
+  { id: 2, name: 'Drama Society', isActive: true, memberCount: 2, representativeName: 'Nethmi Rajapaksa' },
+  { id: 1, name: 'Robotics Club', isActive: true, memberCount: 3, representativeName: 'Kavindi Perera' },
+]
+
+/**
+ * Booking request details shaped like GET /api/booking-requests/{id}: the two Development seed requests (Drama Society
+ * rehearsal, guest lecture) and a Robotics Club workshop waiting for approval, whose notes contain markup and a newline.
+ */
+export const BOOKING_REQUEST_DETAILS: BookingRequestDetailDto[] = [
+  {
+    id: 1,
+    purpose: 'Drama Society rehearsal',
+    status: 'Submitted',
+    attendees: 30,
+    requestedStart: '2026-10-26T04:30:00Z',
+    requestedEnd: '2026-10-26T06:30:00Z',
+    budgetLkr: 3000,
+    notes: null,
+    requester: { id: 7, name: 'Nethmi Rajapaksa', email: 'nethmi@campusspace.local' },
+    club: { id: 2, name: 'Drama Society' },
+    requiredFeatures: [
+      { code: 'ac', name: 'Air conditioning' },
+      { code: 'smart_board', name: 'Smart board' },
+    ],
+    equipment: [{ typeId: 3, typeCode: 'MIC-WIRED', typeName: 'Wired microphone', quantity: 1 }],
+    history: [
+      {
+        fromStatus: null,
+        toStatus: 'Submitted',
+        changedById: 7,
+        changedByName: 'Nethmi Rajapaksa',
+        reason: null,
+        changedAt: '2026-09-27T13:02:47.677608Z',
+      },
+    ],
+    latestProposal: null,
+    createdAt: '2026-09-27T13:02:47.677815Z',
+    updatedAt: '2026-09-27T13:02:47.677815Z',
+  },
+  {
+    id: 2,
+    purpose: 'Guest lecture: AI in agriculture',
+    status: 'Submitted',
+    attendees: 120,
+    requestedStart: '2026-10-26T04:30:00Z',
+    requestedEnd: '2026-10-26T06:30:00Z',
+    budgetLkr: 0,
+    notes: null,
+    requester: { id: 2, name: 'Dr. Nimal Fernando', email: 'lecturer@campusspace.local' },
+    club: null,
+    requiredFeatures: [
+      { code: 'projector', name: 'Projector' },
+      { code: 'sound_system', name: 'Sound system' },
+    ],
+    equipment: [{ typeId: 1, typeCode: 'MIC-WIRELESS', typeName: 'Wireless microphone', quantity: 2 }],
+    history: [
+      {
+        fromStatus: null,
+        toStatus: 'Submitted',
+        changedById: 2,
+        changedByName: 'Dr. Nimal Fernando',
+        reason: null,
+        changedAt: '2026-09-27T13:02:47.677608Z',
+      },
+    ],
+    latestProposal: null,
+    createdAt: '2026-09-27T13:02:47.677815Z',
+    updatedAt: '2026-09-27T13:02:47.677815Z',
+  },
+  {
+    id: 3,
+    purpose: 'Robotics Club Arduino workshop',
+    status: 'PendingApproval',
+    attendees: 40,
+    requestedStart: '2026-10-20T08:30:00Z',
+    requestedEnd: '2026-10-20T11:30:00Z',
+    budgetLkr: 12500.5,
+    notes: 'Please keep <b>bold</b> as typed.\nWe need extension cords.',
+    requester: { id: 1, name: 'Kavindi Perera', email: 'kavindi@campusspace.local' },
+    club: { id: 1, name: 'Robotics Club' },
+    requiredFeatures: [{ code: 'projector', name: 'Projector' }],
+    equipment: [
+      { typeId: 1, typeCode: 'MIC-WIRELESS', typeName: 'Wireless microphone', quantity: 1 },
+      { typeId: 2, typeCode: 'PROJ-PORTABLE', typeName: 'Portable projector', quantity: 2 },
+    ],
+    history: [
+      {
+        fromStatus: null,
+        toStatus: 'Submitted',
+        changedById: 1,
+        changedByName: 'Kavindi Perera',
+        reason: null,
+        changedAt: '2026-09-27T09:00:00Z',
+      },
+      {
+        fromStatus: 'Submitted',
+        toStatus: 'AgentProcessing',
+        changedById: null,
+        changedByName: null,
+        reason: null,
+        changedAt: '2026-09-27T09:00:05Z',
+      },
+      {
+        fromStatus: 'AgentProcessing',
+        toStatus: 'PendingApproval',
+        changedById: null,
+        changedByName: null,
+        reason: 'Proposal ready for review',
+        changedAt: '2026-09-27T09:01:10Z',
+      },
+    ],
+    latestProposal: null,
+    createdAt: '2026-09-27T09:00:00Z',
+    updatedAt: '2026-09-27T09:01:10Z',
+  },
+]
+
+/** The list rows for BOOKING_REQUEST_DETAILS (the MSW handler returns them whatever the filters). */
+export const BOOKING_REQUESTS: BookingRequestSummaryDto[] = [...BOOKING_REQUEST_DETAILS]
+  .reverse()
+  .map((r) => ({
+    id: r.id,
+    purpose: r.purpose,
+    status: r.status,
+    requestedStart: r.requestedStart,
+    requestedEnd: r.requestedEnd,
+    attendees: r.attendees,
+    budgetLkr: r.budgetLkr,
+    clubName: r.club?.name ?? null,
+    requesterName: r.requester.name,
+    requesterEmail: r.requester.email,
+    createdAt: r.createdAt,
+  }))
