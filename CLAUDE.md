@@ -219,8 +219,8 @@ Riverpod 3 retries failing providers automatically, so pass `retry: (_, _) => nu
 button. Guard role-specific routes in `authRedirect` (for example `/rooms` is for Student and Lecturer only). Screen tests
 override `facilitiesRepositoryProvider` and use `pumpRoomsScreens`; router tests use `pumpApp(..., overrides: [...])`.
 Campus time on mobile: build API times with `campusIso(date, time)` (always `+05:30`) and show API instants with the
-`formatCampus*` helpers in `lib/core/campus_time.dart`; never call `toLocal()` or `DateTime.now()` in feature code (read
-`clockProvider`, which tests override). Show money with `formatLkr` (`lib/core/format.dart`). Status labels, colours and
+`formatCampus*` helpers in `lib/core/campus_time.dart`; never use `toLocal()`, `DateTime.now()` or `TimeOfDay.now()`
+for campus dates and times (read `clockProvider`, which tests override). Show money with `formatLkr` (`lib/core/format.dart`). Status labels, colours and
 the My requests filter groups live only in `lib/features/requests/request_status.dart`. Date and time pickers read the
 live policy (`policyProvider`) through the pure rules in `time_rules.dart`. Requests screen tests use
 `pumpRequestsScreens` + `stubRequestsReferenceData`; fixtures in `test/fixtures/requests.dart` are real API responses.

@@ -383,7 +383,10 @@ class _WhenStep extends ConsumerWidget {
 
   Future<void> _pickTime(BuildContext context, WidgetRef ref, PublicPolicy policy, {required bool isStart}) async {
     final hours = state.date == null ? null : policy.hoursOn(state.date!);
-    final initial = (isStart ? state.start : state.end) ?? state.start ?? hours?.open ?? TimeOfDay.now();
+    final initial = (isStart ? state.start : state.end) ??
+        state.start ??
+        hours?.open ??
+        TimeOfDay.fromDateTime(toCampus(ref.read(clockProvider)()));
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
