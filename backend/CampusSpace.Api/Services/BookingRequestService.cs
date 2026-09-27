@@ -136,7 +136,7 @@ public sealed class BookingRequestService(
 
         return requests.Select(r => new BookingRequestSummaryDto(
                 r.Id, r.Purpose, r.Status, r.RequestedStart, r.RequestedEnd, r.Attendees, r.BudgetLkr,
-                r.Club != null ? r.Club.Name : null, r.Requester.FullName, r.CreatedAt))
+                r.Club != null ? r.Club.Name : null, r.Requester.FullName, r.Requester.Email, r.CreatedAt))
             .ToPagedResultAsync(query, ct);
     }
 

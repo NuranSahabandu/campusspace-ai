@@ -32,10 +32,10 @@ public record CreateBookingRequestRequest(
     }
 }
 
-/// <summary>A request in a list. Times are UTC.</summary>
+/// <summary>A request in a list. Times are UTC. RequesterEmail tells apart requesters with the same name.</summary>
 public record BookingRequestSummaryDto(
     long Id, string Purpose, string Status, DateTime RequestedStart, DateTime RequestedEnd, int Attendees,
-    decimal BudgetLkr, string? ClubName, string RequesterName, DateTime CreatedAt);
+    decimal BudgetLkr, string? ClubName, string RequesterName, string RequesterEmail, DateTime CreatedAt);
 
 public record RequesterDto(long Id, string Name, string Email);
 
