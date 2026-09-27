@@ -1,3 +1,4 @@
+using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Facilities;
@@ -10,6 +11,7 @@ namespace CampusSpace.Api.Services;
 
 public sealed class RoomAvailabilityService(
     AppDbContext db,
+    ICurrentUser currentUser,
     IPolicySettingsService policy,
     IBookingWindowRules windowRules) : IRoomAvailabilityService
 {
@@ -52,5 +54,26 @@ public sealed class RoomAvailabilityService(
 
         return await RoomService.ToDtos(rooms.OrderBy(r => r.Capacity).ThenBy(r => r.Code).ThenBy(r => r.Id))
             .ToPagedResultAsync(page, ct);
+    }
+
+    public async Task<RoomScheduleDto?> GetScheduleAsync(long roomId, DateOnly date, CancellationToken ct = default)
+    {
+        var isOfficer = currentUser.IsInRole(Roles.FacilitiesOfficer);
+        if (!await db.Rooms.AnyAsync(r => r.Id == roomId && (r.IsActive || isOfficer), ct))
+            return null;
+
+        var snapshot = await policy.GetAsync(ct);
+        var day = CampusTime.UtcRange(CampusTime.StartOf(date), CampusTime.StartOf(date.AddDays(1)));
+        // Bookings select only their times: the schedule never reveals who booked or why.
+        var bookings = await db.Bookings.AsNoTracking()
+            .Where(b => b.RoomId == roomId && BookingStatuses.Active.Contains(b.Status) && b.TimeRange.Overlaps(day))
+            .Select(b => new BusyIntervalDto(b.TimeRange.LowerBound, b.TimeRange.UpperBound, ScheduleKinds.Booking, ScheduleKinds.BookedLabel))
+            .ToListAsync(ct);
+        var blackouts = await db.RoomBlackouts.AsNoTracking()
+            .Where(b => b.RoomId == roomId && b.TimeRange.Overlaps(day))
+            .Select(b => new BusyIntervalDto(b.TimeRange.LowerBound, b.TimeRange.UpperBound, ScheduleKinds.Blackout, b.Reason))
+            .ToListAsync(ct);
+
+        return RoomSchedule.Build(date, snapshot.OpeningHours[date.DayOfWeek], snapshot.SlotGranularityMinutes, bookings.Concat(blackouts));
     }
 }

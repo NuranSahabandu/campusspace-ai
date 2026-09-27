@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Facilities;
 using CampusSpace.Api.Models;
@@ -44,6 +45,18 @@ public class RoomsController(IRoomService rooms, IRoomAvailabilityService availa
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<RoomDto>> Get(long id, CancellationToken ct)
         => await rooms.GetAsync(id, ct) is { } room ? Ok(room) : NotFound();
+
+    /// <summary>
+    /// UC03: the room's busy and free time on a campus date (yyyy-MM-dd). Bookings show only "Booked". Inactive rooms
+    /// are visible to Facilities Officers only.
+    /// </summary>
+    [HttpGet("{id:long}/schedule")]
+    [ProducesResponseType<RoomScheduleDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<RoomScheduleDto>> Schedule(long id, [FromQuery, Required] DateOnly? date, CancellationToken ct)
+        => await availability.GetScheduleAsync(id, date!.Value, ct) is { } schedule ? Ok(schedule) : NotFound();
 
     [HttpPost]
     [Authorize(Roles = Roles.FacilitiesOfficer)]

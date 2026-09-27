@@ -28,4 +28,11 @@ public interface IRoomAvailabilityService
     /// Lead time and the advance window (V06) are not checked: browsing a slot is not booking it.
     /// </summary>
     Task<PagedResult<RoomDto>> FindAvailableAsync(AvailabilityCriteria criteria, PageQuery page, CancellationToken ct = default);
+
+    /// <summary>
+    /// The room's busy and free time on campus date <paramref name="date"/> (UC03), with opening hours and slot
+    /// boundaries from the current policy. Null if the room is missing, or inactive and the caller is not a
+    /// Facilities Officer.
+    /// </summary>
+    Task<RoomScheduleDto?> GetScheduleAsync(long roomId, DateOnly date, CancellationToken ct = default);
 }
