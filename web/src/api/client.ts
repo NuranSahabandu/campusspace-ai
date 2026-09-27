@@ -11,6 +11,8 @@ export const browser = {
 /** The only HTTP client. Clients call ASP.NET Core /api/... only (§7.1 rule 1). */
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
+  // Arrays go out as repeated keys (?status=A&status=B), which ASP.NET Core binds; axios's default "status[]=A" it does not.
+  paramsSerializer: { indexes: null },
 })
 
 api.interceptors.request.use((config) => {

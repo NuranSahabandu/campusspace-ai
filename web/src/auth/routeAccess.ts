@@ -2,7 +2,8 @@ import { matchPath } from 'react-router'
 import { type Role, Roles, STAFF_ROLES } from './roles'
 
 const ADMIN: readonly Role[] = [Roles.Admin]
-// The facilities write endpoints are Officer-only, so Admins do not get these screens.
+// The facilities write endpoints are Officer-only, and the booking-request API refuses Admins (403), so Admins do not
+// get these screens.
 const OFFICER: readonly Role[] = [Roles.FacilitiesOfficer]
 
 /**
@@ -19,7 +20,8 @@ export const ROUTE_ROLES = {
   '/equipment/items': OFFICER,
   '/pricing': OFFICER,
   '/policy': OFFICER,
-  '/requests': STAFF_ROLES,
+  '/requests': OFFICER,
+  '/requests/:id': OFFICER,
   '/approvals': STAFF_ROLES,
   '/agent-runs': STAFF_ROLES,
   '/users': ADMIN,

@@ -277,3 +277,74 @@ export interface PolicySettingDto {
 export interface PolicySettingsUpdateRequest {
   settings: { key: string; value: string }[]
 }
+
+/** A booking request in a list. Times are UTC; clubName is null for an academic (lecturer) booking. */
+export interface BookingRequestSummaryDto {
+  id: number
+  purpose: string
+  status: string
+  requestedStart: string
+  requestedEnd: string
+  attendees: number
+  budgetLkr: number
+  clubName: string | null
+  requesterName: string
+  requesterEmail: string
+  createdAt: string
+}
+
+export interface RequesterDto {
+  id: number
+  name: string
+  email: string
+}
+
+export interface ClubRefDto {
+  id: number
+  name: string
+}
+
+export interface RequiredFeatureDto {
+  code: string
+  name: string
+}
+
+export interface RequestedEquipmentDto {
+  typeId: number
+  typeCode: string
+  typeName: string
+  quantity: number
+}
+
+/** One status change. changedById and changedByName are null when the system made it. */
+export interface RequestStatusHistoryDto {
+  fromStatus: string | null
+  toStatus: string
+  changedById: number | null
+  changedByName: string | null
+  reason: string | null
+  changedAt: string
+}
+
+/**
+ * A booking request with everything the requester entered and its history, oldest first. notes is untrusted
+ * requester text. latestProposal is always null until the agent workflow exists (Phase 3).
+ */
+export interface BookingRequestDetailDto {
+  id: number
+  purpose: string
+  status: string
+  attendees: number
+  requestedStart: string
+  requestedEnd: string
+  budgetLkr: number
+  notes: string | null
+  requester: RequesterDto
+  club: ClubRefDto | null
+  requiredFeatures: RequiredFeatureDto[]
+  equipment: RequestedEquipmentDto[]
+  history: RequestStatusHistoryDto[]
+  latestProposal: unknown
+  createdAt: string
+  updatedAt: string
+}

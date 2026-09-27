@@ -24,13 +24,14 @@ export interface NavItem {
 /** One list drives the drawer; its roles come from ROUTE_ROLES, which the routes in App.tsx also enforce. */
 export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/', label: 'Dashboard', icon: <DashboardIcon />, roles: ROUTE_ROLES['/'] },
+  // The officer's main work queue, so first in their section.
+  { path: '/requests', label: 'Booking requests', icon: <AssignmentIcon />, roles: ROUTE_ROLES['/requests'] },
   { path: '/rooms', label: 'Rooms', icon: <MeetingRoomIcon />, roles: ROUTE_ROLES['/rooms'] },
   { path: '/facilities/reference', label: 'Buildings & features', icon: <ApartmentIcon />, roles: ROUTE_ROLES['/facilities/reference'] },
   { path: '/equipment/types', label: 'Equipment types', icon: <VideocamIcon />, roles: ROUTE_ROLES['/equipment/types'] },
   { path: '/equipment/items', label: 'Equipment items', icon: <Inventory2Icon />, roles: ROUTE_ROLES['/equipment/items'] },
   { path: '/pricing', label: 'Pricing', icon: <PriceChangeIcon />, roles: ROUTE_ROLES['/pricing'] },
   { path: '/policy', label: 'Booking policy', icon: <PolicyIcon />, roles: ROUTE_ROLES['/policy'] },
-  { path: '/requests', label: 'Requests', icon: <AssignmentIcon />, roles: ROUTE_ROLES['/requests'] },
   { path: '/approvals', label: 'Approvals', icon: <FactCheckIcon />, roles: ROUTE_ROLES['/approvals'] },
   { path: '/agent-runs', label: 'Agent runs', icon: <PsychologyIcon />, roles: ROUTE_ROLES['/agent-runs'] },
   { path: '/users', label: 'Users', icon: <PeopleIcon />, roles: ROUTE_ROLES['/users'] },
