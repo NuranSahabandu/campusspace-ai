@@ -19,6 +19,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<RoomFeature> RoomFeatures => Set<RoomFeature>();
     public DbSet<RoomBlackout> RoomBlackouts => Set<RoomBlackout>();
+    public DbSet<EquipmentType> EquipmentTypes => Set<EquipmentType>();
+    public DbSet<EquipmentItem> EquipmentItems => Set<EquipmentItem>();
+    public DbSet<EquipmentSubstitute> EquipmentSubstitutes => Set<EquipmentSubstitute>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

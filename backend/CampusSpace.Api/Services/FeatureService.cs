@@ -65,8 +65,10 @@ public sealed class FeatureService(AppDbContext db) : IFeatureService
         return true;
     }
 
-    private Task<bool> IsReferencedAsync(Feature feature, CancellationToken ct) =>
-        db.RoomFeatures.AnyAsync(rf => rf.FeatureId == feature.Id, ct);
+    /// <summary>Used by a room, or covering an equipment type.</summary>
+    private async Task<bool> IsReferencedAsync(Feature feature, CancellationToken ct) =>
+        await db.RoomFeatures.AnyAsync(rf => rf.FeatureId == feature.Id, ct)
+        || await db.EquipmentTypes.AnyAsync(t => t.CoveredByFeatureCode == feature.Code, ct);
 
     private static FeatureDto ToDto(Feature f) => new(f.Id, f.Code, f.Name);
 
