@@ -1,8 +1,17 @@
+import 'dart:convert';
+
 import 'package:campusspace_mobile/app.dart';
 import 'package:campusspace_mobile/core/api/paged_result.dart';
+import 'package:campusspace_mobile/core/campus_time.dart';
 import 'package:campusspace_mobile/features/auth/auth_repository.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/auth/token_storage.dart';
+import 'package:campusspace_mobile/features/requests/models.dart';
+import 'package:campusspace_mobile/features/requests/my_requests_screen.dart';
+import 'package:campusspace_mobile/features/requests/new_request_screen.dart';
+import 'package:campusspace_mobile/features/requests/request_detail_screen.dart';
+import 'package:campusspace_mobile/features/requests/requests_providers.dart';
+import 'package:campusspace_mobile/features/requests/requests_repository.dart';
 import 'package:campusspace_mobile/features/rooms/facilities_repository.dart';
 import 'package:campusspace_mobile/features/rooms/models.dart';
 import 'package:campusspace_mobile/features/rooms/room_detail_screen.dart';
@@ -14,6 +23,8 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
+
+import 'fixtures/requests.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
 
@@ -130,6 +141,105 @@ Future<GoRouter> pumpRoomsScreens(WidgetTester tester, FacilitiesRepository repo
   addTearDown(router.dispose);
   await tester.pumpWidget(ProviderScope(
     overrides: [facilitiesRepositoryProvider.overrideWithValue(repository)],
+    child: MaterialApp.router(routerConfig: router),
+  ));
+  await tester.pumpAndSettle();
+  return router;
+}
+
+class MockRequestsRepository extends Mock implements RequestsRepository {}
+
+Map<String, dynamic> _json(String text) => jsonDecode(text) as Map<String, dynamic>;
+
+/// The captured API responses as models.
+final studentEligibility = Eligibility.fromJson(_json(eligibilityStudentJson));
+final notRepEligibility = Eligibility.fromJson(_json(eligibilityNotRepJson));
+final lecturerEligibility = Eligibility.fromJson(_json(eligibilityLecturerJson));
+final livePolicy = PublicPolicy.fromJson(_json(policyJson));
+final liveEquipmentTypes = PagedResult.fromJson(_json(equipmentTypesJson), EquipmentType.fromJson).items;
+final lecturerRequest = RequestDetail.fromJson(_json(requestDetailJson));
+
+/// Monday 28 Sep 2026, 10:00 campus time: "now" in the requests screen tests.
+final testNow = campusInstant(DateTime.utc(2026, 9, 28), const TimeOfDay(hour: 10, minute: 0));
+
+/// A request summary for tests: purpose "Request N", Tue 20 Oct 2026 14:00–17:00 campus.
+RequestSummary testRequest(int n, {String status = 'Submitted', String? clubName = 'Robotics Club'}) => RequestSummary(
+      id: n,
+      purpose: 'Request $n',
+      status: status,
+      requestedStart: DateTime.utc(2026, 10, 20, 8, 30),
+      requestedEnd: DateTime.utc(2026, 10, 20, 11, 30),
+      attendees: 40 + n,
+      budgetLkr: 8000,
+      clubName: clubName,
+      requesterName: 'Kavindi Perera',
+      createdAt: DateTime.utc(2026, 9, 27, 10),
+    );
+
+/// Page [page] of [total] test requests, [pageSize] per page.
+PagedResult<RequestSummary> requestsPage(int page, int total, {int pageSize = 20}) {
+  final first = (page - 1) * pageSize + 1;
+  final last = (first + pageSize - 1).clamp(0, total);
+  return PagedResult(
+    items: [for (var n = first; n <= last; n++) testRequest(n)],
+    page: page,
+    pageSize: pageSize,
+    total: total,
+  );
+}
+
+/// Stubs the reference data every requests screen may load: the given eligibility, the live policy, equipment
+/// types and features, and an empty request list.
+void stubRequestsReferenceData(MockRequestsRepository requests, MockFacilitiesRepository facilities,
+    {Eligibility? eligibility}) {
+  when(() => requests.getEligibility()).thenAnswer((_) async => eligibility ?? studentEligibility);
+  when(() => requests.getPolicy()).thenAnswer((_) async => livePolicy);
+  when(() => requests.getEquipmentTypes()).thenAnswer((_) async => liveEquipmentTypes);
+  when(() => requests.getRequests(any(), page: any(named: 'page'), pageSize: any(named: 'pageSize')))
+      .thenAnswer((_) async => requestsPage(1, 0));
+  when(() => facilities.getFeatures()).thenAnswer((_) async => const [
+        Feature(id: 1, code: 'projector', name: 'Projector'),
+        Feature(id: 2, code: 'computers', name: 'Computers'),
+      ]);
+}
+
+/// Pumps [initialLocation] in a bare router with just the requests screens (no auth), as [role] at [testNow].
+/// A tall surface keeps every stepper step on screen.
+Future<GoRouter> pumpRequestsScreens(
+  WidgetTester tester,
+  RequestsRepository requests, {
+  FacilitiesRepository? facilities,
+  String initialLocation = '/requests',
+  String role = Roles.student,
+}) async {
+  tester.view.physicalSize = const Size(900, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+
+  final router = GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      GoRoute(
+        path: '/requests',
+        builder: (_, _) => const MyRequestsScreen(),
+        routes: [
+          GoRoute(path: 'new', builder: (_, _) => const NewRequestScreen()),
+          GoRoute(
+            path: ':id',
+            builder: (_, state) => RequestDetailScreen(id: int.tryParse(state.pathParameters['id']!)),
+          ),
+        ],
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      requestsRepositoryProvider.overrideWithValue(requests),
+      if (facilities != null) facilitiesRepositoryProvider.overrideWithValue(facilities),
+      requesterRoleProvider.overrideWithValue(role),
+      clockProvider.overrideWithValue(() => testNow),
+    ],
     child: MaterialApp.router(routerConfig: router),
   ));
   await tester.pumpAndSettle();

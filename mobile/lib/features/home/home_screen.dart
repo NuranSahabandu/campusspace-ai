@@ -7,7 +7,7 @@ import '../../core/router.dart';
 import '../auth/auth_controller.dart';
 import '../auth/models.dart';
 
-/// Home: what each mobile role sees first (plan §13). Requesters can browse rooms; the rest is a placeholder.
+/// Home: what each mobile role sees first (plan §13). Requesters make and follow requests and browse rooms.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -50,30 +50,26 @@ class _RequesterHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    Widget entry(IconData icon, String title, String subtitle, String route) => Card(
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: Icon(icon),
+            title: Text(title),
+            subtitle: Text(subtitle),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(route),
+          ),
+        );
+
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            leading: const Icon(Icons.meeting_room_outlined),
-            title: const Text('Browse rooms'),
-            subtitle: const Text('Search by building, type, capacity and features'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push(AppRoutes.rooms),
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text('My requests', style: textTheme.titleLarge),
-        const SizedBox(height: 32),
-        const Icon(Icons.event_note_outlined, size: 48),
+        entry(Icons.add_circle_outline, 'New request', 'Ask for a room and equipment', AppRoutes.newRequest),
         const SizedBox(height: 12),
-        Text('No requests yet', textAlign: TextAlign.center, style: textTheme.titleMedium),
-        const SizedBox(height: 24),
-        const FilledButton(onPressed: null, child: Text('New request')),
-        const SizedBox(height: 8),
-        Text('Coming in Phase 1 (Component C)', textAlign: TextAlign.center, style: textTheme.bodySmall),
+        entry(Icons.event_note_outlined, 'My requests', 'Follow your requests and their status', AppRoutes.requests),
+        const SizedBox(height: 12),
+        entry(Icons.meeting_room_outlined, 'Browse rooms', 'Search by building, type, capacity and features',
+            AppRoutes.rooms),
       ],
     );
   }

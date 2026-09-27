@@ -45,8 +45,12 @@ public record RequiredFeatureDto(string Code, string Name);
 
 public record RequestedEquipmentDto(long TypeId, string TypeCode, string TypeName, int Quantity);
 
-/// <summary>One status change. ChangedByName is null when the system made the change.</summary>
-public record RequestStatusHistoryDto(string? FromStatus, string ToStatus, string? ChangedByName, string? Reason, DateTime ChangedAt);
+/// <summary>
+/// One status change. ChangedById and ChangedByName are null when the system made the change. Clients compare
+/// ChangedById with the requester's id to show "You" (names are not unique).
+/// </summary>
+public record RequestStatusHistoryDto(
+    string? FromStatus, string ToStatus, long? ChangedById, string? ChangedByName, string? Reason, DateTime ChangedAt);
 
 /// <summary>
 /// A request with everything the requester entered, and its history oldest first. Times are UTC.

@@ -4,6 +4,10 @@ import 'package:campusspace_mobile/features/auth/auth_controller.dart';
 import 'package:campusspace_mobile/features/auth/login_screen.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/home/home_screen.dart';
+import 'package:campusspace_mobile/features/requests/my_requests_screen.dart';
+import 'package:campusspace_mobile/features/requests/new_request_screen.dart';
+import 'package:campusspace_mobile/features/requests/request_detail_screen.dart';
+import 'package:campusspace_mobile/features/requests/requests_repository.dart';
 import 'package:campusspace_mobile/features/rooms/facilities_repository.dart';
 import 'package:campusspace_mobile/features/rooms/room_filter.dart';
 import 'package:campusspace_mobile/features/rooms/rooms_screen.dart';
@@ -22,6 +26,7 @@ String currentPath(WidgetTester tester) {
 void main() {
   late MockAuthRepository repository;
   late MockFacilitiesRepository facilities;
+  late MockRequestsRepository requests;
 
   setUpAll(() => registerFallbackValue(const RoomFilter()));
 
@@ -32,12 +37,22 @@ void main() {
         .thenAnswer((_) async => roomsPage(1, 2));
     when(() => facilities.getBuildings()).thenAnswer((_) async => const []);
     when(() => facilities.getFeatures()).thenAnswer((_) async => const []);
+    requests = MockRequestsRepository();
+    stubRequestsReferenceData(requests, facilities);
+    when(() => requests.getRequest(any())).thenAnswer((_) async => lecturerRequest);
   });
 
   Future<void> pumpAs(WidgetTester tester, String role) async {
     when(() => repository.me()).thenAnswer((_) async => userWithRole(role));
-    await pumpApp(tester, FakeTokenStorage(sessionFor(role)), repository,
-        overrides: [facilitiesRepositoryProvider.overrideWithValue(facilities)]);
+    await pumpApp(
+      tester,
+      FakeTokenStorage(sessionFor(role)),
+      repository,
+      overrides: [
+        facilitiesRepositoryProvider.overrideWithValue(facilities),
+        requestsRepositoryProvider.overrideWithValue(requests),
+      ],
+    );
   }
 
   Future<void> goTo(WidgetTester tester, String location) async {
@@ -106,6 +121,42 @@ void main() {
     verifyNever(() => facilities.getRooms(any(), page: any(named: 'page'), pageSize: any(named: 'pageSize')));
   });
 
+  for (final role in [Roles.student, Roles.lecturer]) {
+    testWidgets('$role home: New request and My requests open their screens; the detail opens', (tester) async {
+      await pumpAs(tester, role);
+      expect(find.text('New request'), findsOneWidget);
+      expect(find.text('My requests'), findsOneWidget);
+
+      await tester.tap(find.text('New request'));
+      await tester.pumpAndSettle();
+      expect(currentPath(tester), AppRoutes.newRequest);
+      expect(find.byType(NewRequestScreen), findsOneWidget);
+
+      await goTo(tester, AppRoutes.home);
+      await tester.tap(find.text('My requests'));
+      await tester.pumpAndSettle();
+      expect(currentPath(tester), AppRoutes.requests);
+      expect(find.byType(MyRequestsScreen), findsOneWidget);
+
+      await goTo(tester, AppRoutes.request(2));
+      expect(currentPath(tester), '/requests/2');
+      expect(find.byType(RequestDetailScreen), findsOneWidget);
+    });
+  }
+
+  testWidgets('LabTechnician has no request cards and is sent from /requests routes to /home', (tester) async {
+    await pumpAs(tester, Roles.labTechnician);
+    expect(find.text('New request'), findsNothing);
+    expect(find.text('My requests'), findsNothing);
+
+    for (final location in [AppRoutes.requests, AppRoutes.newRequest, AppRoutes.request(2)]) {
+      await goTo(tester, location);
+      expect(currentPath(tester), AppRoutes.home);
+    }
+    verifyNever(() => requests.getEligibility());
+    verifyNever(() => requests.getRequest(any()));
+  });
+
   group('authRedirect', () {
     const loading = AsyncLoading<AuthState>();
     const anonymous = AsyncData<AuthState>(Anonymous());
@@ -141,6 +192,17 @@ void main() {
       }
       expect(authRedirect(as(Roles.labTechnician), '/roomsx'), isNull);
     });
-  });
 
+    test('requests are for Students and Lecturers only', () {
+      AsyncData<AuthState> as(String role) => AsyncData(Authenticated(userWithRole(role)));
+
+      for (final location in [AppRoutes.requests, AppRoutes.newRequest, AppRoutes.request(3)]) {
+        expect(authRedirect(as(Roles.student), location), isNull);
+        expect(authRedirect(as(Roles.lecturer), location), isNull);
+        expect(authRedirect(as(Roles.labTechnician), location), AppRoutes.home);
+        expect(authRedirect(anonymous, location), AppRoutes.login);
+      }
+      expect(authRedirect(as(Roles.labTechnician), '/requestsx'), isNull);
+    });
+  });
 }

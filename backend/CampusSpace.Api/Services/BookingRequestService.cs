@@ -191,7 +191,7 @@ public sealed class BookingRequestService(
         .Where(h => h.RequestId == id)
         .OrderBy(h => h.ChangedAt).ThenBy(h => h.Id)
         .Select(h => new RequestStatusHistoryDto(
-            h.FromStatus, h.ToStatus, h.ChangedBy != null ? h.ChangedBy.FullName : null, h.Reason, h.ChangedAt));
+            h.FromStatus, h.ToStatus, h.ChangedById, h.ChangedBy != null ? h.ChangedBy.FullName : null, h.Reason, h.ChangedAt));
 
     private async Task<BookingRequestDetailDto?> LoadDetailAsync(long id, CancellationToken ct)
     {
