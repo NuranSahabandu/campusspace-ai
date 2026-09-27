@@ -56,7 +56,7 @@ public class EquipmentTypesController(IEquipmentTypeService types) : ControllerB
     public async Task<ActionResult<EquipmentTypeDetailDto>> Update(long id, EquipmentTypeRequest request, CancellationToken ct)
         => await types.UpdateAsync(id, request, ct) is { } type ? Ok(type) : NotFound();
 
-    /// <summary>A type that still has items returns 409 "In use". Its substitute pairs are removed with it.</summary>
+    /// <summary>A type that still has items or reservations returns 409 "In use". Its substitute pairs are removed with it.</summary>
     [HttpDelete("{id:long}")]
     [Authorize(Roles = Roles.FacilitiesOfficer)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

@@ -6,7 +6,7 @@ namespace CampusSpace.Api.Services;
 /// <summary>
 /// Equipment types and their substitutes (§9 Component B). Methods return null/false when the type does not exist.
 /// A duplicate code throws ConflictException (409). Codes are immutable (400 on Code). A type that still has items
-/// cannot be deleted (409 "In use"); its substitute rows are removed with it.
+/// or reservations cannot be deleted (409 "In use"); its substitute rows are removed with it.
 /// </summary>
 public interface IEquipmentTypeService
 {
