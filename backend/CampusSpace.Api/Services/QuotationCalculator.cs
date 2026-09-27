@@ -73,7 +73,7 @@ public sealed class QuotationCalculator(
 
         List<QuoteLine> lines = [roomLine, .. equipmentLines];
         var subtotal = lines.Sum(l => l.LineTotal);
-        var discount = rule.IsExempt ? subtotal : 0m;
+        var discount = rule.IsExempt ? subtotal : 0.00m;
         return new QuoteResult(lines, subtotal, discount, rule.IsExempt ? LecturerExemptionReason : null, rule.IsExempt, subtotal - discount);
     }
 
