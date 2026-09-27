@@ -39,16 +39,15 @@ public sealed class FeatureService(AppDbContext db) : IFeatureService
         if (feature is null)
             return null;
 
-        var code = NormalizeCode(request.Code);
-        if (code != feature.Code)
+        // Codes are immutable: other tables and the agents refer to them, and Code is an EF alternate key,
+        // which EF cannot modify. A referenced feature keeps addendum B.2's 409; any other change is a 400.
+        if (NormalizeCode(request.Code) != feature.Code)
         {
-            await EnsureCodeIsFreeAsync(code, exceptId: id, ct);
-            // Block rather than cascade: agents and proposals refer to the code (addendum B.2).
-            if (await db.RoomFeatures.AnyAsync(rf => rf.FeatureId == id, ct))
+            if (await IsReferencedAsync(feature, ct))
                 throw new ConflictException("In use");
+            throw new BusinessRuleException("Code", "Codes can't be changed");
         }
 
-        feature.Code = code;
         feature.Name = request.Name.Trim();
         await db.SaveChangesAsync(ct);
         return ToDto(feature);
@@ -65,6 +64,9 @@ public sealed class FeatureService(AppDbContext db) : IFeatureService
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    private Task<bool> IsReferencedAsync(Feature feature, CancellationToken ct) =>
+        db.RoomFeatures.AnyAsync(rf => rf.FeatureId == feature.Id, ct);
 
     private static FeatureDto ToDto(Feature f) => new(f.Id, f.Code, f.Name);
 
