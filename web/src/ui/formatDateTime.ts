@@ -49,3 +49,43 @@ export const campusToday = (): string => {
   const parts = Object.fromEntries(campusDateFormat.formatToParts(new Date()).map((p) => [p.type, p.value]))
   return `${parts.year}-${parts.month}-${parts.day}`
 }
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+const campusPartsFormat = new Intl.DateTimeFormat('en-CA', {
+  timeZone: CAMPUS_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** An instant's campus calendar date and time as numbers, read from Intl parts only (no locale text). */
+const campusParts = (iso: string) => {
+  const parts = Object.fromEntries(campusPartsFormat.formatToParts(new Date(iso)).map((p) => [p.type, p.value]))
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    time: `${parts.hour}:${parts.minute}`,
+  }
+}
+
+const campusDayText = ({ year, month, day }: { year: number; month: number; day: number }) =>
+  `${WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]} ${day} ${MONTHS[month - 1]} ${year}`
+
+/**
+ * A UTC start/end pair as a campus time range: "Tue 20 Oct 2026, 14:00–17:00", or with both dates when the range
+ * ends on a later campus day: "Tue 20 Oct 2026, 22:00 – Wed 21 Oct 2026, 01:00".
+ */
+export const formatCampusTimeRange = (startUtc: string, endUtc: string): string => {
+  const start = campusParts(startUtc)
+  const end = campusParts(endUtc)
+  const startDay = campusDayText(start)
+  const endDay = campusDayText(end)
+  return startDay === endDay
+    ? `${startDay}, ${start.time}–${end.time}`
+    : `${startDay}, ${start.time} – ${endDay}, ${end.time}`
+}
