@@ -188,6 +188,9 @@ from `src/auth/roles.ts`, and add the matching entry in `src/layout/navItems.tsx
 Turn a native `datetime-local` value into an API instant with `campusLocalToIso` (campus time, `+05:30`). For a 409 that
 belongs to no form field (for example deleting a row that is still in use), pass `conflictMessage` to `useApiMutation`.
 Tests use `renderApp(route, { role })` from `src/test/utils.tsx` and MSW handlers (`server.use(...)`).
+Equipment type pickers use `useEquipmentTypeOptions` (one request with pageSize=100, the PageQuery max; never loop over
+pages). Read a filter that another page links to from the URL with `useSearchParams`, ignoring invalid values (see
+`?typeId=` on /equipment/items). Show money with `formatLkr` (`src/ui/formatLkr.ts`).
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
 
