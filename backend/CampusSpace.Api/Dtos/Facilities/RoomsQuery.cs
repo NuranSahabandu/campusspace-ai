@@ -18,9 +18,7 @@ public record RoomsQuery : PageQuery, IValidatableObject
     public bool IncludeInactive { get; init; }
 
     /// <summary>The Features codes, trimmed, lower-cased and without duplicates.</summary>
-    public IReadOnlyList<string> FeatureCodes() =>
-        (Features ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Select(c => c.ToLowerInvariant()).Distinct().ToList();
+    public IReadOnlyList<string> FeatureCodes() => FeatureCodeList.Parse(Features);
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

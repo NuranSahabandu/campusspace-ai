@@ -7,11 +7,14 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CampusSpace.Api.Controllers;
 
-/// <summary>Rooms (§9 Component A, CRUD). Any signed-in user searches active rooms; Facilities Officers manage them.</summary>
+/// <summary>
+/// Rooms (§9 Component A): CRUD, availability search and day schedule. Any signed-in user searches active rooms;
+/// Facilities Officers manage them.
+/// </summary>
 [ApiController]
 [Route("api/rooms")]
 [Authorize]
-public class RoomsController(IRoomService rooms) : ControllerBase
+public class RoomsController(IRoomService rooms, IRoomAvailabilityService availability) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<PagedResult<RoomDto>>(StatusCodes.Status200OK)]
@@ -19,6 +22,21 @@ public class RoomsController(IRoomService rooms) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<PagedResult<RoomDto>>> List([FromQuery] RoomsQuery query, CancellationToken ct)
         => Ok(await rooms.ListAsync(query, ct));
+
+    /// <summary>
+    /// Business op: active rooms free for [start, end) that seat at least minCapacity (and at most maxCapacity) and have
+    /// ALL the features. The slot must follow the opening-hours, granularity and duration rules (V05). Best fit first.
+    /// </summary>
+    [HttpGet("availability")]
+    [ProducesResponseType<PagedResult<RoomDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<PagedResult<RoomDto>>> Availability([FromQuery] RoomAvailabilityQuery query, CancellationToken ct)
+    {
+        var criteria = new AvailabilityCriteria(query.Start!.Value, query.End!.Value, query.MinCapacity!.Value,
+            FeatureCodeList.Parse(query.Features), query.BuildingId, query.Type, query.MaxCapacity);
+        return Ok(await availability.FindAvailableAsync(criteria, query, ct));
+    }
 
     [HttpGet("{id:long}")]
     [ProducesResponseType<RoomDto>(StatusCodes.Status200OK)]
