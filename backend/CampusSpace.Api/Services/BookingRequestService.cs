@@ -137,7 +137,8 @@ public sealed class BookingRequestService(
 
         return requests.Select(r => new BookingRequestSummaryDto(
                 r.Id, r.Purpose, r.Status, r.RequestedStart, r.RequestedEnd, r.Attendees, r.BudgetLkr,
-                r.Club != null ? r.Club.Name : null, r.Requester.FullName, r.Requester.Email, r.CreatedAt))
+                r.Club != null ? r.Club.Name : null, r.Requester.FullName, r.Requester.Email,
+                r.CancelledAt, r.IsLateCancellation, r.CancelledByOfficer, r.CreatedAt))
             .ToPagedResultAsync(query, ct);
     }
 
@@ -202,7 +203,7 @@ public sealed class BookingRequestService(
             r.RequiredFeatures,
             Equipment = r.EquipmentLines.OrderBy(l => l.Type.Code)
                 .Select(l => new RequestedEquipmentDto(l.TypeId, l.Type.Code, l.Type.Name, l.Quantity)).ToList(),
-            r.CreatedAt, r.UpdatedAt,
+            r.CancelledAt, r.IsLateCancellation, r.CancelledByOfficer, r.CreatedAt, r.UpdatedAt,
         }).SingleOrDefaultAsync(ct);
         if (row is null)
             return null;
@@ -215,7 +216,8 @@ public sealed class BookingRequestService(
             row.Requester, row.Club,
             // Feature codes can't change and a feature in use can't be deleted, so every code has a name.
             row.RequiredFeatures.Select(code => new RequiredFeatureDto(code, names.GetValueOrDefault(code, code))).ToList(),
-            row.Equipment, history, LatestProposal: null, row.CreatedAt, row.UpdatedAt);
+            row.Equipment, history, LatestProposal: null,
+            row.CancelledAt, row.IsLateCancellation, row.CancelledByOfficer, row.CreatedAt, row.UpdatedAt);
     }
 
     /// <summary>Normalised like FeatureService (trimmed, lower-case), de-duplicated in order. Unknown codes are listed.</summary>

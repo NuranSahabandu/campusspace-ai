@@ -66,6 +66,23 @@ public class BookingRequestsMigrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task Cancellation_checks_reject_a_late_officer_cancel_and_a_cancelled_at_on_an_open_request()
+    {
+        var (_, userId) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Student);
+        var id = (long)(await ScalarAsync(InsertRequest(userId, status: "Cancelled")))!;
+        (await ScalarAsync($"""SELECT "IsLateCancellation" OR "CancelledByOfficer" FROM "BookingRequests" WHERE "Id" = {id}""")).Should().Be(false);
+
+        await ShouldViolateCheckAsync(
+            $"""UPDATE "BookingRequests" SET "CancelledAt" = now(), "IsLateCancellation" = true, "CancelledByOfficer" = true WHERE "Id" = {id}""",
+            "CK_BookingRequests_Cancellation_NotLateAndOfficer");
+        await ScalarAsync($"""UPDATE "BookingRequests" SET "CancelledAt" = now(), "IsLateCancellation" = true WHERE "Id" = {id}""");
+
+        var open = (long)(await ScalarAsync(InsertRequest(userId)))!;
+        await ShouldViolateCheckAsync(
+            $"""UPDATE "BookingRequests" SET "CancelledAt" = now() WHERE "Id" = {open}""", "CK_BookingRequests_CancelledAt_Status");
+    }
+
+    [Fact]
     public async Task A_request_with_history_cannot_be_deleted()
     {
         var (_, userId) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.Student);

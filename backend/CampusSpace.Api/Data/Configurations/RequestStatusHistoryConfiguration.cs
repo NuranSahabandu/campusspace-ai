@@ -6,6 +6,8 @@ namespace CampusSpace.Api.Data.Configurations;
 
 public class RequestStatusHistoryConfiguration : IEntityTypeConfiguration<RequestStatusHistory>
 {
+    public const int ReasonMaxLength = 500;
+
     public void Configure(EntityTypeBuilder<RequestStatusHistory> builder)
     {
         builder.ToTable("RequestStatusHistory", t =>
@@ -19,7 +21,7 @@ public class RequestStatusHistoryConfiguration : IEntityTypeConfiguration<Reques
 
         builder.Property(h => h.FromStatus).HasMaxLength(20);
         builder.Property(h => h.ToStatus).IsRequired().HasMaxLength(20);
-        builder.Property(h => h.Reason).HasMaxLength(500);
+        builder.Property(h => h.Reason).HasMaxLength(ReasonMaxLength);
         builder.Property(h => h.ChangedAt).IsRequired();
 
         // RESTRICT: requests are never deleted, and their history must not disappear with them.
