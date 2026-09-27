@@ -19,6 +19,12 @@ public interface IBookingRequestService
     Task<BookingRequestDetailDto?> GetAsync(long id, CancellationToken ct = default);
     Task<IReadOnlyList<RequestStatusHistoryDto>?> GetHistoryAsync(long id, CancellationToken ct = default);
 
+    /// <summary>
+    /// The object-level read rule (§15.1), shared by request detail, history and quotations: false when the request
+    /// doesn't exist; throws ForbiddenException when the caller is a requester who doesn't own it.
+    /// </summary>
+    Task<bool> EnsureCanReadAsync(long id, CancellationToken ct = default);
+
     /// <summary>Whether the caller can submit now, and the clubs they can submit for.</summary>
     Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default);
 }

@@ -306,6 +306,19 @@ A.3 is superseded here); ReserveAsync refuses any other isolation level. A black
 it reports clashes for the officer to handle (`clashes` on the create response, `GET .../blackouts/{id}/clashes`).
 Tests insert reservations with `EquipmentTestData.InsertReservationAsync` (copies the booking's range).
 
+Quotation conventions (Component D): Prices are computed only by IQuotationCalculator. The agent's quote is checked
+against it (V09). Lecturer bookings are fully exempt (room and equipment); students pay room rules + equipment fees.
+Exemption is decided by the effective room PricingRule's IsExempt for the requester's role and the booking's campus date,
+and shown as a whole-quote discount: every line is priced normally, Discount = Subtotal, DiscountReason
+"Lecturer exemption (academic use)", `IsExempt` true, Total = 0. Never price a line at 0 because of the exemption.
+Room Qty is the duration in hours rounded to 2 places first (`QuotationCalculator.Hours`), and every
+LineTotal = round(Qty × UnitPrice, 2, AwayFromZero) (`QuotationCalculator.Line`), which `CK_QuotationLines_LineTotal`
+enforces. Equipment is priced per booking (FeePerBooking), qty-0 lines are skipped, repeated types summed. UnitPrice is a
+snapshot. At most one Draft or Issued quote per request (`IX_Quotations_RequestId_Live`). `CreateDraftAsync` needs the
+caller's transaction, voids the old Draft with ExecuteUpdate plus a hand-written audit row, and never calls SaveChanges.
+Quote reads use the request read rule (`IBookingRequestService.EnsureCanReadAsync`). Calculator tests seed their own
+database with `Seed.SeedAsync`; persistence and endpoint tests use `QuotationTestData`.
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
