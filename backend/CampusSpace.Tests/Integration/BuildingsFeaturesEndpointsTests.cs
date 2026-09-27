@@ -149,6 +149,21 @@ public class BuildingsFeaturesEndpointsTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task A_feature_covering_an_equipment_type_cannot_be_recoded_or_deleted()
+    {
+        var officer = await OfficerAsync();
+        var code = UniqueFeatureCode();
+        var id = (await (await officer.PostAsJsonAsync("/api/features", new { code, name = "Temp" })).ReadJsonAsync()).GetProperty("id").GetInt64();
+        await EquipmentTestData.CreateTypeAsync(fixture.Factory, coveredByFeatureCode: code);
+
+        var recode = await officer.PutAsJsonAsync($"/api/features/{id}", new { code = UniqueFeatureCode(), name = "Temp" });
+        var delete = await officer.DeleteAsync($"/api/features/{id}");
+
+        (await recode.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be("In use");
+        (await delete.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be("In use");
+    }
+
+    [Fact]
     public async Task Deleting_an_unused_feature_returns_204()
     {
         var officer = await OfficerAsync();
