@@ -123,4 +123,59 @@ public class SeedTests(PostgresFixture fixture)
         campusStart.TimeOfDay.Should().Be(TimeSpan.FromHours(8));
         (blackout.TimeRange.UpperBound - blackout.TimeRange.LowerBound).Should().Be(TimeSpan.FromHours(4));
     }
+
+    [Fact]
+    public async Task Seeds_the_equipment_catalogue_once()
+    {
+        await using var db = await CreateEmptyDatabaseAsync();
+
+        await Seed.SeedAsync(db, DemoPassword);
+        await Seed.SeedAsync(db, DemoPassword);
+
+        var types = await db.EquipmentTypes.AsNoTracking().Include(t => t.Items).ToListAsync();
+        types.Should().HaveCount(10);
+        types.Select(t => t.Category).Distinct().Should().BeEquivalentTo(EquipmentCategories.All);
+        types.Single(t => t.Code == "MIC-WIRELESS").FeePerBooking.Should().Be(500m);
+        types.Single(t => t.Code == "PROJ-PORTABLE").CoveredByFeatureCode.Should().Be("projector");
+        types.Single(t => t.Code == "SPEAKER-PORTABLE").CoveredByFeatureCode.Should().Be("sound_system");
+        types.Single(t => t.Code == "WHITEBOARD-MOBILE").CoveredByFeatureCode.Should().Be("whiteboard");
+        types.Count(t => t.CoveredByFeatureCode != null).Should().Be(3);
+        types.Single(t => t.Code == "EXT-CABLE").FeePerBooking.Should().Be(0m);
+        types.Single(t => t.Code == "MIC-WIRELESS").Items.Should().HaveCount(8);
+
+        var items = await db.EquipmentItems.AsNoTracking().ToListAsync();
+        items.Should().HaveCount(60);
+        items.Select(i => i.AssetTag).Should().Contain(["EQ-MICW-001", "EQ-CAM-003", "EQ-EXT-008"]);
+        items.Where(i => i.Condition != EquipmentConditions.Good || i.Status != EquipmentItemStatuses.Available)
+            .Select(i => (i.AssetTag, i.Condition, i.Status)).Should().BeEquivalentTo(new[]
+            {
+                ("EQ-MICW-008", EquipmentConditions.Damaged, EquipmentItemStatuses.UnderRepair),
+                ("EQ-PROJ-005", EquipmentConditions.MinorWear, EquipmentItemStatuses.Available),
+                ("EQ-LAP-008", EquipmentConditions.Good, EquipmentItemStatuses.Retired),
+            });
+
+        var pairs = await db.EquipmentSubstitutes.AsNoTracking()
+            .Select(p => new { Type = p.Type.Code, Substitute = p.SubstituteType.Code }).ToListAsync();
+        pairs.Select(p => (p.Type, p.Substitute)).Should().BeEquivalentTo(new[] { ("MIC-WIRELESS", "MIC-WIRED"), ("MIC-WIRED", "MIC-WIRELESS") });
+    }
+
+    [Fact]
+    public async Task Equipment_seed_adds_only_missing_rows_and_never_changes_existing_ones()
+    {
+        await using var db = await CreateEmptyDatabaseAsync();
+        await Seed.SeedAsync(db, DemoPassword);
+        var retired = await db.EquipmentItems.SingleAsync(i => i.AssetTag == "EQ-MICW-001");
+        retired.Status = EquipmentItemStatuses.Retired;
+        db.EquipmentItems.Remove(await db.EquipmentItems.SingleAsync(i => i.AssetTag == "EQ-CLK-004"));
+        db.EquipmentSubstitutes.RemoveRange(db.EquipmentSubstitutes);
+        await db.SaveChangesAsync();
+
+        await Seed.SeedAsync(db, DemoPassword);
+
+        db.ChangeTracker.Clear();
+        (await db.EquipmentItems.CountAsync()).Should().Be(60);
+        (await db.EquipmentItems.SingleAsync(i => i.AssetTag == "EQ-MICW-001")).Status.Should().Be(EquipmentItemStatuses.Retired);
+        (await db.EquipmentItems.AnyAsync(i => i.AssetTag == "EQ-CLK-004")).Should().BeTrue();
+        (await db.EquipmentSubstitutes.CountAsync()).Should().Be(2);
+    }
 }

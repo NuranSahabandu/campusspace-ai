@@ -6,7 +6,8 @@ namespace CampusSpace.Api.Data;
 
 /// <summary>
 /// Development seed data. Each step checks its own table (users by email, clubs by "is the table empty",
-/// features, buildings and rooms by code, blackouts by "is the table empty"),
+/// features, buildings, rooms and equipment types by code, equipment items by asset tag, substitutes by pair,
+/// blackouts by "is the table empty"),
 /// so startup can call this every time and it also fills in a database that already has some rows.
 /// </summary>
 public static class Seed
@@ -74,6 +75,43 @@ public static class Seed
         ("E305", "Seminar Room E305", RoomTypes.SeminarRoom, 20, "EB", ["whiteboard"], false),
     ];
 
+    /// <summary>
+    /// Equipment types, each with a short asset-tag prefix and an item count (60 items in all). CoveredBy names the room
+    /// feature that makes the type unnecessary (addendum Change B). The demo quote relies on MIC-WIRELESS costing 500.
+    /// </summary>
+    public static readonly IReadOnlyList<(string Code, string Name, string Category, decimal Fee, string? CoveredBy, string TagPrefix, int Count)> DemoEquipmentTypes =
+    [
+        ("MIC-WIRELESS", "Wireless microphone", EquipmentCategories.Audio, 500m, null, "MICW", 8),
+        ("MIC-WIRED", "Wired microphone", EquipmentCategories.Audio, 200m, null, "MICD", 8),
+        ("SPEAKER-PORTABLE", "Portable speaker", EquipmentCategories.Audio, 1000m, "sound_system", "SPK", 4),
+        ("PROJ-PORTABLE", "Portable projector", EquipmentCategories.Visual, 1500m, "projector", "PROJ", 5),
+        ("SCREEN-PORTABLE", "Portable projection screen", EquipmentCategories.Visual, 500m, null, "SCR", 4),
+        ("WHITEBOARD-MOBILE", "Mobile whiteboard", EquipmentCategories.Presentation, 300m, "whiteboard", "WB", 4),
+        ("CLICKER", "Presentation clicker", EquipmentCategories.Presentation, 100m, null, "CLK", 8),
+        ("LAPTOP", "Laptop", EquipmentCategories.Computing, 750m, null, "LAP", 8),
+        ("CAMERA-VIDEO", "Video camera", EquipmentCategories.Visual, 1500m, null, "CAM", 3),
+        ("EXT-CABLE", "Extension cable", EquipmentCategories.Accessory, 0m, null, "EXT", 8),
+    ];
+
+    /// <summary>The items that are not Good/Available.</summary>
+    public static readonly IReadOnlyDictionary<string, (string Condition, string Status)> DemoEquipmentItemStates =
+        new Dictionary<string, (string, string)>
+        {
+            ["EQ-MICW-008"] = (EquipmentConditions.Damaged, EquipmentItemStatuses.UnderRepair),
+            ["EQ-PROJ-005"] = (EquipmentConditions.MinorWear, EquipmentItemStatuses.Available),
+            ["EQ-LAP-008"] = (EquipmentConditions.Good, EquipmentItemStatuses.Retired),
+        };
+
+    /// <summary>Directional pairs: Type can be replaced by Substitute.</summary>
+    public static readonly IReadOnlyList<(string Type, string Substitute)> DemoEquipmentSubstitutes =
+    [
+        ("MIC-WIRELESS", "MIC-WIRED"),
+        ("MIC-WIRED", "MIC-WIRELESS"),
+    ];
+
+    /// <summary>EQ-MICW-001 style: a per-type prefix and a zero-padded number.</summary>
+    public static string DemoAssetTag(string prefix, int number) => $"EQ-{prefix}-{number:000}";
+
     public const string DemoBlackoutRoom = "A101";
     public const string DemoBlackoutReason = "Projector maintenance";
 
@@ -88,6 +126,9 @@ public static class Seed
         await SeedBuildingsAsync(db, ct);
         await SeedRoomsAsync(db, ct);
         await SeedBlackoutsAsync(db, ct);
+        await SeedEquipmentTypesAsync(db, ct);
+        await SeedEquipmentItemsAsync(db, ct);
+        await SeedEquipmentSubstitutesAsync(db, ct);
     }
 
     private static async Task SeedUsersAsync(AppDbContext db, string demoPassword, CancellationToken ct)
@@ -166,6 +207,55 @@ public static class Seed
             IsActive = r.IsActive,
             RoomFeatures = r.Features.Select(code => new RoomFeature { FeatureId = featureIds[code] }).ToList(),
         }));
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Adds missing types. Covering features are referenced by code, which features were seeded with above.</summary>
+    private static async Task SeedEquipmentTypesAsync(AppDbContext db, CancellationToken ct)
+    {
+        var existing = await db.EquipmentTypes.Select(t => t.Code).ToListAsync(ct);
+        db.EquipmentTypes.AddRange(DemoEquipmentTypes.Where(t => !existing.Contains(t.Code)).Select(t => new EquipmentType
+        {
+            Code = t.Code,
+            Name = t.Name,
+            Category = t.Category,
+            FeePerBooking = t.Fee,
+            CoveredByFeatureCode = t.CoveredBy,
+        }));
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Adds missing items by asset tag. Existing items keep their status and condition.</summary>
+    private static async Task SeedEquipmentItemsAsync(AppDbContext db, CancellationToken ct)
+    {
+        var typeIds = await db.EquipmentTypes.ToDictionaryAsync(t => t.Code, t => t.Id, ct);
+        var existing = (await db.EquipmentItems.Select(i => i.AssetTag).ToListAsync(ct)).ToHashSet();
+        var missing =
+            from t in DemoEquipmentTypes
+            from n in Enumerable.Range(1, t.Count)
+            let tag = DemoAssetTag(t.TagPrefix, n)
+            where !existing.Contains(tag)
+            select new { t.Code, Tag = tag };
+
+        db.EquipmentItems.AddRange(missing.Select(m =>
+        {
+            var (condition, status) = DemoEquipmentItemStates.GetValueOrDefault(
+                m.Tag, (EquipmentConditions.Good, EquipmentItemStatuses.Available));
+            return new EquipmentItem { TypeId = typeIds[m.Code], AssetTag = m.Tag, Condition = condition, Status = status };
+        }));
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task SeedEquipmentSubstitutesAsync(AppDbContext db, CancellationToken ct)
+    {
+        var typeIds = await db.EquipmentTypes.ToDictionaryAsync(t => t.Code, t => t.Id, ct);
+        var existing = (await db.EquipmentSubstitutes.Select(s => new { s.TypeId, s.SubstituteTypeId }).ToListAsync(ct))
+            .Select(s => (s.TypeId, s.SubstituteTypeId)).ToHashSet();
+
+        db.EquipmentSubstitutes.AddRange(DemoEquipmentSubstitutes
+            .Select(p => (TypeId: typeIds[p.Type], SubstituteTypeId: typeIds[p.Substitute]))
+            .Where(p => !existing.Contains(p))
+            .Select(p => new EquipmentSubstitute { TypeId = p.TypeId, SubstituteTypeId = p.SubstituteTypeId }));
         await db.SaveChangesAsync(ct);
     }
 
