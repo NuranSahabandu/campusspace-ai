@@ -1,3 +1,4 @@
+using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
 using Microsoft.EntityFrameworkCore;
 using NpgsqlTypes;
@@ -7,7 +8,8 @@ namespace CampusSpace.Api.Data;
 /// <summary>
 /// Development seed data. Each step checks its own table (users by email, clubs by "is the table empty",
 /// features, buildings, rooms and equipment types by code, equipment items by asset tag, substitutes by pair,
-/// blackouts by "is the table empty"),
+/// blackouts by "is the table empty",
+/// pricing rules by (room type, role, start date), policy settings by key and never overwriting an edited value),
 /// so startup can call this every time and it also fills in a database that already has some rows.
 /// </summary>
 public static class Seed
@@ -115,8 +117,23 @@ public static class Seed
     public const string DemoBlackoutRoom = "A101";
     public const string DemoBlackoutReason = "Projector maintenance";
 
-    /// <summary>Sri Lanka has no daylight saving, so campus time is always UTC+05:30.</summary>
-    private static readonly TimeSpan CampusOffset = TimeSpan.FromMinutes(330);
+    /// <summary>
+    /// Room rates from 2026-01-01. Lecturers are exempt. The demo quote relies on ComputerLab/Student costing 1500
+    /// (3 h x 1500 + 2 microphones x 500 = 5,500).
+    /// </summary>
+    public static readonly DateOnly DemoPricingFrom = new(2026, 1, 1);
+
+    public static readonly IReadOnlyList<(string RoomType, string Role, decimal HourlyRate, bool IsExempt)> DemoPricingRules =
+    [
+        (RoomTypes.ComputerLab, RequesterRoles.Student, 1500m, false),
+        (RoomTypes.LectureHall, RequesterRoles.Student, 1000m, false),
+        (RoomTypes.SeminarRoom, RequesterRoles.Student, 500m, false),
+        (RoomTypes.Auditorium, RequesterRoles.Student, 3000m, false),
+        (RoomTypes.ComputerLab, RequesterRoles.Lecturer, 0m, true),
+        (RoomTypes.LectureHall, RequesterRoles.Lecturer, 0m, true),
+        (RoomTypes.SeminarRoom, RequesterRoles.Lecturer, 0m, true),
+        (RoomTypes.Auditorium, RequesterRoles.Lecturer, 0m, true),
+    ];
 
     public static async Task SeedAsync(AppDbContext db, string demoPassword, CancellationToken ct = default)
     {
@@ -129,6 +146,36 @@ public static class Seed
         await SeedEquipmentTypesAsync(db, ct);
         await SeedEquipmentItemsAsync(db, ct);
         await SeedEquipmentSubstitutesAsync(db, ct);
+        await SeedPricingRulesAsync(db, ct);
+        await SeedPolicySettingsAsync(db, ct);
+    }
+
+    /// <summary>Adds the missing demo rules. A rule that exists (same room type, role and start date) is left as it is.</summary>
+    public static async Task SeedPricingRulesAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        var existing = (await db.PricingRules.Where(r => r.ValidFrom == DemoPricingFrom)
+                .Select(r => new { r.RoomType, r.RequesterRole }).ToListAsync(ct))
+            .Select(r => (r.RoomType, r.RequesterRole)).ToHashSet();
+        db.PricingRules.AddRange(DemoPricingRules
+            .Where(r => !existing.Contains((r.RoomType, r.Role)))
+            .Select(r => new PricingRule
+            {
+                RoomType = r.RoomType, RequesterRole = r.Role, HourlyRate = r.HourlyRate, IsExempt = r.IsExempt, ValidFrom = DemoPricingFrom,
+            }));
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Adds any missing policy key with its default. The migration already inserts all of them, so this only
+    /// matters if a key was removed. Never overwrites an existing value: an officer's edit wins.
+    /// </summary>
+    public static async Task SeedPolicySettingsAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        var existing = await db.PolicySettings.Select(s => s.Key).ToListAsync(ct);
+        db.PolicySettings.AddRange(PolicySettingDefaults.All
+            .Where(d => !existing.Contains(d.Key))
+            .Select(d => new PolicySetting { Key = d.Key, ValueType = d.ValueType, Value = d.Value, Description = d.Description }));
+        await db.SaveChangesAsync(ct);
     }
 
     private static async Task SeedUsersAsync(AppDbContext db, string demoPassword, CancellationToken ct)
@@ -270,11 +317,11 @@ public static class Seed
         if (officerId is null || roomId is null)
             return;
 
-        var today = DateTimeOffset.UtcNow.ToOffset(CampusOffset).Date;
+        var today = DateTimeOffset.UtcNow.ToOffset(CampusTime.Offset).Date;
         var daysToMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
         var monday = today.AddDays(daysToMonday == 0 ? 7 : daysToMonday);
-        var start = new DateTimeOffset(monday.AddHours(8), CampusOffset);
-        var end = new DateTimeOffset(monday.AddHours(12), CampusOffset);
+        var start = new DateTimeOffset(monday.AddHours(8), CampusTime.Offset);
+        var end = new DateTimeOffset(monday.AddHours(12), CampusTime.Offset);
 
         db.RoomBlackouts.Add(new RoomBlackout
         {
