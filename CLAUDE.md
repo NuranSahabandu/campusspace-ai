@@ -195,6 +195,12 @@ Show an API `DateOnly` ("yyyy-MM-dd") with `formatDateOnly` (never `new Date()`,
 `campusToday()` for a date input's `min` and past-date checks. Policy forms name their fields by the snake_case setting keys,
 because `parseProblem` only lower-cases the first letter (`max_duration_hours` stays as is). Put extra content in a
 `ConfirmDialog` (for example a list of changes) as its `children`.
+Request statuses, labels, chip colours and the All/Open/Approved/Closed groups live only in
+`features/requests/requestStatus.ts` (mirrors the mobile `request_status.dart`); show them with `RequestStatusChip`. Show a
+start/end pair with `formatCampusTimeRange`. The `api` client sends arrays as repeated params (`?status=A&status=B`).
+A list whose filters must survive opening a row uses `useServerTable({ urlState: true })` and keeps its own filters in
+the URL through `table.updateUrl` (see `features/requests/BookingRequestsPage.tsx`). Render untrusted user text (request
+notes) as a plain React text child with `whiteSpace: 'pre-wrap'`, never as HTML or markdown.
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
 
