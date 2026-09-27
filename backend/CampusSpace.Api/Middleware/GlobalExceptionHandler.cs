@@ -61,6 +61,8 @@ public sealed class GlobalExceptionHandler(
             UniqueViolation when postgres.ConstraintName == PricingRuleConfiguration.UniqueRuleIndex =>
                 (StatusCodes.Status409Conflict, PricingRuleConfiguration.DuplicateRuleMessage),
             UniqueViolation => (StatusCodes.Status409Conflict, "Duplicate value"),
+            // Double booking (BookingConfiguration.NoRoomOverlapConstraint, the only exclusion constraint): the approval
+            // that commits second loses (§8.2).
             ExclusionViolation => (StatusCodes.Status409Conflict, "Time slot was just booked"),
             // Services check FKs before inserting (400 on the field), so this is a delete of a row that is still referenced.
             ForeignKeyViolation => (StatusCodes.Status409Conflict, "In use"),

@@ -44,7 +44,7 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
         var blackout = new RoomBlackout
         {
             RoomId = roomId,
-            TimeRange = new NpgsqlRange<DateTime>(request.Start!.Value.UtcDateTime, true, request.End!.Value.UtcDateTime, false),
+            TimeRange = CampusTime.UtcRange(request.Start!.Value, request.End!.Value),
             Reason = request.Reason.Trim(),
             CreatedById = currentUser.UserId
                 ?? throw new InvalidOperationException("Creating a blackout needs an authenticated user."),

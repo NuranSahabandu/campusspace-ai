@@ -46,10 +46,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFeatureService, FeatureService>();
         services.AddScoped<IRoomService, RoomService>();
         services.AddScoped<IRoomBlackoutService, RoomBlackoutService>();
+        services.AddScoped<IRoomAvailabilityService, RoomAvailabilityService>();
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
         services.AddScoped<IPricingRuleService, PricingRuleService>();
         services.AddScoped<IPolicySettingsService, PolicySettingsService>();
+        services.AddScoped<IBookingWindowRules, BookingWindowRules>();
         services.AddScoped<IRequestStateMachine, RequestStateMachine>();
         services.AddScoped<IBookingRequestService, BookingRequestService>();
         return services;

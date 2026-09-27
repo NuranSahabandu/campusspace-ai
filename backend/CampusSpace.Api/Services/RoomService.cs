@@ -116,7 +116,8 @@ public sealed class RoomService(AppDbContext db, ICurrentUser currentUser) : IRo
         return true;
     }
 
-    private static IQueryable<RoomDto> ToDtos(IQueryable<Room> rooms) => rooms.Select(r => new RoomDto(
+    /// <summary>The room row of GET /api/rooms, also used by availability search.</summary>
+    internal static IQueryable<RoomDto> ToDtos(IQueryable<Room> rooms) => rooms.Select(r => new RoomDto(
         r.Id, r.Code, r.Name, r.Type, r.Capacity, r.IsActive,
         new BuildingRefDto(r.Building.Id, r.Building.Code, r.Building.Name),
         r.RoomFeatures.OrderBy(rf => rf.Feature.Code).Select(rf => new FeatureRefDto(rf.Feature.Code, rf.Feature.Name)).ToList()));

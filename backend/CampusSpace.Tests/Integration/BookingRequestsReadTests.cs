@@ -51,7 +51,7 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
     public async Task A_row_has_the_summary_fields()
     {
         var (client, userId, clubId) = await StudentRepAsync(Factory);
-        var start = FutureStart(daysAhead: 40, hour: 9);
+        var start = FutureStart(weekdaysAhead: 40, hour: 9);
         var id = await SubmitAsync(client, Body(clubId, purpose: "Summary check", attendees: 12, start: start, hours: 2, budget: 1500.5m));
 
         var row = (await ListAsync(client, "")).GetProperty("items")[0];

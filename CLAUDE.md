@@ -283,6 +283,17 @@ reading someone else's request) throw `ForbiddenException` (403). Submit takes a
 accepted with any offset and returned as UTC. `Notes` is untrusted text: never interpret, log or echo it in messages.
 `RequiredFeatures` is a `text[]` with no FK, so FeatureService checks it before a feature's delete or code change.
 Endpoint tests use `BookingRequestTestData` (`StudentRepAsync`, `Body`, `MoveAsync` through the real state machine).
+`FutureStart(n)` is 10:00 on the n-th weekday ahead (3–40, so outside the lead time and inside the student window).
+
+Bookings and availability: Booking-time rules (V05/V06) live only in IBookingWindowRules; submit, availability and the
+approval re-check call it (`CheckSlot` = V05, `CheckTiming` = V06; availability uses only `CheckSlot`). Its messages match
+mobile `time_rules.dart`, so keep them in step. Double booking is prevented by the Bookings exclusion constraint
+(`no_room_overlap`, active statuses only); code checks are for friendly errors, the constraint is the guarantee.
+`BookingStatuses.Active` is the only list of statuses that hold a room. Build every `tstzrange` with
+`CampusTime.UtcRange(start, end)` and compute overlaps in SQL with `TimeRange.Overlaps(range)` (`&&`), never in memory.
+The room schedule labels bookings only "Booked" (never the requester or purpose). No endpoint creates bookings until
+the Phase 3 approval; tests insert them with `BookingTestData.InsertBookingAsync`. Tests about "now" (lead time,
+advance window) use `fixture.CreateIsolatedFactoryAsync(new FixedTimeProvider(...))` instead of changing the policy.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).

@@ -44,8 +44,9 @@ public sealed class PostgresFixture : IAsyncLifetime
         return connectionString;
     }
 
-    /// <summary>The real API on its own new database. Dispose it at the end of the test.</summary>
-    public async Task<CustomWebApplicationFactory> CreateIsolatedFactoryAsync() => new(await CreateDatabaseAsync());
+    /// <summary>The real API on its own new database, optionally with a frozen clock. Dispose it at the end of the test.</summary>
+    public async Task<CustomWebApplicationFactory> CreateIsolatedFactoryAsync(TimeProvider? clock = null) =>
+        new(await CreateDatabaseAsync(), clock);
 
     public static AppDbContext CreateDbContext(string connectionString) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).Options);

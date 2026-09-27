@@ -14,7 +14,7 @@ public sealed class BookingRequestService(
     ICurrentUser currentUser,
     IPolicySettingsService policy,
     IRequestStateMachine stateMachine,
-    TimeProvider clock) : IBookingRequestService
+    IBookingWindowRules windowRules) : IBookingRequestService
 {
     public const string NotRepresentativeMessage = "You must be the registered representative of an active club";
     public const string LecturerClubMessage = "Lecturer bookings are academic and can't name a club";
@@ -33,12 +33,13 @@ public sealed class BookingRequestService(
         if (purpose.Length == 0)
             AddError(errors, nameof(request.Purpose), "Purpose is required.");
 
+        // One read of the current policy serves the V05/V06 rules and the open-request cap below.
+        var snapshot = await policy.GetAsync(ct);
         var start = request.RequestedStart!.Value;
         var end = request.RequestedEnd!.Value;
-        if (start <= clock.GetUtcNow())
-            AddError(errors, nameof(request.RequestedStart), "Start must be in the future.");
-        // TODO(Phase 2): lead time, opening hours, granularity, max duration and advance window (V05/V06), read
-        // through IPolicySettingsService.
+        var requesterRole = currentUser.IsInRole(Roles.Lecturer) ? Roles.Lecturer : Roles.Student;
+        foreach (var (field, messages) in windowRules.Check(start, end, requesterRole, snapshot).ToFieldErrors())
+            AddError(errors, field, messages[0]);
 
         // numeric(10,2) would silently round a third decimal place, so reject it instead.
         var budget = request.BudgetLkr!.Value;
@@ -60,7 +61,7 @@ public sealed class BookingRequestService(
         await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({requesterId})", ct);
 
         var open = await CountOpenAsync(requesterId, ct);
-        var max = (await policy.GetAsync(ct)).MaxOpenRequests;
+        var max = snapshot.MaxOpenRequests;
         if (open >= max)
             throw new ConflictException(CapMessage(open, max));
 
@@ -169,8 +170,7 @@ public sealed class BookingRequestService(
     private static string CapMessage(int open, int max) =>
         $"You already have {open} open requests (the limit is {max})";
 
-    private static DateTime CampusDayStartUtc(DateOnly date) =>
-        new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), CampusTime.Offset).UtcDateTime;
+    private static DateTime CampusDayStartUtc(DateOnly date) => CampusTime.StartOf(date).UtcDateTime;
 
     private Task<int> CountOpenAsync(long requesterId, CancellationToken ct) =>
         db.BookingRequests.CountAsync(r => r.RequesterId == requesterId && RequestStatuses.Open.Contains(r.Status), ct);
