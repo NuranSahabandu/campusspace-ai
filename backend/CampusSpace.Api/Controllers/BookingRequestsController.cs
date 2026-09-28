@@ -53,10 +53,13 @@ public class BookingRequestsController(IBookingRequestService requests) : Contro
     public async Task<ActionResult<EligibilityDto>> Eligibility(CancellationToken ct)
         => Ok(await requests.GetEligibilityAsync(ct));
 
-    /// <summary>Saves the request as Submitted. (Phase 3 starts the agent workflow here and returns 202.)</summary>
+    /// <summary>
+    /// Saves the request and starts planning it (§7.1 rule 6): 202 Accepted with the request, now AgentProcessing, and a
+    /// Location to poll. The agent run continues in the background; the request moves to PendingApproval or AgentFailed.
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = Requesters)]
-    [ProducesResponseType<BookingRequestDetailDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<BookingRequestDetailDto>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
@@ -64,7 +67,7 @@ public class BookingRequestsController(IBookingRequestService requests) : Contro
     public async Task<ActionResult<BookingRequestDetailDto>> Create(CreateBookingRequestRequest request, CancellationToken ct)
     {
         var created = await requests.CreateAsync(request, ct);
-        return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
+        return AcceptedAtAction(nameof(Get), new { id = created.Id }, created);
     }
 
     /// <summary>

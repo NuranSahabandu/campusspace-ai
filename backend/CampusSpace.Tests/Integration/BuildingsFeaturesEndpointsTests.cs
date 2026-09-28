@@ -171,7 +171,7 @@ public class BuildingsFeaturesEndpointsTests(PostgresFixture fixture)
         var id = (await (await officer.PostAsJsonAsync("/api/features", new { code, name = "Temp" })).ReadJsonAsync()).GetProperty("id").GetInt64();
         var (student, _, clubId) = await BookingRequestTestData.StudentRepAsync(fixture.Factory);
         (await student.PostAsJsonAsync(BookingRequestTestData.Url, BookingRequestTestData.Body(clubId, features: [code])))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
 
         var recode = await officer.PutAsJsonAsync($"/api/features/{id}", new { code = UniqueFeatureCode(), name = "Temp" });
         var delete = await officer.DeleteAsync($"/api/features/{id}");

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace CampusSpace.Tests.Infrastructure;
 
@@ -61,8 +62,14 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing && Directory.Exists(DamagePhotosPath))
+        if (!disposing)
+            return;
+        if (Directory.Exists(DamagePhotosPath))
             Directory.Delete(DamagePhotosPath, recursive: true);
+        // Close this database's idle pooled connections, or every isolated factory keeps some open until the end of the
+        // run and the container hits max_connections (53300).
+        using var connection = new NpgsqlConnection(connectionString);
+        NpgsqlConnection.ClearPool(connection);
     }
 
     public async Task MigrateAsync()

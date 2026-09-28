@@ -1,12 +1,14 @@
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CampusSpace.Tests.Infrastructure;
 
 /// <summary>
-/// Agent workflow rows for tests. No production code writes these tables until the poller (Phase 3.3), so tests insert
-/// them directly. Each helper saves and returns the new row's id.
+/// Agent workflow rows for tests, inserted directly (the poller writes them in production). Each insert helper saves and
+/// returns the new row's id.
 /// </summary>
 public static class AgentRunTestData
 {
@@ -70,6 +72,25 @@ public static class AgentRunTestData
         };
         await SaveAsync(factory, db => db.ApprovalDecisions.Add(row));
         return row.Id;
+    }
+
+    /// <summary>
+    /// What the poller does when the agent pauses for approval, without the trace or quote: the request's live run
+    /// becomes AwaitingApproval and the request AgentProcessing → PendingApproval (the real state machine). Submit
+    /// leaves a request AgentProcessing, which can't be cancelled, so cancel tests start from here. Returns the run id.
+    /// </summary>
+    public static async Task<Guid> ToPendingApprovalAsync(CustomWebApplicationFactory factory, long requestId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var machine = scope.ServiceProvider.GetRequiredService<IRequestStateMachine>();
+        var request = await db.BookingRequests.SingleAsync(r => r.Id == requestId);
+        var run = await db.AgentRuns.SingleAsync(r => r.RequestId == requestId && AgentRunStatuses.Active.Contains(r.Status));
+        run.Status = AgentRunStatuses.AwaitingApproval;
+        run.StartedAt ??= DateTime.UtcNow;
+        machine.Transition(request, RequestStatuses.PendingApproval, changedById: null, reason: "test");
+        await db.SaveChangesAsync();
+        return run.Id;
     }
 
     private static async Task SaveAsync(CustomWebApplicationFactory factory, Action<AppDbContext> add)

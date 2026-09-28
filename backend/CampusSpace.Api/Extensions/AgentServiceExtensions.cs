@@ -31,6 +31,8 @@ public static class AgentServiceExtensions
             })
             // IHttpClientFactory's own logging must never print the key.
             .RedactLoggedHeaders(_ => true);
+
+        services.AddScoped<IAgentRunStarter, AgentRunStarter>();
         return services;
     }
 

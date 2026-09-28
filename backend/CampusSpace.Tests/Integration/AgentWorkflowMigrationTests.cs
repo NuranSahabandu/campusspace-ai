@@ -36,7 +36,9 @@ public class AgentWorkflowMigrationTests(PostgresFixture fixture)
         string duration = "NULL", string started = "NULL", string completed = "NULL") =>
         $"""INSERT INTO "AgentRuns" ("Id", "RequestId", "RevisionNo", "Status", "FailureReason", "DurationMs", "StartedAt", "CompletedAt", "CreatedAt", "UpdatedAt") VALUES ('{Guid.NewGuid()}', {requestId}, {revision}, '{status}', {failureReason}, {duration}, {started}, {completed}, now(), now())""";
 
-    private async Task<long> RequestAsync() => (await QuotationTestData.RequestAsync(Factory)).RequestId;
+    /// <summary>A request with no agent run (submit would create one).</summary>
+    private async Task<long> RequestAsync() => await BookingRequestTestData.InsertSubmittedAsync(
+        Factory, (await TestAuth.CreateUserClientAsync(Factory, Roles.Student)).UserId);
 
     [Fact]
     public async Task Run_checks_reject_bad_revision_status_duration_times_and_a_failure_without_reason()

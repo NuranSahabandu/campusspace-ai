@@ -16,7 +16,7 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
     private static async Task<long> SubmitAsync(HttpClient client, Dictionary<string, object?> body)
     {
         var response = await client.PostAsJsonAsync(Url, body);
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
         return (await response.ReadJsonAsync()).GetProperty("id").GetInt64();
     }
 
@@ -58,7 +58,7 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
 
         row.GetProperty("id").GetInt64().Should().Be(id);
         row.GetProperty("purpose").GetString().Should().Be("Summary check");
-        row.GetProperty("status").GetString().Should().Be(RequestStatuses.Submitted);
+        row.GetProperty("status").GetString().Should().Be(RequestStatuses.AgentProcessing);
         row.GetProperty("requestedStart").GetDateTime().Should().Be(start.UtcDateTime);
         row.GetProperty("requestedEnd").GetDateTime().Should().Be(start.AddHours(2).UtcDateTime);
         row.GetProperty("attendees").GetInt32().Should().Be(12);
@@ -81,16 +81,17 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
         var early = await SubmitAsync(client, Body(clubId, purpose: "Early lab", attendees: 10, start: FutureStart(20)));
         var late = await SubmitAsync(client, Body(clubId, purpose: "Late seminar", attendees: 30, start: FutureStart(22)));
         var middle = await SubmitAsync(client, Body(clubId, purpose: "Middle lab", attendees: 20, start: FutureStart(21)));
-        await MoveAsync(Factory, late, RequestStatuses.AgentProcessing);
+        // Submit leaves every request AgentProcessing.
+        await MoveAsync(Factory, late, RequestStatuses.PendingApproval);
 
         Ids(await ListAsync(client, "")).Should().Equal(middle, late, early);
         Ids(await ListAsync(client, "sort=requestedStart")).Should().Equal(early, middle, late);
         Ids(await ListAsync(client, "sort=-attendees")).Should().Equal(late, middle, early);
         Ids(await ListAsync(client, "sort=createdAt")).Should().Equal(early, late, middle);
 
-        Ids(await ListAsync(client, "status=AgentProcessing")).Should().Equal(late);
-        Ids(await ListAsync(client, "status=Submitted,AgentProcessing&sort=requestedStart")).Should().Equal(early, middle, late);
-        Ids(await ListAsync(client, "status=Submitted&status=Approved&sort=requestedStart")).Should().Equal(early, middle);
+        Ids(await ListAsync(client, "status=PendingApproval")).Should().Equal(late);
+        Ids(await ListAsync(client, "status=AgentProcessing,PendingApproval&sort=requestedStart")).Should().Equal(early, middle, late);
+        Ids(await ListAsync(client, "status=AgentProcessing&status=Approved&sort=requestedStart")).Should().Equal(early, middle);
         Ids(await ListAsync(client, "search=LAB&sort=requestedStart")).Should().Equal(early, middle);
         Ids(await ListAsync(client, $"clubId={clubId}&sort=requestedStart")).Should().Equal(early, middle, late);
 
@@ -182,7 +183,7 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
         var type = await EquipmentTestData.CreateTypeAsync(Factory);
         var (client, userId, clubId) = await StudentRepAsync(Factory);
         var id = await SubmitAsync(client, Body(clubId, features: ["sound_system"], equipment: [Line(type.Id, 3)], notes: "n"));
-        await MoveAsync(Factory, id, RequestStatuses.Cancelled);
+        await MoveAsync(Factory, id, RequestStatuses.PendingApproval, RequestStatuses.Cancelled);
 
         var detail = await (await client.GetAsync($"{Url}/{id}")).ReadJsonAsync();
 
@@ -205,16 +206,20 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
 
         var history = await (await client.GetAsync($"{Url}/{id}/history")).ReadJsonAsync();
         history.GetRawText().Should().Be(detail.GetProperty("history").GetRawText());
-        history.GetArrayLength().Should().Be(2);
+        // Submit writes the first two rows (null → Submitted → AgentProcessing); MoveAsync the other two.
+        history.GetArrayLength().Should().Be(4);
         history[0].EnumerateObject().Select(p => p.Name)
             .Should().Equal("fromStatus", "toStatus", "changedById", "changedByName", "reason", "changedAt");
         history[0].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Submitted);
         history[0].GetProperty("changedById").GetInt64().Should().Be(userId);
         history[0].GetProperty("changedByName").GetString().Should().StartWith("Test Student");
         history[1].GetProperty("fromStatus").GetString().Should().Be(RequestStatuses.Submitted);
-        history[1].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Cancelled);
-        history[1].GetProperty("changedById").ValueKind.Should().Be(JsonValueKind.Null);
-        history[1].GetProperty("changedByName").ValueKind.Should().Be(JsonValueKind.Null);
-        history[1].GetProperty("reason").GetString().Should().Be("test");
+        history[1].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.AgentProcessing);
+        history[1].GetProperty("changedById").GetInt64().Should().Be(userId);
+        history[3].GetProperty("fromStatus").GetString().Should().Be(RequestStatuses.PendingApproval);
+        history[3].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Cancelled);
+        history[3].GetProperty("changedById").ValueKind.Should().Be(JsonValueKind.Null);
+        history[3].GetProperty("changedByName").ValueKind.Should().Be(JsonValueKind.Null);
+        history[3].GetProperty("reason").GetString().Should().Be("test");
     }
 }

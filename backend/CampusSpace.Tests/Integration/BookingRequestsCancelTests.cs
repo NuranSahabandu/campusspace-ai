@@ -33,11 +33,20 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     private static Task<HttpResponseMessage> CancelAsync(HttpClient client, long id, string? reason = null) =>
         client.PostAsJsonAsync(CancelUrl(id), new { reason });
 
+    /// <summary>Submits (the request is then AgentProcessing and its run Running).</summary>
     private static async Task<long> SubmitAsync(HttpClient client, long? clubId, DateTimeOffset? start = null)
     {
         var response = await client.PostAsJsonAsync(Url, Body(clubId, start: start));
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
         return (await response.ReadJsonAsync()).GetProperty("id").GetInt64();
+    }
+
+    /// <summary>Submits, then pauses the run for approval: the request is PendingApproval, so it can be cancelled.</summary>
+    private async Task<long> PendingAsync(HttpClient client, long? clubId, DateTimeOffset? start = null)
+    {
+        var id = await SubmitAsync(client, clubId, start);
+        await AgentRunTestData.ToPendingApprovalAsync(Factory, id);
+        return id;
     }
 
     private static async Task<JsonElement> OkAsync(HttpResponseMessage response)
@@ -99,10 +108,10 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     // ---- Who may cancel ----
 
     [Fact]
-    public async Task The_owner_cancels_a_submitted_request_without_a_body_and_frees_nothing_else()
+    public async Task The_owner_cancels_a_pending_request_without_a_body_and_frees_nothing_else()
     {
         var (client, userId, clubId) = await StudentRepAsync(Factory);
-        var id = await SubmitAsync(client, clubId);
+        var id = await PendingAsync(client, clubId);
 
         var response = await client.PostAsync(CancelUrl(id), content: null);
 
@@ -110,7 +119,7 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
         ShouldBeCancelled(detail, late: false, byOfficer: false);
         detail.GetProperty("cancelledAt").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
         var last = LastHistory(detail);
-        last.GetProperty("fromStatus").GetString().Should().Be(RequestStatuses.Submitted);
+        last.GetProperty("fromStatus").GetString().Should().Be(RequestStatuses.PendingApproval);
         last.GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Cancelled);
         last.GetProperty("changedById").GetInt64().Should().Be(userId);
         last.GetProperty("reason").ValueKind.Should().Be(JsonValueKind.Null);
@@ -125,8 +134,7 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     public async Task A_lecturer_owner_cancels_a_pending_request_and_a_blank_reason_is_stored_as_null()
     {
         var (client, userId) = await TestAuth.CreateUserClientAsync(Factory, Roles.Lecturer);
-        var id = await SubmitAsync(client, clubId: null);
-        await MoveAsync(Factory, id, RequestStatuses.AgentProcessing, RequestStatuses.PendingApproval);
+        var id = await PendingAsync(client, clubId: null);
 
         var detail = await OkAsync(await CancelAsync(client, id, "   "));
 
@@ -140,7 +148,7 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     public async Task Other_requesters_lab_technicians_and_admins_are_forbidden_an_unknown_id_is_404_and_no_token_is_401()
     {
         var (owner, _, clubId) = await StudentRepAsync(Factory);
-        var id = await SubmitAsync(owner, clubId);
+        var id = await PendingAsync(owner, clubId);
         var (other, _, _) = await StudentRepAsync(Factory);
 
         (await TitleAsync(await CancelAsync(other, id), 403)).Should().Be(BookingRequestService.CancelOwnMessage);
@@ -152,14 +160,14 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
 
         // Nothing changed.
         (await (await owner.GetAsync($"{Url}/{id}")).ReadJsonAsync()).GetProperty("status").GetString()
-            .Should().Be(RequestStatuses.Submitted);
+            .Should().Be(RequestStatuses.PendingApproval);
     }
 
     [Fact]
     public async Task An_officer_must_give_a_reason()
     {
         var (owner, _, clubId) = await StudentRepAsync(Factory);
-        var id = await SubmitAsync(owner, clubId);
+        var id = await PendingAsync(owner, clubId);
         var (officer, _) = await TestAuth.CreateUserClientAsync(Factory, Roles.FacilitiesOfficer);
 
         foreach (var response in new[] { await officer.PostAsync(CancelUrl(id), null), await CancelAsync(officer, id, " \t ") })
@@ -168,10 +176,10 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task An_officer_cancels_a_submitted_request_with_a_reason_and_is_never_late()
+    public async Task An_officer_cancels_a_pending_request_with_a_reason_and_is_never_late()
     {
         var (owner, _, clubId) = await StudentRepAsync(Factory);
-        var id = await SubmitAsync(owner, clubId);
+        var id = await PendingAsync(owner, clubId);
         var (officer, officerId) = await TestAuth.CreateUserClientAsync(Factory, Roles.FacilitiesOfficer);
 
         var detail = await OkAsync(await CancelAsync(officer, id, "  Room closed for exams  "));
@@ -185,7 +193,7 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     public async Task A_reason_over_500_characters_is_a_400()
     {
         var (client, _, clubId) = await StudentRepAsync(Factory);
-        var id = await SubmitAsync(client, clubId);
+        var id = await PendingAsync(client, clubId);
 
         (await (await CancelAsync(client, id, new string('x', 501))).ShouldBeProblemAsync(400))
             .GetProperty("errors").TryGetProperty("Reason", out _).Should().BeTrue();
@@ -196,7 +204,7 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     public async Task A_reason_is_plain_text_stored_and_returned_unchanged()
     {
         var (client, _, clubId) = await StudentRepAsync(Factory);
-        var id = await SubmitAsync(client, clubId);
+        var id = await PendingAsync(client, clubId);
         const string reason = "<script>alert(1)</script> & <b>bold</b> \"quoted\"";
 
         await OkAsync(await CancelAsync(client, id, reason));
@@ -210,16 +218,15 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
 
     // ---- Statuses ----
 
+    // Paths start from AgentProcessing, where submit leaves a request (an empty path: cancelling it right away).
     [Theory]
-    [InlineData(new[] { RequestStatuses.AgentProcessing }, BookingRequestService.ProcessingMessage)]
-    [InlineData(new[] { RequestStatuses.AgentProcessing, RequestStatuses.AgentFailed }, BookingRequestService.AgentFailedMessage)]
-    [InlineData(new[] { RequestStatuses.AgentProcessing, RequestStatuses.PendingApproval, RequestStatuses.RevisionRequested },
-        BookingRequestService.RevisionMessage)]
-    [InlineData(new[] { RequestStatuses.AgentProcessing, RequestStatuses.PendingApproval, RequestStatuses.Rejected },
-        "The request is already rejected")]
-    [InlineData(new[] { RequestStatuses.AgentProcessing, RequestStatuses.PendingApproval, RequestStatuses.Approved, RequestStatuses.Completed },
+    [InlineData(new string[0], BookingRequestService.ProcessingMessage)]
+    [InlineData(new[] { RequestStatuses.AgentFailed }, BookingRequestService.AgentFailedMessage)]
+    [InlineData(new[] { RequestStatuses.PendingApproval, RequestStatuses.RevisionRequested }, BookingRequestService.RevisionMessage)]
+    [InlineData(new[] { RequestStatuses.PendingApproval, RequestStatuses.Rejected }, "The request is already rejected")]
+    [InlineData(new[] { RequestStatuses.PendingApproval, RequestStatuses.Approved, RequestStatuses.Completed },
         "The request is already completed")]
-    [InlineData(new[] { RequestStatuses.Cancelled }, "The request is already cancelled")]
+    [InlineData(new[] { RequestStatuses.PendingApproval, RequestStatuses.Cancelled }, "The request is already cancelled")]
     public async Task A_status_the_state_machine_cannot_cancel_is_a_409_with_its_message(string[] path, string message)
     {
         var (client, _, clubId) = await StudentRepAsync(Factory);
@@ -233,6 +240,7 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
     public async Task Cancelling_voids_the_live_draft_quote_and_a_second_cancel_is_a_409()
     {
         var (client, _, id) = await QuotationTestData.RequestAsync(Factory);
+        await AgentRunTestData.ToPendingApprovalAsync(Factory, id);
         var quotationId = await QuotationTestData.CreateDraftAsync(Factory, id, QuotationTestData.Quote());
 
         await OkAsync(await CancelAsync(client, id));
@@ -247,22 +255,22 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
         var (client, _, clubId) = await StudentRepAsync(Factory);
         var ids = new List<long>();
         for (var i = 0; i < 3; i++)
-            ids.Add(await SubmitAsync(client, clubId, FutureStart(10 + i)));
+            ids.Add(await PendingAsync(client, clubId, FutureStart(10 + i)));
         (await client.PostAsJsonAsync(Url, Body(clubId, start: FutureStart(20)))).StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         await OkAsync(await CancelAsync(client, ids[1]));
 
-        (await client.PostAsJsonAsync(Url, Body(clubId, start: FutureStart(20)))).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await client.PostAsJsonAsync(Url, Body(clubId, start: FutureStart(20)))).StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
     [Fact]
     public async Task Parallel_cancels_of_one_request_serialise_so_exactly_one_succeeds()
     {
-        // Several rounds, so a missing row lock (both reading Submitted before either commits) shows up reliably.
+        // Several rounds, so a missing row lock (both reading PendingApproval before either commits) shows up reliably.
         for (var round = 0; round < 5; round++)
         {
             var (client, _, clubId) = await StudentRepAsync(Factory);
-            var id = await SubmitAsync(client, clubId);
+            var id = await PendingAsync(client, clubId);
 
             var responses = await Task.WhenAll(CancelAsync(client, id), CancelAsync(client, id));
 

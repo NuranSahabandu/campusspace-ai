@@ -1,3 +1,4 @@
+using CampusSpace.Api.Agents;
 using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Dtos.AgentTools;
@@ -6,7 +7,9 @@ using CampusSpace.Api.Dtos.Requests;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace CampusSpace.Api.Services;
 
@@ -16,6 +19,8 @@ public sealed class BookingRequestService(
     IPolicySettingsService policy,
     IRequestStateMachine stateMachine,
     IBookingWindowRules windowRules,
+    IAgentRunStarter runStarter,
+    IOptions<AgentServiceOptions> agentOptions,
     TimeProvider clock) : IBookingRequestService
 {
     public const string NotRepresentativeMessage = "You must be the registered representative of an active club";
@@ -100,12 +105,21 @@ public sealed class BookingRequestService(
         };
         stateMachine.Start(entity, requesterId);
         db.BookingRequests.Add(entity);
+        // §11 step 2: AgentRun #1 (Queued) and Submitted → AgentProcessing commit with the request, so a request never
+        // sits in AgentProcessing without a run. The start below is best-effort: a Queued run is the safety net the
+        // poller retries (and the watchdog fails after AgentService:StartTimeoutMinutes).
+        stateMachine.Transition(entity, RequestStatuses.AgentProcessing, requesterId);
+        var run = await runStarter.AddRunAsync(entity, ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        // Phase 3: create AgentRun #1, move to AgentProcessing, start the workflow and return 202 instead of 201.
+        await StartInlineAsync(run.Id, entity.Id, ct);
         return (await LoadDetailAsync(entity.Id, ct))!;
     }
+
+    /// <summary>Starts a committed run without holding up the 202: a slow agent service leaves it Queued.</summary>
+    private Task StartInlineAsync(Guid runId, long requestId, CancellationToken ct) =>
+        runStarter.TryStartAsync(runId, requestId, TimeSpan.FromSeconds(agentOptions.Value.InlineStartTimeoutSeconds), ct);
 
     public Task<PagedResult<BookingRequestSummaryDto>> ListAsync(BookingRequestsQuery query, CancellationToken ct = default)
     {
@@ -230,13 +244,10 @@ public sealed class BookingRequestService(
 
     /// <summary>
     /// Loads the request tracked and row-locked (SELECT … FOR UPDATE) in the caller's transaction, so operations that
-    /// change one request's status serialise and each sees the status the previous one committed. Cancel takes it
-    /// first; the Phase 3 approve and reject must take it first too.
+    /// change one request's status serialise and each sees the status the previous one committed. Cancel, retry-agent
+    /// and the agent run poller take it first (see RowLocks for the full order); the Phase 3 approve and reject must too.
     /// </summary>
-    private Task<BookingRequest?> LockForUpdateAsync(long id, CancellationToken ct) =>
-        db.BookingRequests
-            .FromSql($"""SELECT * FROM "BookingRequests" WHERE "Id" = {id} FOR UPDATE""")
-            .SingleOrDefaultAsync(ct);
+    private Task<BookingRequest?> LockForUpdateAsync(long id, CancellationToken ct) => RowLocks.RequestAsync(db, id, ct);
 
     public async Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default)
     {

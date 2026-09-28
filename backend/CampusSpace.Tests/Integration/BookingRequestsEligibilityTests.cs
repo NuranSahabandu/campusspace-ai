@@ -83,7 +83,7 @@ public class BookingRequestsEligibilityTests(PostgresFixture fixture)
     {
         var (client, _, clubId) = await StudentRepAsync(fixture.Factory);
         for (var i = 0; i < 3; i++)
-            (await client.PostAsJsonAsync(Url, Body(clubId, purpose: $"Meeting {i}"))).StatusCode.Should().Be(HttpStatusCode.Created);
+            (await client.PostAsJsonAsync(Url, Body(clubId, purpose: $"Meeting {i}"))).StatusCode.Should().Be(HttpStatusCode.Accepted);
 
         var result = await EligibilityAsync(client);
 
