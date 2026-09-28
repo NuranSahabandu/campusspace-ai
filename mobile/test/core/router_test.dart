@@ -4,6 +4,9 @@ import 'package:campusspace_mobile/features/auth/auth_controller.dart';
 import 'package:campusspace_mobile/features/auth/login_screen.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/home/home_screen.dart';
+import 'package:campusspace_mobile/features/loans/handovers_screen.dart';
+import 'package:campusspace_mobile/features/loans/loans_repository.dart';
+import 'package:campusspace_mobile/features/loans/overdue_screen.dart';
 import 'package:campusspace_mobile/features/requests/my_requests_screen.dart';
 import 'package:campusspace_mobile/features/requests/new_request_screen.dart';
 import 'package:campusspace_mobile/features/requests/request_detail_screen.dart';
@@ -27,6 +30,7 @@ void main() {
   late MockAuthRepository repository;
   late MockFacilitiesRepository facilities;
   late MockRequestsRepository requests;
+  late MockLoansRepository loans;
 
   setUpAll(() => registerFallbackValue(const RoomFilter()));
 
@@ -40,6 +44,9 @@ void main() {
     requests = MockRequestsRepository();
     stubRequestsReferenceData(requests, facilities);
     when(() => requests.getRequest(any())).thenAnswer((_) async => lecturerRequest);
+    loans = MockLoansRepository();
+    when(() => loans.getToday()).thenAnswer((_) async => liveHandovers);
+    when(() => loans.getOverdue()).thenAnswer((_) async => liveOverdue);
   });
 
   Future<void> pumpAs(WidgetTester tester, String role) async {
@@ -51,6 +58,7 @@ void main() {
       overrides: [
         facilitiesRepositoryProvider.overrideWithValue(facilities),
         requestsRepositoryProvider.overrideWithValue(requests),
+        loansRepositoryProvider.overrideWithValue(loans),
       ],
     );
   }
@@ -76,17 +84,48 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
   });
 
-  testWidgets('LabTechnician home shows the handovers placeholder; logout returns to /login', (tester) async {
-    when(() => repository.me()).thenAnswer((_) async => userWithRole(Roles.labTechnician));
-    await pumpApp(tester, FakeTokenStorage(sessionFor(Roles.labTechnician)), repository);
+  testWidgets("LabTechnician lands on Today's handovers; Overdue opens; logout returns to /login", (tester) async {
+    await pumpAs(tester, Roles.labTechnician);
 
-    expect(find.text("Today's handovers"), findsOneWidget);
-    expect(find.text('Coming in Phase 1 (Component B)'), findsOneWidget);
+    expect(currentPath(tester), AppRoutes.home);
+    expect(find.byType(TodayHandoversView), findsOneWidget);
+    expect(find.byType(HandoverCard), findsNWidgets(2));
 
+    await tester.tap(find.byTooltip('Overdue'));
+    await tester.pumpAndSettle();
+    expect(currentPath(tester), AppRoutes.overdue);
+    expect(find.byType(OverdueScreen), findsOneWidget);
+
+    await goTo(tester, AppRoutes.home);
     await tester.tap(find.byTooltip('Log out'));
     await tester.pumpAndSettle();
 
     expect(currentPath(tester), AppRoutes.login);
+  });
+
+  for (final role in [Roles.student, Roles.lecturer]) {
+    testWidgets('$role never sees the technician screens', (tester) async {
+      await pumpAs(tester, role);
+      expect(find.byType(TodayHandoversView), findsNothing);
+      expect(find.byTooltip('Overdue'), findsNothing);
+
+      for (final location in [AppRoutes.handover(9), AppRoutes.overdue, AppRoutes.checkIn(6)]) {
+        await goTo(tester, location);
+        expect(currentPath(tester), AppRoutes.home, reason: location);
+      }
+      verifyNever(() => loans.getToday());
+      verifyNever(() => loans.getOverdue());
+    });
+  }
+
+  testWidgets('LabTechnician cannot open requester screens', (tester) async {
+    await pumpAs(tester, Roles.labTechnician);
+
+    for (final location in [AppRoutes.requests, AppRoutes.newRequest, AppRoutes.request(1)]) {
+      await goTo(tester, location);
+      expect(currentPath(tester), AppRoutes.home, reason: location);
+    }
+    verifyNever(() => requests.getRequests(any(), page: any(named: 'page'), pageSize: any(named: 'pageSize')));
   });
 
   testWidgets('Student home: Browse rooms opens /rooms', (tester) async {
@@ -191,6 +230,18 @@ void main() {
         expect(authRedirect(anonymous, location), AppRoutes.login);
       }
       expect(authRedirect(as(Roles.labTechnician), '/roomsx'), isNull);
+    });
+
+    test('handovers, overdue and check-in are for Lab Technicians only', () {
+      AsyncData<AuthState> as(String role) => AsyncData(Authenticated(userWithRole(role)));
+
+      for (final location in [AppRoutes.handover(9), AppRoutes.overdue, AppRoutes.checkIn(6)]) {
+        expect(authRedirect(as(Roles.labTechnician), location), isNull);
+        expect(authRedirect(as(Roles.student), location), AppRoutes.home);
+        expect(authRedirect(as(Roles.lecturer), location), AppRoutes.home);
+        expect(authRedirect(anonymous, location), AppRoutes.login);
+      }
+      expect(authRedirect(as(Roles.student), '/overduex'), isNull);
     });
 
     test('requests are for Students and Lecturers only', () {

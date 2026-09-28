@@ -6,8 +6,10 @@ import '../../core/router.dart';
 
 import '../auth/auth_controller.dart';
 import '../auth/models.dart';
+import '../loans/handovers_screen.dart';
 
-/// Home: what each mobile role sees first (plan §13). Requesters make and follow requests and browse rooms.
+/// Home: what each mobile role sees first (plan §13). Requesters make and follow requests and browse rooms;
+/// lab technicians see today's handovers, with the overdue list one tap away.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -21,6 +23,7 @@ class HomeScreen extends ConsumerWidget {
     if (user == null) return const Scaffold();
 
     final textTheme = Theme.of(context).textTheme;
+    final isTechnician = user.role == Roles.labTechnician;
     return Scaffold(
       appBar: AppBar(
         title: Column(
@@ -31,6 +34,12 @@ class HomeScreen extends ConsumerWidget {
           ],
         ),
         actions: [
+          if (isTechnician)
+            IconButton(
+              tooltip: 'Overdue',
+              icon: const Icon(Icons.assignment_late_outlined),
+              onPressed: () => context.push(AppRoutes.overdue),
+            ),
           IconButton(
             tooltip: 'Log out',
             icon: const Icon(Icons.logout),
@@ -39,7 +48,7 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       body: SafeArea(
-        child: user.role == Roles.labTechnician ? const _TechnicianHome() : const _RequesterHome(),
+        child: isTechnician ? const TodayHandoversView() : const _RequesterHome(),
       ),
     );
   }
@@ -70,25 +79,6 @@ class _RequesterHome extends StatelessWidget {
         const SizedBox(height: 12),
         entry(Icons.meeting_room_outlined, 'Browse rooms', 'Search by building, type, capacity and features',
             AppRoutes.rooms),
-      ],
-    );
-  }
-}
-
-class _TechnicianHome extends StatelessWidget {
-  const _TechnicianHome();
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    return ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        Text("Today's handovers", style: textTheme.titleLarge),
-        const SizedBox(height: 32),
-        const Icon(Icons.inventory_2_outlined, size: 48),
-        const SizedBox(height: 12),
-        Text('Coming in Phase 1 (Component B)', textAlign: TextAlign.center, style: textTheme.titleMedium),
       ],
     );
   }
