@@ -1,12 +1,19 @@
 [project]
 name = "agent-service"
 version = "0.1.0"
-description = "CampusSpace AI multi-agent service (FastAPI; LangGraph arrives in Phase 3)"
+description = "CampusSpace AI multi-agent service (FastAPI + LangGraph)"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
+    # Ranges from the Lab 06/07 requirements.txt (Gemini is installed now so Phase 4 adds no dependencies).
+    "langchain>=1.0,<2.0",
+    "langchain-core>=1.0,<2.0",
+    "langchain-google-genai>=4.0,<5.0",
+    "langgraph>=1.0,<2.0",
+    # Durable checkpointer (Lab 06 stretch goal 4); 3.x is the line that supports langgraph 1.x.
+    "langgraph-checkpoint-sqlite>=3.1,<4",
     "pydantic>=2",
     "pydantic-settings>=2.15.0",
     "uvicorn[standard]>=0.54.0",
@@ -22,6 +29,7 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["live: calls the real .NET API; skipped unless LIVE_* env vars are set"]
 
 [dependency-groups]
 dev = [
