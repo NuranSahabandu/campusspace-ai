@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CampusSpace.Api.Agents;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
@@ -247,6 +248,52 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
 
         (await QuoteStatusAsync(Factory, quotationId)).Should().Be(QuotationStatuses.Void);
         (await TitleAsync(await CancelAsync(client, id), 409)).Should().Be("The request is already cancelled");
+    }
+
+    [Fact]
+    public async Task Cancelling_a_pending_request_cancels_its_paused_run_voids_the_draft_and_ends_the_thread()
+    {
+        var (client, _, clubId) = await StudentRepAsync(Factory);
+        var id = await SubmitAsync(client, clubId);
+        var runId = await AgentRunTestData.ToPendingApprovalAsync(Factory, id);
+        var quotationId = await QuotationTestData.CreateDraftAsync(Factory, id, QuotationTestData.Quote());
+
+        await OkAsync(await CancelAsync(client, id));
+
+        var run = await QueryAsync(Factory, db => db.AgentRuns.AsNoTracking().SingleAsync(r => r.Id == runId));
+        run.Status.Should().Be(AgentRunStatuses.Cancelled);
+        run.CompletedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+        (await QuoteStatusAsync(Factory, quotationId)).Should().Be(QuotationStatuses.Void);
+        Factory.AgentClient.Calls.Should().Contain(("resume", runId, AgentDecisions.Cancel));
+    }
+
+    [Fact]
+    public async Task A_pending_request_is_still_cancelled_when_the_agent_service_is_down()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync();
+        factory.AgentClient.Resume = (_, _, _, _) => Task.FromResult(FakeAgentClient.Unavailable<AgentWorkflowAccepted>());
+        var (client, _, clubId) = await StudentRepAsync(factory);
+        var response = await client.PostAsJsonAsync(Url, Body(clubId));
+        var id = (await response.ReadJsonAsync()).GetProperty("id").GetInt64();
+        var runId = await AgentRunTestData.ToPendingApprovalAsync(factory, id);
+
+        var detail = await OkAsync(await CancelAsync(client, id));
+
+        detail.GetProperty("status").GetString().Should().Be(RequestStatuses.Cancelled);
+        (await QueryAsync(factory, db => db.AgentRuns.Where(r => r.Id == runId).Select(r => r.Status).SingleAsync()))
+            .Should().Be(AgentRunStatuses.Cancelled);
+        factory.AgentClient.Calls.Should().Contain(("resume", runId, AgentDecisions.Cancel));
+    }
+
+    [Fact]
+    public async Task Cancelling_an_approved_request_does_not_touch_the_agent_service()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync();
+        var (client, _, id, _, _, _) = await ApprovedAsync(factory, FutureStart(30));
+
+        await OkAsync(await CancelAsync(client, id));
+
+        factory.AgentClient.Calls.Should().BeEmpty();
     }
 
     [Fact]

@@ -20,8 +20,10 @@ public sealed class BookingRequestService(
     IRequestStateMachine stateMachine,
     IBookingWindowRules windowRules,
     IAgentRunStarter runStarter,
+    IAgentClient agent,
     IOptions<AgentServiceOptions> agentOptions,
-    TimeProvider clock) : IBookingRequestService
+    TimeProvider clock,
+    ILogger<BookingRequestService> logger) : IBookingRequestService
 {
     public const string NotRepresentativeMessage = "You must be the registered representative of an active club";
     public const string LecturerClubMessage = "Lecturer bookings are academic and can't name a club";
@@ -205,6 +207,7 @@ public sealed class BookingRequestService(
 
         var now = clock.GetUtcNow().UtcDateTime;
         var late = false;
+        Guid? cancelledRunId = null;
         if (entity.Status == RequestStatuses.Approved)
         {
             var booking = await db.Bookings
@@ -229,7 +232,17 @@ public sealed class BookingRequestService(
         }
         else if (entity.Status == RequestStatuses.PendingApproval)
         {
-            // TODO(Phase 3): end the paused workflow run (the interrupted LangGraph thread) of this request.
+            // The paused run ends with the request. Its row is locked after the request row (the order every writer
+            // uses); the Draft quote is voided below with the others.
+            var run = await db.AgentRuns
+                .FromSql($"""SELECT * FROM "AgentRuns" WHERE "RequestId" = {id} AND "Status" = {AgentRunStatuses.AwaitingApproval} FOR UPDATE""")
+                .SingleOrDefaultAsync(ct);
+            if (run is not null)
+            {
+                run.Status = AgentRunStatuses.Cancelled;
+                run.CompletedAt = run.StartedAt is { } started && now < started ? started : now;
+                cancelledRunId = run.Id;
+            }
         }
 
         await QuotationService.VoidLiveAsync(db, id, ct);
@@ -240,7 +253,21 @@ public sealed class BookingRequestService(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
+        if (cancelledRunId is { } runId)
+            await EndPausedRunAsync(runId, ct);
         return await LoadDetailAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Tells the agent service to end the interrupted thread (resume "cancel"). Best-effort: the .NET run is already
+    /// Cancelled, and .NET never resumes that thread, so a failure is only logged.
+    /// </summary>
+    private async Task EndPausedRunAsync(Guid runId, CancellationToken ct)
+    {
+        var result = await agent.ResumeAsync(runId, AgentDecisions.Cancel, notes: null, ct);
+        if (!result.IsOk)
+            logger.LogWarning("Agent run {RunId} is Cancelled, but the agent service did not accept the cancel ({Outcome}: {Detail})",
+                runId, result.Outcome, result.Detail);
     }
 
     public async Task<BookingRequestDetailDto?> RetryAgentAsync(long id, CancellationToken ct = default)
