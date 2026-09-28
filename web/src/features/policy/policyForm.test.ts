@@ -68,10 +68,12 @@ describe('policyForm', () => {
     form.max_capacity_ratio = '2.55'
     form.max_open_requests = '21'
     form.min_lead_time_hours = '1.5'
+    form.checkout_window_minutes = '241'
     expect(issues(form)).toEqual([
       'min_lead_time_hours: Must be a whole number.',
       'max_capacity_ratio: Can have at most 1 decimal place.',
       'max_open_requests: Must be between 1 and 20.',
+      'checkout_window_minutes: Must be between 0 and 240.',
       'opening_hours: At least one day must be open.',
     ])
   })

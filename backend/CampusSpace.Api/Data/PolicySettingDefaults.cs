@@ -34,5 +34,7 @@ public static class PolicySettingDefaults
             "Cancelling more than this many hours before the start is free; later is flagged as late"),
         (PolicyKeys.MaxOpenRequests, PolicyValueTypes.Int, "3",
             "Most open requests a requester can have at once"),
+        (PolicyKeys.CheckoutWindowMinutes, PolicyValueTypes.Int, "30",
+            "How many minutes before a booking's start a technician may hand equipment over"),
     ];
 }

@@ -25,6 +25,7 @@ public sealed class BookingRequestService(
     public const string RevisionMessage = "The request is being revised; try again once the new proposal is ready";
     public const string AgentFailedMessage = "The request is waiting for an officer to retry planning; it can't be cancelled now";
     public const string BookingStartedMessage = "The booking has already started";
+    public const string EquipmentOnLoanMessage = "Equipment is still on loan; check it in first";
     public const string BookingNotCancellableMessage = "The booking is no longer cancellable";
 
     /// <summary>The 409 message for a status the state machine can't move to Cancelled.</summary>
@@ -198,6 +199,9 @@ public sealed class BookingRequestService(
             var start = booking.TimeRange.LowerBound;
             if (now >= start)
                 throw new ConflictException(BookingStartedMessage);
+            // Checkout locks this booking row too, so no loan can start between this check and the commit.
+            if (await db.EquipmentLoans.AnyAsync(l => l.BookingId == booking.Id && l.CheckedInAt == null, ct))
+                throw new ConflictException(EquipmentOnLoanMessage);
 
             // Only the owner can be late (an officer's cancel isn't the requester's fault). The boundary itself is free.
             var freeHours = (await policy.GetAsync(ct)).FreeCancellationHours;

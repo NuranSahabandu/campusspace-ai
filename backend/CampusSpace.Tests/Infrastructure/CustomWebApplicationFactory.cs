@@ -24,6 +24,10 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
     /// <summary>A fresh signing key for every test run (64 hex chars = 64 bytes).</summary>
     public string JwtKey { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
+    /// <summary>This factory's own damage-photo folder (Storage:DamagePhotosPath), deleted on dispose.</summary>
+    public string DamagePhotosPath { get; } =
+        Path.Combine(Path.GetTempPath(), "campusspace-tests", "damage-photos", Guid.NewGuid().ToString("N"));
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -31,11 +35,19 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
         builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
         builder.UseSetting("Jwt:Audience", JwtAudience);
+        builder.UseSetting("Storage:DamagePhotosPath", DamagePhotosPath);
         // The agent service is not running in tests: its /health always answers 200.
         builder.ConfigureTestServices(services => services.AddHttpClient(AgentServiceHealthCheck.ClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))));
         if (clock is not null)
             builder.ConfigureTestServices(services => services.AddSingleton(clock));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing && Directory.Exists(DamagePhotosPath))
+            Directory.Delete(DamagePhotosPath, recursive: true);
     }
 
     public async Task MigrateAsync()

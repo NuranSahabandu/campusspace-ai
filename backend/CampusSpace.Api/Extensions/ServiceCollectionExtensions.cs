@@ -3,9 +3,11 @@ using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
+using CampusSpace.Api.Options;
 using CampusSpace.Api.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 
 namespace CampusSpace.Api.Extensions;
 
@@ -50,6 +52,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEquipmentAvailabilityService, EquipmentAvailabilityService>();
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
+        services.AddScoped<ILoanService, LoanService>();
+        services.AddOptions<StorageOptions>()
+            .BindConfiguration(StorageOptions.SectionName)
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSingleton<IDamagePhotoStore>(sp => new DamagePhotoStore(Path.Combine(
+            sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
+            sp.GetRequiredService<IOptions<StorageOptions>>().Value.DamagePhotosPath)));
         services.AddScoped<IPricingRuleService, PricingRuleService>();
         services.AddScoped<IQuotationCalculator, QuotationCalculator>();
         services.AddScoped<IQuotationService, QuotationService>();

@@ -131,7 +131,7 @@ public class EquipmentItemsEndpointsTests(PostgresFixture fixture)
         var officer = await OfficerAsync();
         var type = await EquipmentTestData.CreateTypeAsync(fixture.Factory);
         var other = await EquipmentTestData.CreateTypeAsync(fixture.Factory);
-        // Loans (Phase 2) will set OnLoan; insert it directly for now.
+        // Inserted directly so this test covers the rule on its own; Only_loans_set_and_clear_OnLoan uses a real checkout.
         var item = await EquipmentTestData.CreateItemAsync(fixture.Factory, type.Id, EquipmentItemStatuses.OnLoan);
         var url = $"/api/equipment-items/{item.Id}";
 
@@ -149,6 +149,34 @@ public class EquipmentItemsEndpointsTests(PostgresFixture fixture)
         var body = await notes.ReadJsonAsync();
         body.GetProperty("notes").GetString().Should().Be("Borrowed by Robotics Club");
         body.GetProperty("status").GetString().Should().Be(EquipmentItemStatuses.OnLoan);
+    }
+
+    [Fact]
+    public async Task Only_loans_set_and_clear_OnLoan()
+    {
+        var officer = await OfficerAsync();
+        var start = DateTimeOffset.UtcNow.AddMinutes(10);
+        var handover = await LoanTestData.HandoverAsync(fixture.Factory, start, start.AddHours(2));
+        var (tech, _) = await LoanTestData.TechnicianAsync(fixture.Factory);
+        var loanId = await LoanTestData.CheckoutOkAsync(tech, handover.BookingId, handover.ItemIds[0]);
+        var item = await LoanTestData.ItemAsync(fixture.Factory, handover.ItemIds[0]);
+        item.Status.Should().Be(EquipmentItemStatuses.OnLoan);
+        var url = $"/api/equipment-items/{item.Id}";
+
+        // The item endpoints can't clear OnLoan, whoever calls them.
+        var available = await officer.PutAsJsonAsync(url, Item(item, status: EquipmentItemStatuses.Available));
+        var repair = await tech.PutAsJsonAsync(url, Item(item, status: EquipmentItemStatuses.UnderRepair));
+        (await ErrorAsync(available, "Status")).Should().Be("Item is on loan; use check-in");
+        (await ErrorAsync(repair, "Status")).Should().Be("Item is on loan; use check-in");
+        (await officer.PutAsJsonAsync(url, Item(item, notes: "Out with the drama club"))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Check-in clears it; after that the item is edited normally again, but OnLoan still can't be set.
+        (await LoanTestData.CheckInAsync(tech, loanId, EquipmentConditions.MinorWear)).StatusCode.Should().Be(HttpStatusCode.OK);
+        item = await LoanTestData.ItemAsync(fixture.Factory, item.Id);
+        item.Status.Should().Be(EquipmentItemStatuses.Available);
+        (await ErrorAsync(await officer.PutAsJsonAsync(url, Item(item, status: EquipmentItemStatuses.OnLoan)), "Status"))
+            .Should().Be("Only loans can set OnLoan.");
+        (await officer.PutAsJsonAsync(url, Item(item, status: EquipmentItemStatuses.Retired))).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

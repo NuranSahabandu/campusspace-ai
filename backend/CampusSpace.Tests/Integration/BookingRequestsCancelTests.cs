@@ -331,6 +331,28 @@ public class BookingRequestsCancelTests(PostgresFixture fixture)
         request.CancelledAt.Should().BeNull();
     }
 
+    // ---- Equipment on loan (frozen clock: checkout opens before the start) ----
+
+    [Fact]
+    public async Task A_booking_with_equipment_on_loan_cannot_be_cancelled_until_it_is_checked_in()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync(new FixedTimeProvider(Now));
+        var owner = await ApprovedAsync(factory, Now.AddMinutes(20));
+        var type = await EquipmentTestData.CreateTypeAsync(factory);
+        var item = await EquipmentTestData.CreateItemAsync(factory, type.Id);
+        await EquipmentTestData.InsertReservationAsync(factory, owner.BookingId, type.Id, 1);
+        var (tech, _) = await LoanTestData.TechnicianAsync(factory);
+        var loanId = await LoanTestData.CheckoutOkAsync(tech, owner.BookingId, item.Id);
+
+        (await TitleAsync(await CancelAsync(owner.Client, owner.RequestId), 409)).Should().Be(BookingRequestService.EquipmentOnLoanMessage);
+        (await BookingStatusAsync(factory, owner.BookingId)).Should().Be(BookingStatuses.Confirmed);
+
+        (await LoanTestData.CheckInAsync(tech, loanId, EquipmentConditions.Good)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        ShouldBeCancelled(await OkAsync(await CancelAsync(owner.Client, owner.RequestId)), late: true, byOfficer: false);
+        (await BookingStatusAsync(factory, owner.BookingId)).Should().Be(BookingStatuses.Cancelled);
+    }
+
     // ---- The late flag and started bookings (frozen clock) ----
 
     [Fact]

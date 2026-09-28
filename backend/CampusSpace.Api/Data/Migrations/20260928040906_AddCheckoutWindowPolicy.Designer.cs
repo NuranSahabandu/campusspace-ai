@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using CampusSpace.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using NpgsqlTypes;
@@ -13,9 +14,11 @@ using NpgsqlTypes;
 namespace CampusSpace.Api.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260928040906_AddCheckoutWindowPolicy")]
+    partial class AddCheckoutWindowPolicy
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -356,91 +359,6 @@ namespace CampusSpace.Api.Data.Migrations
                             t.HasCheckConstraint("CK_EquipmentItems_Condition", "\"Condition\" IN ('Good', 'MinorWear', 'Damaged')");
 
                             t.HasCheckConstraint("CK_EquipmentItems_Status", "\"Status\" IN ('Available', 'OnLoan', 'UnderRepair', 'Retired')");
-                        });
-                });
-
-            modelBuilder.Entity("CampusSpace.Api.Models.EquipmentLoan", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("BookingId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("CheckedInAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long?>("CheckedInById")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("CheckedOutAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("CheckedOutById")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("DamageNote")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)");
-
-                    b.Property<string>("DamagePhotoPath")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
-
-                    b.Property<DateTime>("DueAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsLateReturn")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<long>("ItemId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("ReturnCondition")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookingId");
-
-                    b.HasIndex("CheckedInById");
-
-                    b.HasIndex("CheckedOutById");
-
-                    b.HasIndex("ItemId");
-
-                    b.HasIndex(new[] { "DueAt" }, "IX_EquipmentLoans_DueAt_Open")
-                        .HasFilter("\"CheckedInAt\" IS NULL");
-
-                    b.HasIndex(new[] { "ItemId" }, "IX_EquipmentLoans_ItemId_Open")
-                        .IsUnique()
-                        .HasFilter("\"CheckedInAt\" IS NULL");
-
-                    b.ToTable("EquipmentLoans", t =>
-                        {
-                            t.HasCheckConstraint("CK_EquipmentLoans_CheckIn", "(\"CheckedInAt\" IS NULL AND \"CheckedInById\" IS NULL AND \"ReturnCondition\" IS NULL AND \"DamageNote\" IS NULL AND \"DamagePhotoPath\" IS NULL AND NOT \"IsLateReturn\") OR (\"CheckedInAt\" IS NOT NULL AND \"CheckedInById\" IS NOT NULL AND \"ReturnCondition\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_EquipmentLoans_CheckedInAt", "\"CheckedInAt\" >= \"CheckedOutAt\"");
-
-                            t.HasCheckConstraint("CK_EquipmentLoans_DamagePhotoPath", "\"DamagePhotoPath\" ~ '^[0-9a-f]{32}\\.(jpg|png)$'");
-
-                            t.HasCheckConstraint("CK_EquipmentLoans_Damaged", "\"ReturnCondition\" IS DISTINCT FROM 'Damaged' OR (\"DamageNote\" IS NOT NULL AND \"DamagePhotoPath\" IS NOT NULL)");
-
-                            t.HasCheckConstraint("CK_EquipmentLoans_DueAt", "\"DueAt\" > \"CheckedOutAt\"");
-
-                            t.HasCheckConstraint("CK_EquipmentLoans_ReturnCondition", "\"ReturnCondition\" IN ('Good', 'MinorWear', 'Damaged')");
                         });
                 });
 
@@ -1123,40 +1041,6 @@ namespace CampusSpace.Api.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Type");
-                });
-
-            modelBuilder.Entity("CampusSpace.Api.Models.EquipmentLoan", b =>
-                {
-                    b.HasOne("CampusSpace.Api.Models.Booking", "Booking")
-                        .WithMany()
-                        .HasForeignKey("BookingId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CampusSpace.Api.Models.User", "CheckedInBy")
-                        .WithMany()
-                        .HasForeignKey("CheckedInById")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("CampusSpace.Api.Models.User", "CheckedOutBy")
-                        .WithMany()
-                        .HasForeignKey("CheckedOutById")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CampusSpace.Api.Models.EquipmentItem", "Item")
-                        .WithMany()
-                        .HasForeignKey("ItemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Booking");
-
-                    b.Navigation("CheckedInBy");
-
-                    b.Navigation("CheckedOutBy");
-
-                    b.Navigation("Item");
                 });
 
             modelBuilder.Entity("CampusSpace.Api.Models.EquipmentReservation", b =>

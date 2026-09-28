@@ -19,7 +19,8 @@ public sealed record PolicySnapshot(
     decimal MaxCapacityRatio,
     int SlotGranularityMinutes,
     int FreeCancellationHours,
-    int MaxOpenRequests)
+    int MaxOpenRequests,
+    int CheckoutWindowMinutes)
 {
     /// <summary>The JSON day names of opening_hours, Monday first.</summary>
     public static readonly IReadOnlyList<(string Name, DayOfWeek Day)> Days =
@@ -43,6 +44,7 @@ public sealed record PolicySnapshot(
         [PolicyKeys.SlotGranularityMinutes] = SlotGranularityMinutes,
         [PolicyKeys.FreeCancellationHours] = FreeCancellationHours,
         [PolicyKeys.MaxOpenRequests] = MaxOpenRequests,
+        [PolicyKeys.CheckoutWindowMinutes] = CheckoutWindowMinutes,
     };
 
     /// <summary>{"mon":{"open":"08:00","close":"20:00"}, ..., "sun":null}, in day order.</summary>

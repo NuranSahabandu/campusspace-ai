@@ -29,6 +29,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<RequestStatusHistory> RequestStatusHistory => Set<RequestStatusHistory>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<EquipmentReservation> EquipmentReservations => Set<EquipmentReservation>();
+    public DbSet<EquipmentLoan> EquipmentLoans => Set<EquipmentLoan>();
     public DbSet<Quotation> Quotations => Set<Quotation>();
     public DbSet<QuotationLine> QuotationLines => Set<QuotationLine>();
 
