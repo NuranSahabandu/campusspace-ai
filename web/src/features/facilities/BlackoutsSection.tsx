@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
-import { Alert, Button, FormControlLabel, Stack, Switch, Typography } from '@mui/material'
+import { Alert, Button, Chip, FormControlLabel, Stack, Switch, Typography } from '@mui/material'
 import { GridActionsCellItem, type GridColDef } from '@mui/x-data-grid'
 import { api } from '../../api/client'
 import type { BlackoutDto, RoomDto } from '../../api/types'
@@ -10,6 +10,7 @@ import { useServerTable } from '../../hooks/useServerTable'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../ui/formatDateTime'
 import { ServerDataGrid } from '../../ui/ServerDataGrid'
+import { BlackoutClashesDialog } from './BlackoutClashesDialog'
 import { BlackoutFormDialog } from './BlackoutFormDialog'
 import { BLACKOUTS_SORT_FIELDS, roomsKeys, useBlackouts } from './useFacilities'
 
@@ -23,6 +24,7 @@ export function BlackoutsSection({ room }: { room: RoomDto }) {
   const query = useBlackouts(room.id, { ...table.params, search: undefined, from: showPast ? undefined : now })
   const [adding, setAdding] = useState(false)
   const [deleting, setDeleting] = useState<BlackoutDto | null>(null)
+  const [viewingClashes, setViewingClashes] = useState<BlackoutDto | null>(null)
 
   const remove = useApiMutation<number>({
     mutationFn: (id) => api.delete(`/api/rooms/${room.id}/blackouts/${id}`),
@@ -36,6 +38,27 @@ export function BlackoutsSection({ room }: { room: RoomDto }) {
     { field: 'end', headerName: 'End', width: 190, sortable: false, valueFormatter: (value: string) => formatDateTime(value) },
     { field: 'reason', headerName: 'Reason', flex: 1, minWidth: 200, sortable: false },
     { field: 'createdByName', headerName: 'Created by', width: 170, sortable: false },
+    {
+      field: 'clashCount',
+      headerName: 'Clashes',
+      width: 120,
+      sortable: false,
+      // Active bookings the blackout clashes with now; the chip opens them so the officer can cancel each one.
+      renderCell: ({ row }) =>
+        row.clashCount > 0 ? (
+          <Chip
+            size="small"
+            color="warning"
+            label={`${row.clashCount} clash${row.clashCount === 1 ? '' : 'es'}`}
+            onClick={() => setViewingClashes(row)}
+            aria-label={`Show ${row.clashCount} clashing booking${row.clashCount === 1 ? '' : 's'} for ${formatDateTime(row.start)}`}
+          />
+        ) : (
+          <Typography variant="body2" color="text.secondary" component="span">
+            None
+          </Typography>
+        ),
+    },
     {
       field: 'actions',
       type: 'actions',
@@ -76,7 +99,10 @@ export function BlackoutsSection({ room }: { room: RoomDto }) {
           </Button>
         </Stack>
       </Stack>
-      <Alert severity="info">Adding a blackout lists the active bookings it clashes with. They are not cancelled automatically.</Alert>
+      <Alert severity="info">
+        Adding a blackout lists the active bookings it clashes with. They are not cancelled automatically: open a
+        blackout's clashes to cancel them.
+      </Alert>
 
       <ServerDataGrid
         query={query}
@@ -88,6 +114,7 @@ export function BlackoutsSection({ room }: { room: RoomDto }) {
       />
 
       {adding && <BlackoutFormDialog room={room} onClose={() => setAdding(false)} />}
+      {viewingClashes && <BlackoutClashesDialog blackout={viewingClashes} onClose={() => setViewingClashes(null)} />}
       <ConfirmDialog
         open={deleting !== null}
         title="Delete blackout?"

@@ -28,6 +28,7 @@ const EquipmentTypesPage = lazy(() =>
 const EquipmentItemsPage = lazy(() =>
   import('./features/equipment/EquipmentItemsPage').then((m) => ({ default: m.EquipmentItemsPage })),
 )
+const LoansPage = lazy(() => import('./features/loans/LoansPage').then((m) => ({ default: m.LoansPage })))
 const PricingPage = lazy(() => import('./features/pricing/PricingPage').then((m) => ({ default: m.PricingPage })))
 const BookingRequestsPage = lazy(() =>
   import('./features/requests/BookingRequestsPage').then((m) => ({ default: m.BookingRequestsPage })),
@@ -51,28 +52,33 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route element={<ProtectedRoute roles={ROUTE_ROLES['/']} />}>
+      {/* Any signed-in user: /forbidden must be reachable by every role, or the staff guard below would loop on it. */}
+      <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route index element={<DashboardPage />} />
-          <Route path="rooms" element={<GuardedPage path="/rooms"><RoomsPage /></GuardedPage>} />
-          <Route path="rooms/:id" element={<GuardedPage path="/rooms/:id"><RoomDetailPage /></GuardedPage>} />
-          {/* Not a page of its own: the target's guard decides access. */}
-          <Route path="equipment" element={<Navigate to="/equipment/types" replace />} />
-          <Route path="equipment/types" element={<GuardedPage path="/equipment/types"><EquipmentTypesPage /></GuardedPage>} />
-          <Route path="equipment/items" element={<GuardedPage path="/equipment/items"><EquipmentItemsPage /></GuardedPage>} />
-          <Route path="pricing" element={<GuardedPage path="/pricing"><PricingPage /></GuardedPage>} />
-          <Route path="policy" element={<GuardedPage path="/policy"><PolicyPage /></GuardedPage>} />
-          <Route path="requests" element={<GuardedPage path="/requests"><BookingRequestsPage /></GuardedPage>} />
-          <Route path="requests/:id" element={<GuardedPage path="/requests/:id"><BookingRequestDetailPage /></GuardedPage>} />
-          <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
-          <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
-          <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
-          <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
-          <Route path="clubs/:id" element={<GuardedPage path="/clubs/:id"><ClubDetailPage /></GuardedPage>} />
-          <Route path="facilities/reference" element={<GuardedPage path="/facilities/reference"><ReferencePage /></GuardedPage>} />
-          <Route path="audit-logs" element={<GuardedPage path="/audit-logs"><AuditLogsPage /></GuardedPage>} />
           <Route path="forbidden" element={<ForbiddenPage />} />
-          <Route path="*" element={<NotFoundPage />} />
+          {/* Staff only; a signed-in non-staff user is sent to /forbidden above. */}
+          <Route element={<ProtectedRoute roles={ROUTE_ROLES['/']} />}>
+            <Route index element={<DashboardPage />} />
+            <Route path="rooms" element={<GuardedPage path="/rooms"><RoomsPage /></GuardedPage>} />
+            <Route path="rooms/:id" element={<GuardedPage path="/rooms/:id"><RoomDetailPage /></GuardedPage>} />
+            {/* Not a page of its own: the target's guard decides access. */}
+            <Route path="equipment" element={<Navigate to="/equipment/types" replace />} />
+            <Route path="equipment/types" element={<GuardedPage path="/equipment/types"><EquipmentTypesPage /></GuardedPage>} />
+            <Route path="equipment/items" element={<GuardedPage path="/equipment/items"><EquipmentItemsPage /></GuardedPage>} />
+            <Route path="loans" element={<GuardedPage path="/loans"><LoansPage /></GuardedPage>} />
+            <Route path="pricing" element={<GuardedPage path="/pricing"><PricingPage /></GuardedPage>} />
+            <Route path="policy" element={<GuardedPage path="/policy"><PolicyPage /></GuardedPage>} />
+            <Route path="requests" element={<GuardedPage path="/requests"><BookingRequestsPage /></GuardedPage>} />
+            <Route path="requests/:id" element={<GuardedPage path="/requests/:id"><BookingRequestDetailPage /></GuardedPage>} />
+            <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
+            <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
+            <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
+            <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
+            <Route path="clubs/:id" element={<GuardedPage path="/clubs/:id"><ClubDetailPage /></GuardedPage>} />
+            <Route path="facilities/reference" element={<GuardedPage path="/facilities/reference"><ReferencePage /></GuardedPage>} />
+            <Route path="audit-logs" element={<GuardedPage path="/audit-logs"><AuditLogsPage /></GuardedPage>} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

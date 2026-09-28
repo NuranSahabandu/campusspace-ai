@@ -201,6 +201,14 @@ start/end pair with `formatCampusTimeRange`. The `api` client sends arrays as re
 A list whose filters must survive opening a row uses `useServerTable({ urlState: true })` and keeps its own filters in
 the URL through `table.updateUrl` (see `features/requests/BookingRequestsPage.tsx`). Render untrusted user text (request
 notes) as a plain React text child with `whiteSpace: 'pre-wrap'`, never as HTML or markdown.
+Cancel a request only through `CancelRequestDialog` (`features/requests/`): an officer reason is required (≤ 500), a
+409 title is shown exactly as sent, and it invalidates the request and room queries. Which statuses offer it comes only
+from `isCancellable`/`CANCELLABLE_STATUSES` in `requestStatus.ts` (mirrors `RequestStateMachine` and mobile
+`cancellable`). Show "Late"/"By office" with `CancellationFlags`. Blackout clashes (both the add-blackout warning and
+a row's clash list) render `ClashList` from `useBlackoutClashes` (under `roomsKeys.all`, so a cancel refreshes them). The blackout
+list's `clashCount` is counted in SQL with the same predicate as `ClashesOf`; keep the two in step. Show an image that
+needs auth (for example `GET /api/loans/{id}/photo`) by fetching it through `api` with `responseType: 'blob'` and
+`useBlobImageRef`, which revokes the object URL on unmount; never point a bare `<img src>` at the API.
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
 
@@ -256,6 +264,8 @@ curl -s http://localhost:5080/api/auth/me -H "Authorization: Bearer $TOKEN"
 curl -s "http://localhost:5080/api/users?page=1&pageSize=20" -H "Authorization: Bearer $TOKEN"
 ```
 
+Web route guards: `/forbidden` sits outside the staff-only `ProtectedRoute` (any signed-in role reaches it, so a
+requester's or technician's stored session lands there once instead of looping); every staff page goes inside it.
 Auth conventions: the fallback policy denies anonymous access, so only mark `[AllowAnonymous]` when you mean it. Use
 `[Authorize(Roles = Roles.X)]` (never string literals), `User.GetUserId()` for the caller's id, `ConflictException`
 for 409s from services, and `PageQuery`/`PagedResult<T>`/`ToPagedResultAsync` for list endpoints.

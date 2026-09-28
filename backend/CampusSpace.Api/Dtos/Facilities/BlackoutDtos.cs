@@ -3,9 +3,13 @@ using CampusSpace.Api.Dtos.Common;
 
 namespace CampusSpace.Api.Dtos.Facilities;
 
-/// <summary>A blackout as [Start, End): Start is included, End is not. Both are UTC.</summary>
+/// <summary>
+/// A blackout as [Start, End): Start is included, End is not. Both are UTC. ClashCount is the number of Active bookings it
+/// clashes with now (the same rule as GET .../clashes).
+/// </summary>
 public record BlackoutDto(
-    long Id, long RoomId, DateTime Start, DateTime End, string Reason, long CreatedById, string CreatedByName, DateTime CreatedAt);
+    long Id, long RoomId, DateTime Start, DateTime End, string Reason, long CreatedById, string CreatedByName, DateTime CreatedAt,
+    int ClashCount);
 
 /// <summary>
 /// An Active booking of the blackout's room whose [Start, End) overlaps it (UC14). Officer-only data, so it names the
@@ -20,8 +24,8 @@ public record BlackoutClashDto(
 /// </summary>
 public record BlackoutWithClashesDto(
     long Id, long RoomId, DateTime Start, DateTime End, string Reason, long CreatedById, string CreatedByName, DateTime CreatedAt,
-    IReadOnlyList<BlackoutClashDto> Clashes)
-    : BlackoutDto(Id, RoomId, Start, End, Reason, CreatedById, CreatedByName, CreatedAt);
+    int ClashCount, IReadOnlyList<BlackoutClashDto> Clashes)
+    : BlackoutDto(Id, RoomId, Start, End, Reason, CreatedById, CreatedByName, CreatedAt, ClashCount);
 
 /// <summary>Times may carry any offset (for example +05:30); they are stored as UTC.</summary>
 public record CreateBlackoutRequest(

@@ -18,6 +18,7 @@ export const ROUTE_ROLES = {
   '/facilities/reference': OFFICER,
   '/equipment/types': OFFICER,
   '/equipment/items': OFFICER,
+  '/loans': OFFICER,
   '/pricing': OFFICER,
   '/policy': OFFICER,
   '/requests': OFFICER,

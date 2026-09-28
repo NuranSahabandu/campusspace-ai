@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { Roles } from '../../auth/roles'
+import { BOOKING_REQUESTS } from '../../test/fixtures'
 import { renderApp } from '../../test/utils'
 import { requestsHandlers } from './requestsHandlers'
 
@@ -158,6 +159,29 @@ describe('BookingRequestsPage', () => {
 
     await user.click(screen.getByRole('columnheader', { name: /^Submitted/ }))
     await waitFor(() => expect(listRequests.at(-1)?.get('sort')).toBe('createdAt'))
+  })
+
+  it('marks cancelled rows that were late or cancelled by the office', async () => {
+    const [workshop, lecture, rehearsal] = BOOKING_REQUESTS
+    requestsHandlers({
+      rows: [
+        { ...workshop, status: 'Cancelled', cancelledAt: '2026-10-19T04:30:00Z', cancelledByOfficer: true },
+        { ...lecture, status: 'Cancelled', cancelledAt: '2026-10-25T04:30:00Z', isLateCancellation: true },
+        rehearsal,
+      ],
+    })
+    renderApp('/requests', { role: Roles.FacilitiesOfficer })
+
+    await screen.findByText('Robotics Club Arduino workshop')
+    const byOffice = rowOf('Robotics Club Arduino workshop')
+    expect(within(byOffice).getByText('By office')).toBeInTheDocument()
+    expect(within(byOffice).queryByText('Late')).not.toBeInTheDocument()
+    const late = rowOf('Guest lecture: AI in agriculture')
+    expect(within(late).getByText('Late')).toBeInTheDocument()
+    expect(within(late).queryByText('By office')).not.toBeInTheDocument()
+    const open = rowOf('Drama Society rehearsal')
+    expect(within(open).queryByText('Late')).not.toBeInTheDocument()
+    expect(within(open).queryByText('By office')).not.toBeInTheDocument()
   })
 
   it('shows the empty state', async () => {

@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Link as RouterLink, useLocation, useParams } from 'react-router'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import CancelIcon from '@mui/icons-material/Cancel'
 import {
   Alert,
   Box,
@@ -19,19 +20,24 @@ import type { BookingRequestDetailDto, RequestStatusHistoryDto } from '../../api
 import { formatCampusTimeRange, formatDateTime } from '../../ui/formatDateTime'
 import { formatLkr } from '../../ui/formatLkr'
 import type { FromListState } from './BookingRequestsPage'
+import { CancelRequestDialog } from './CancelRequestDialog'
 import { RequestStatusChip } from './RequestStatusChip'
-import { requestStatusLabel } from './requestStatus'
+import { isCancellable, RequestStatuses, requestStatusLabel } from './requestStatus'
 import { useBookingRequest } from './useRequests'
 
 const parseId = (raw: string | undefined) => (raw !== undefined && /^[1-9]\d*$/.test(raw) ? Number(raw) : undefined)
 
-/** One booking request for a Facilities Officer (§12, Component C), read-only. Actions arrive in Phase 3. */
+/**
+ * One booking request for a Facilities Officer (§12, Component C). The officer can cancel it (with a reason) while its
+ * status allows; approve/reject arrive in Phase 3.
+ */
 export function BookingRequestDetailPage() {
   const id = parseId(useParams().id)
   const location = useLocation()
   // Back to the list with the filters it had, when we came from it.
   const listSearch = (location.state as Partial<FromListState> | null)?.listSearch ?? ''
   const { data: request, isPending, isError, error, refetch } = useBookingRequest(id ?? 0)
+  const [cancelling, setCancelling] = useState(false)
 
   const back = (
     <Button component={RouterLink} to={`/requests${listSearch}`} startIcon={<ArrowBackIcon />} sx={{ mb: 1 }}>
@@ -76,9 +82,15 @@ export function BookingRequestDetailPage() {
           {request.purpose}
         </Typography>
         <RequestStatusChip status={request.status} size="medium" />
+        {isCancellable(request.status) && (
+          <Button color="error" variant="outlined" startIcon={<CancelIcon />} onClick={() => setCancelling(true)} sx={{ ml: 'auto' }}>
+            Cancel request
+          </Button>
+        )}
       </Stack>
 
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
+        {request.cancelledAt && <CancellationCard request={request} cancelledAt={request.cancelledAt} />}
         <RequestCards request={request} />
         <Card title="Status history" wide>
           <Timeline history={request.history} />
@@ -89,7 +101,43 @@ export function BookingRequestDetailPage() {
           </Typography>
         </Card>
       </Box>
+
+      {cancelling && (
+        <CancelRequestDialog
+          requestId={request.id}
+          message={`Cancel "${request.purpose}" by ${request.requester.name} (${formatCampusTimeRange(request.requestedStart, request.requestedEnd)})? An approved booking is released.`}
+          onClose={() => setCancelling(false)}
+        />
+      )}
     </>
+  )
+}
+
+/** How and when the request was cancelled. The reason is the Cancelled history row's, shown as plain text. */
+function CancellationCard({ request, cancelledAt }: { request: BookingRequestDetailDto; cancelledAt: string }) {
+  const reason = request.history.findLast((h) => h.toStatus === RequestStatuses.Cancelled)?.reason
+  return (
+    <Card title="Cancellation" wide>
+      <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+        <Typography>Cancelled on {formatDateTime(cancelledAt)}</Typography>
+        {request.isLateCancellation && <Chip size="small" color="warning" label="Late cancellation" />}
+      </Stack>
+      {request.cancelledByOfficer && (
+        <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+          Cancelled by the facilities office
+        </Typography>
+      )}
+      <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1 }}>
+        Reason
+      </Typography>
+      {reason ? (
+        <Typography data-testid="cancel-reason" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+          {reason}
+        </Typography>
+      ) : (
+        <Typography color="text.secondary">No reason given</Typography>
+      )}
+    </Card>
   )
 }
 
