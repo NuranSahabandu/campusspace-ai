@@ -314,6 +314,20 @@ A.3 is superseded here); ReserveAsync refuses any other isolation level. A black
 it reports clashes for the officer to handle (`clashes` on the create response, `GET .../blackouts/{id}/clashes`).
 Tests insert reservations with `EquipmentTestData.InsertReservationAsync` (copies the booking's range).
 
+Loans: checkout only for Active bookings inside [start − checkout window, end), for a reserved type, below the
+reserved quantity, with the booking row locked; the partial unique index guarantees one open loan per item.
+Check-in Damaged needs a note and a photo and sends the item to UnderRepair. Late returns are flagged.
+The checkout window is the policy key `checkout_window_minutes` (addendum Open question 5, decided for this value only:
+a PolicySettings key that the officer edits and that is audited like the others; the agent runtime limits stay code limits).
+Active includes CheckedIn, not only the plan's Confirmed. Lock order is always the booking row, then the item row
+(`FOR UPDATE`, READ COMMITTED). Cancel checks for open loans under the same booking lock ("Equipment is still on loan;
+check it in first"). Only checkout and check-in change OnLoan (`ILoanService`). Tests build loans with `LoanTestData`:
+each booking gets its own room, type and items, never seeded rows.
+Damage photos: magic-byte checked, ≤ 5 MB, random names, stored outside the web root, served only through
+GET /api/loans/{id}/photo. Use `IDamagePhotoStore` only. The folder is `Storage:DamagePhotosPath` (git-ignored
+`App_Data/damage-photos` by default), and the DB stores only the file name (`CK_EquipmentLoans_DamagePhotoPath`). Write
+the file after every check passes and delete it if the transaction fails. Tests read `factory.DamagePhotosPath`.
+
 Quotation conventions (Component D): Prices are computed only by IQuotationCalculator. The agent's quote is checked
 against it (V09). Lecturer bookings are fully exempt (room and equipment); students pay room rules + equipment fees.
 Exemption is decided by the effective room PricingRule's IsExempt for the requester's role and the booking's campus date,
