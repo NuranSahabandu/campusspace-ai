@@ -99,3 +99,9 @@ def test_checkpoint_path_is_anchored_and_overridable(
 
     assert settings.checkpoint_path == custom
     assert settings.agent_tools_key.get_secret_value() == TEST_TOOLS_KEY
+
+
+def test_empty_checkpoint_path_means_the_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert make_settings(monkeypatch, AGENT_CHECKPOINT_PATH="").checkpoint_path == (
+        DEFAULT_CHECKPOINT_PATH
+    )

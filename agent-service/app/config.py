@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     planner_model: str = "gemini-2.5-flash"
     worker_model: str = "gemini-2.5-flash-lite"
 
+    @field_validator("checkpoint_path", mode="before")
+    @classmethod
+    def _empty_path_means_default(cls, value: object) -> object:
+        # .env.example lists AGENT_CHECKPOINT_PATH= empty; that must not become Path(".").
+        return DEFAULT_CHECKPOINT_PATH if value in (None, "") else value
+
     @field_validator("service_key")
     @classmethod
     def _service_key_long_enough(cls, value: SecretStr) -> SecretStr:
