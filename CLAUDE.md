@@ -76,7 +76,8 @@ Addendum rules:
 ## API conventions (§9)
 
 - Public routes live under `/api`. Internal agent-tool routes are hidden from public Swagger.
-- Status codes: 201 + `Location` on create, 204 on delete, 400 validation Problem Details, 401 missing or expired token,
+- Status codes: 201 + `Location` on create, 202 + `Location` when the work goes on in the background (submit,
+  retry-agent), 204 on delete, 400 validation Problem Details, 401 missing or expired token,
   403 wrong role or not owner, 404, 409 conflict (`23505` and `23P01` map to 409).
 - List endpoints take `?search=&sort=&page=&pageSize=` and return `{ items, page, pageSize, total }`.
 - Errors: global exception middleware. Full details are logged with the traceId. The client gets RFC 9457 Problem Details.
@@ -196,7 +197,9 @@ Show an API `DateOnly` ("yyyy-MM-dd") with `formatDateOnly` (never `new Date()`,
 because `parseProblem` only lower-cases the first letter (`max_duration_hours` stays as is). Put extra content in a
 `ConfirmDialog` (for example a list of changes) as its `children`.
 Request statuses, labels, chip colours and the All/Open/Approved/Closed groups live only in
-`features/requests/requestStatus.ts` (mirrors the mobile `request_status.dart`); show them with `RequestStatusChip`. Show a
+`features/requests/requestStatus.ts` (mirrors the mobile `request_status.dart`); show them with `RequestStatusChip`. Queries
+that show requests re-fetch while one is in `REFRESHING_STATUSES` (AgentProcessing): pass
+`refetchInterval: refreshIntervalFor(statuses)` (`usePagedQuery` takes it too), never a hand-written interval. Show a
 start/end pair with `formatCampusTimeRange`. The `api` client sends arrays as repeated params (`?status=A&status=B`).
 A list whose filters must survive opening a row uses `useServerTable({ urlState: true })` and keeps its own filters in
 the URL through `table.updateUrl` (see `features/requests/BookingRequestsPage.tsx`). Render untrusted user text (request
@@ -235,7 +238,9 @@ override `facilitiesRepositoryProvider` and use `pumpRoomsScreens`; router tests
 Campus time on mobile: build API times with `campusIso(date, time)` (always `+05:30`) and show API instants with the
 `formatCampus*` helpers in `lib/core/campus_time.dart`; never use `toLocal()`, `DateTime.now()` or `TimeOfDay.now()`
 for campus dates and times (read `clockProvider`, which tests override). Show money with `formatLkr` (`lib/core/format.dart`). Status labels, colours and
-the My requests filter groups live only in `lib/features/requests/request_status.dart`. Date and time pickers read the
+the My requests filter groups live only in `lib/features/requests/request_status.dart`. Providers that show requests
+re-fetch while one is in `RequestStatuses.refreshing` (AgentProcessing) every `refreshInterval`, through `_refreshWhile`
+in `requests_providers.dart` (a one-shot timer cancelled on rebuild/dispose). Date and time pickers read the
 live policy (`policyProvider`) through the pure rules in `time_rules.dart`. Requests screen tests use
 `pumpRequestsScreens` + `stubRequestsReferenceData`; fixtures in `test/fixtures/requests.dart` are real API responses.
 A request's history rows carry `changedById`; show "You" by comparing it with the requester's id, never by name.
@@ -304,7 +309,8 @@ Booking request conventions (Component C): Request status changes only through I
 Status directly); every change writes a RequestStatusHistory row in the same SaveChanges. `RequestStatuses` is the only
 status list, and `RequestStatuses.Open` is what counts toward `max_open_requests`. Object-level checks (a requester
 reading someone else's request) throw `ForbiddenException` (403). Submit takes a per-requester
-`pg_advisory_xact_lock` in its own transaction, so the open-request count and the insert are atomic. Request times are
+`pg_advisory_xact_lock` in its own transaction, so the open-request count and the insert are atomic; the same
+transaction creates AgentRun #1 and moves the request to AgentProcessing, and submit answers 202 (see Agent integration). Request times are
 accepted with any offset and returned as UTC. `Notes` is untrusted text: never interpret, log or echo it in messages.
 `RequiredFeatures` is a `text[]` with no FK, so FeatureService checks it before a feature's delete or code change.
 Endpoint tests use `BookingRequestTestData` (`StudentRepAsync`, `Body`, `MoveAsync` through the real state machine).
@@ -370,7 +376,7 @@ Agent tools and workflow tables (Phase 3): Agent tools live under /internal/agen
 AgentKey, policy AgentTools), are hidden from Swagger, and are read-only (POST /quote calculates only). A user JWT can't
 reach them and the agent key can't reach /api (the default and fallback policies name the JWT scheme only). Keys:
 X-Agent-Key is `AgentTools:Key` (env `AgentTools__Key`, ≥ 32 bytes, checked at startup); X-Service-Key (.NET → agent
-service, used from 3.3) is `AgentService:ServiceKey` (env `AgentService__ServiceKey`). They must differ
+service) is `AgentService:ServiceKey` (env `AgentService__ServiceKey`, ≥ 32 bytes, checked at startup). They must differ
 (`dev-secrets.sh` refuses equal values). Keys are compared in constant time and never logged; each tool call logs
 method, route pattern, status and ms (no query string). Tool routes are thin: the controller calls `IAgentToolService`,
 the only place tools compose the business services and resolve equipment codes to ids; never re-implement a rule
@@ -379,7 +385,7 @@ public endpoints. request-context returns no names, emails or user ids, and `ope
 itself (V11: other open < cap). Agent tables store summaries, inputs, outputs and timings only — never hidden
 reasoning, tokens or secrets. AgentRuns.Id is the LangGraph thread_id and is generated by .NET. `AgentRunStatuses`
 is the only run status list (`Active` = live, at most one per request via `IX_AgentRuns_RequestId_Live` → 409;
-`Terminal`); a Failed run needs a FailureReason. Steps use `AgentStepStatuses` (Succeeded, Failed). ValidationResults
+`Terminal` = Completed, Rejected, Failed, Cancelled); a Failed run needs a FailureReason. Steps use `AgentStepStatuses` (Succeeded, Failed). ValidationResults
 are per `Attempt` (the latest checklist is the highest). Reject/Revise decisions need a comment. AgentSteps,
 AgentToolCalls and ValidationResults are append-only and not IAuditable; AgentRuns and ApprovalDecisions are. The
 entity for the ValidationResults table is `AgentValidationResult` (avoids DataAnnotations.ValidationResult). Tests
@@ -399,7 +405,8 @@ restarted during the run". Validation errors are 400 and a missing key is 401 fi
 with `parse_json` (Decimal), never float. The agents are deterministic stubs that call the real tools; Phase 4 swaps
 one worker at a time through `WORKERS` / `run_worker(name, task)` (task string in, validated result out) and the
 supervisor's `stub_planner`, and `enforce_plan_rules` still fixes the step order. The policy snapshot is fetched once
-per run by the supervisor (never re-fetched on resume or revise) and the validate node (plain code, V01–V12 in
+per run by the supervisor (never re-fetched on resume; a revise will re-fetch it, decided in 3.3 and implemented in 3.4)
+and the validate node (plain code, V01–V12 in
 `app/validation.py`) reads every number from it, never a literal; V05/V06 mirror `BookingWindowRules` messages, so keep
 them in step. V07 does not check public holidays (not implemented). Requester notes are replaced by `wrap_notes(...)`
 before anything reaches state, are never parsed into requirements or sent in a brief, and the tool trace keeps only
@@ -415,6 +422,46 @@ domain answer (worker reports unmet), `unavailable` (network, timeout, 401/403, 
 404 ends in safe_failure "Booking request not found"; a policy fetch failure in "policy unavailable". Tests use
 `tests/fake_api.py` (seed-shaped fake of the 3.1 routes on `httpx.MockTransport`) and `tests/harness.py`; each test
 gets its own temp checkpoint file; `-m live` runs against the real API only when `LIVE_*` env vars are set.
+
+Agent integration (Phase 3.3, `backend/CampusSpace.Api/Agents/`): only `IAgentClient` (typed HttpClient, base URL
+`AgentService:BaseUrl`, X-Service-Key, 10 s timeout, snake_case JSON with string money read as decimal) calls the agent
+service. It returns an outcome (Ok, AlreadyExists, NotFound, Conflict, Unavailable with a Detail such as "HTTP 401") and
+never throws except for the caller's own cancellation; only GET is retried (at most twice), never a POST. A 400/401/403
+is logged at Error ("check AgentService:ServiceKey"). Never log the key, a body or notes. Submit and retry-agent commit
+the request change and a Queued run first, then start it best-effort through `IAgentRunStarter.TryStartAsync`, capped at
+`AgentService:InlineStartTimeoutSeconds` (3) so a hung agent service never slows the 202; a run left Queued is the safety
+net the poller starts. `AgentRunPoller` (BackgroundService, every `AgentService:PollSeconds`, off when
+`AgentService:PollerEnabled` is false, as in Testing) processes Queued and Running runs, each in its own scope
+(`IAgentRunSync`); AwaitingApproval and Resuming belong to the officer's decision (3.4). Mapping for a Running run:
+running → copy new trace rows; awaiting_approval → copy the trace, run AwaitingApproval with Plan/Proposal/
+PolicySnapshotJson, OfficerSummary, Model, Nodes, DurationMs, a Draft quote, request → PendingApproval; failed →
+run Failed with the agent's error, request → AgentFailed with it in the history; completed/rejected/cancelled → Failed
+"Unexpected agent status …"; 404 → Failed "Agent run not found (agent service state lost)"; Unavailable → nothing
+(watchdog only). Watchdog (every tick, TimeProvider time): Running longer than `AgentService:RunTimeoutMinutes` (4) →
+"Agent run timed out", Queued longer than `AgentService:StartTimeoutMinutes` (2, from CreatedAt) → "Agent service
+unreachable"; either adds "(last error: …)" from the poller's in-memory last failure. The Draft quote is always .NET's:
+proposal `equipment.lines` (`type_code`, `qty`, `source`) minus qty-0/room_builtin lines, codes resolved to type ids,
+priced by `IQuotationCalculator` for the request's slot and requester role, saved with `CreateDraftAsync` and
+`AgentRunId`; the agent's own quote is never trusted (V09 compared it). Lock order everywhere (`RowLocks`): the
+requester's advisory lock (submit, retry-agent only), then the booking request row, then its agent run row, then
+booking/item rows; after locking, re-check the run and request statuses and skip if something moved them. The trace
+copy is idempotent: steps are inserted only for a Sequence not stored yet (with their tool calls), rules only for a new
+(Attempt, RuleCode); names are cut to their column limits (AgentName/ToolName 50, Model 100, FailureReason 1000,
+history reason 500). One AgentRuns row per LangGraph thread (Id = thread_id); RevisionNo is .NET's counter per request:
+a new run (submit, retry-agent) gets max(RevisionNo) + 1 and 3.4 bumps it the same way on revise, while the Python
+`revision` is informational only (this settles addendum Open question 6 for us). `POST
+/api/booking-requests/{id}/retry-agent` (Facilities Officer) restarts an AgentFailed request, or a Submitted request
+with no live run (seeded or legacy data), re-checking the requester's cap (409 "The requester already has …"); anything
+else is 409 "Only a failed or not-yet-started request can be (re)started". Cancelling a PendingApproval request marks
+its AwaitingApproval run Cancelled in the cancel transaction (the Draft is voided with the other live quotes), then sends
+resume "cancel" best-effort; .NET never resumes a Cancelled thread. Tests: the factory registers `FakeAgentClient`
+(`factory.AgentClient`, default: starts accepted, runs read as running) and sets `AgentService:ServiceKey`; change its
+delegates only on a factory of your own. Poller tests use `AgentPollerEnv` (isolated seeded factory, `MutableTimeProvider`
+starting at the real now, `Poller.PollOnceAsync()`), and agent views come from `Fixtures/*.json`, verbatim 3.2 responses
+generated with the agent-service harness (see `Fixtures/README.md`; regenerate after a contract change). Submit leaves a
+request AgentProcessing, which can't be cancelled: use `AgentRunTestData.ToPendingApprovalAsync` or `ToAgentFailedAsync`,
+and `BookingRequestTestData.InsertSubmittedAsync` for a request with no run. Isolated factories clear their Npgsql pool
+on dispose, so many of them don't exhaust the container's connections.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
