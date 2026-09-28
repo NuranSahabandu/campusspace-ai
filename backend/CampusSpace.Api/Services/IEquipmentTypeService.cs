@@ -1,3 +1,4 @@
+using CampusSpace.Api.Dtos.AgentTools;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Equipment;
 
@@ -15,6 +16,12 @@ public interface IEquipmentTypeService
     Task<EquipmentTypeDetailDto> CreateAsync(EquipmentTypeRequest request, CancellationToken ct = default);
     Task<EquipmentTypeDetailDto?> UpdateAsync(long id, EquipmentTypeRequest request, CancellationToken ct = default);
     Task<bool> DeleteAsync(long id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every type, ordered by code, unpaged (small reference data): the codes the agents may use, with their fee and the
+    /// room feature that covers them (addendum B).
+    /// </summary>
+    Task<IReadOnlyList<AgentEquipmentTypeDto>> ListCatalogAsync(CancellationToken ct = default);
 
     /// <summary>Ordered by code.</summary>
     Task<IReadOnlyList<EquipmentTypeRefDto>?> GetSubstitutesAsync(long id, CancellationToken ct = default);

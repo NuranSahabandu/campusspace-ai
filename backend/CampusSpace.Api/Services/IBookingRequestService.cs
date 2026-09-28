@@ -1,3 +1,4 @@
+using CampusSpace.Api.Dtos.AgentTools;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Requests;
 
@@ -36,4 +37,10 @@ public interface IBookingRequestService
 
     /// <summary>Whether the caller can submit now, and the clubs they can submit for.</summary>
     Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The agent Supervisor's view of a request (GET /internal/agent-tools/request-context/{id}), with the same club and
+    /// open-request rules as submission (V11). No caller check: only the AgentTools policy reaches it. Null if unknown.
+    /// </summary>
+    Task<AgentRequestContextDto?> GetAgentContextAsync(long id, CancellationToken ct = default);
 }
