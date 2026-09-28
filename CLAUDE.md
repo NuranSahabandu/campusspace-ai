@@ -201,6 +201,14 @@ start/end pair with `formatCampusTimeRange`. The `api` client sends arrays as re
 A list whose filters must survive opening a row uses `useServerTable({ urlState: true })` and keeps its own filters in
 the URL through `table.updateUrl` (see `features/requests/BookingRequestsPage.tsx`). Render untrusted user text (request
 notes) as a plain React text child with `whiteSpace: 'pre-wrap'`, never as HTML or markdown.
+Cancel a request only through `CancelRequestDialog` (`features/requests/`): an officer reason is required (≤ 500), a
+409 title is shown exactly as sent, and it invalidates the request and room queries. Which statuses offer it comes only
+from `isCancellable`/`CANCELLABLE_STATUSES` in `requestStatus.ts` (mirrors `RequestStateMachine` and mobile
+`cancellable`). Show "Late"/"By office" with `CancellationFlags`. Blackout clashes (both the add-blackout warning and
+a row's clash list) render `ClashList` from `useBlackoutClashes` (under `roomsKeys.all`, so a cancel refreshes them). The blackout
+list's `clashCount` is counted in SQL with the same predicate as `ClashesOf`; keep the two in step. Show an image that
+needs auth (for example `GET /api/loans/{id}/photo`) by fetching it through `api` with `responseType: 'blob'` and
+`useBlobImageRef`, which revokes the object URL on unmount; never point a bare `<img src>` at the API.
 
 Mobile (run from `mobile/`; Flutter 3.47.3 stable, Android only; the API URL is a build-time `--dart-define`):
 
