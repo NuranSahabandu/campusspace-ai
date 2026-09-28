@@ -8,7 +8,7 @@ import { api, LOGIN_PATH } from '../../api/client'
 import { applyFieldErrors, parseProblem } from '../../api/problem'
 import type { AuthResponse } from '../../api/types'
 import { useAuthStore } from '../../auth/authStore'
-import { isStaffRole } from '../../auth/roles'
+import { isStaffRole, NOT_STAFF_MESSAGE } from '../../auth/roles'
 import { returnPathFor } from '../../auth/routeAccess'
 
 // Mirrors LoginRequest's data annotations; the server remains the real validator (§12).
@@ -20,7 +20,6 @@ const schema = z.object({
 type LoginForm = z.infer<typeof schema>
 
 export const INVALID_CREDENTIALS = 'Invalid email or password'
-export const NOT_STAFF = 'This portal is for staff. Please use the CampusSpace mobile app.'
 
 export function LoginPage() {
   const token = useAuthStore((s) => s.token)
@@ -49,7 +48,7 @@ export function LoginPage() {
       const { data } = await api.post<AuthResponse>(LOGIN_PATH, values)
       // Requesters and technicians use Flutter; never keep their token in the staff portal.
       if (!isStaffRole(data.user.role)) {
-        setFormError(NOT_STAFF)
+        setFormError(NOT_STAFF_MESSAGE)
         return
       }
       login(data)
