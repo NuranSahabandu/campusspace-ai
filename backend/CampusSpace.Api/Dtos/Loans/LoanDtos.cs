@@ -28,13 +28,16 @@ public record LoanDto(
 
 /// <summary>
 /// GET /api/loans. Overdue true: open and past due. False: everything else (returned, or not yet due). Absent: all.
-/// Search matches the asset tag or type code. Newest due first unless sort=dueAt.
+/// BookingId limits the list to one booking's loans (the technician's handover screen). Search matches the asset tag or
+/// type code. Newest due first unless sort=dueAt.
 /// </summary>
 public record LoansQuery : PageQuery, IValidatableObject
 {
     public static readonly IReadOnlyList<string> SortFields = ["dueAt"];
 
     public bool? Overdue { get; init; }
+
+    [Range(1, long.MaxValue)] public long? BookingId { get; init; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
