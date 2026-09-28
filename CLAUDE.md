@@ -264,6 +264,8 @@ curl -s http://localhost:5080/api/auth/me -H "Authorization: Bearer $TOKEN"
 curl -s "http://localhost:5080/api/users?page=1&pageSize=20" -H "Authorization: Bearer $TOKEN"
 ```
 
+Web route guards: `/forbidden` sits outside the staff-only `ProtectedRoute` (any signed-in role reaches it, so a
+requester's or technician's stored session lands there once instead of looping); every staff page goes inside it.
 Auth conventions: the fallback policy denies anonymous access, so only mark `[AllowAnonymous]` when you mean it. Use
 `[Authorize(Roles = Roles.X)]` (never string literals), `User.GetUserId()` for the caller's id, `ConflictException`
 for 409s from services, and `PageQuery`/`PagedResult<T>`/`ToPagedResultAsync` for list endpoints.
