@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app import __version__
 from app.main import create_app
-from tests.conftest import TEST_SERVICE_KEY, make_settings
+from tests.conftest import TEST_SERVICE_KEY, TEST_TOOLS_KEY, make_settings
 
 
 def test_health_returns_200_without_key(client: TestClient) -> None:
@@ -17,21 +17,31 @@ def test_health_returns_200_without_key(client: TestClient) -> None:
         "service": "agent-service",
         "version": __version__,
         "python": platform.python_version(),
+        "agents": "stub",
         "models": {"planner": "gemini-2.5-flash", "worker": "gemini-2.5-flash-lite"},
-        "checkpointer": "not_configured",
+        "checkpointer": "sqlite",
+        "checkpointer_ok": True,
         "google_api_key_configured": False,
     }
 
 
 def test_health_never_returns_secret_values(monkeypatch: pytest.MonkeyPatch) -> None:
     google_key = "fake-google-key-value-123"
-    tools_key = "a" * 40
-    settings = make_settings(monkeypatch, GOOGLE_API_KEY=google_key, AgentTools__Key=tools_key)
+    settings = make_settings(monkeypatch, GOOGLE_API_KEY=google_key)
 
     with TestClient(create_app(settings)) as c:
         response = c.get("/health")
 
     assert response.status_code == 200
     assert response.json()["google_api_key_configured"] is True
-    for secret in (TEST_SERVICE_KEY, google_key, tools_key):
+    for secret in (TEST_SERVICE_KEY, google_key, TEST_TOOLS_KEY):
         assert secret not in response.text
+
+
+def test_startup_creates_the_checkpoint_file(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    path = tmp_path / "nested" / "cp.sqlite"
+    settings = make_settings(monkeypatch, AGENT_CHECKPOINT_PATH=str(path))
+
+    with TestClient(create_app(settings)) as c:
+        assert c.get("/health").json()["checkpointer_ok"] is True
+    assert path.exists()

@@ -129,7 +129,7 @@ def test_each_tool_call_sits_under_the_step_that_made_it(h: Harness) -> None:
 
 
 def test_trace_holds_summaries_never_keys_or_raw_notes(h: Harness) -> None:
-    from tests.conftest import TEST_SERVICE_KEY, TEST_TOOLS_KEY
+    from tests.keys import TEST_SERVICE_KEY, TEST_TOOLS_KEY
 
     tid = h.start()
     view = h.view(tid)

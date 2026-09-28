@@ -27,8 +27,8 @@ from app.validation import (
     v12_ids_seen,
     validate_proposal,
 )
-from tests.conftest import TEST_TOOLS_KEY
 from tests.fake_api import CAMPUS, END, NOW, POLICY, START, FakeCampusApi
+from tests.keys import TEST_TOOLS_KEY
 
 # A second, stricter snapshot: every policy-driven rule must follow the snapshot it is given.
 STRICT = copy.deepcopy(POLICY) | {

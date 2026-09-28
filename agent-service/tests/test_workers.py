@@ -16,8 +16,8 @@ from app.workers.supervisor import (
     stub_planner,
 )
 from tests import payloads
-from tests.conftest import TEST_TOOLS_KEY
 from tests.fake_api import END, POLICY, START, FakeCampusApi
+from tests.keys import TEST_TOOLS_KEY
 
 
 @pytest.fixture

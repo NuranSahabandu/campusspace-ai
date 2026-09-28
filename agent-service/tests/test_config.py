@@ -91,6 +91,7 @@ def test_checkpoint_path_is_anchored_and_overridable(
 ) -> None:
     agent_service = Path(app.config.__file__).resolve().parents[1]
     assert DEFAULT_CHECKPOINT_PATH == agent_service / "data" / "checkpoints.sqlite"
+    monkeypatch.delenv("AGENT_CHECKPOINT_PATH")
     assert make_settings(monkeypatch).checkpoint_path == DEFAULT_CHECKPOINT_PATH
 
     custom = tmp_path / "cp.sqlite"

@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from tests.conftest import TEST_TOOLS_KEY
+from tests.keys import TEST_TOOLS_KEY
 
 CAMPUS = timezone(timedelta(hours=5, minutes=30))
 # Thursday 2026-10-01 09:00 campus time: "now" for every graph test.

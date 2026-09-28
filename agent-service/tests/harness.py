@@ -14,8 +14,8 @@ from app.graph import build_graph
 from app.runner import WorkflowRunner
 from app.schemas import WorkflowView
 from app.tools import ToolClient, build_tools
-from tests.conftest import TEST_TOOLS_KEY
 from tests.fake_api import NOW, FakeCampusApi
+from tests.keys import TEST_TOOLS_KEY
 
 HAPPY_NODES = [
     "supervisor",

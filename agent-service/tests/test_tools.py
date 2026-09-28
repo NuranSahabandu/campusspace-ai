@@ -12,8 +12,8 @@ from app.tools import (
     parse_json,
     recording,
 )
-from tests.conftest import TEST_TOOLS_KEY
 from tests.fake_api import END, START, FakeCampusApi
+from tests.keys import TEST_TOOLS_KEY
 
 
 @pytest.fixture

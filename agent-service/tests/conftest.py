@@ -1,13 +1,15 @@
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.fake_api import NOW, FakeCampusApi
+from tests.keys import TEST_SERVICE_KEY, TEST_TOOLS_KEY
 
-TEST_SERVICE_KEY = "t" * 64
-TEST_TOOLS_KEY = "k" * 64
+__all__ = ["TEST_SERVICE_KEY", "TEST_TOOLS_KEY", "make_settings"]
 
 ENV_NAMES = (
     "AgentService__ServiceKey",
@@ -19,10 +21,12 @@ ENV_NAMES = (
 
 
 @pytest.fixture(autouse=True)
-def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Start every test from a known env; values from the developer's shell never leak in."""
+def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Start every test from a known env; values from the developer's shell never leak in.
+    Every test gets its own checkpoint file, so nothing is written to agent-service/data."""
     for name in ENV_NAMES:
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_CHECKPOINT_PATH", str(tmp_path / "checkpoints.sqlite"))
 
 
 def make_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Settings:
@@ -35,6 +39,12 @@ def make_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Settings:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    with TestClient(create_app(make_settings(monkeypatch))) as c:
+def fake_api() -> FakeCampusApi:
+    return FakeCampusApi()
+
+
+@pytest.fixture
+def client(monkeypatch: pytest.MonkeyPatch, fake_api: FakeCampusApi) -> Iterator[TestClient]:
+    app = create_app(make_settings(monkeypatch), transport=fake_api.transport(), clock=lambda: NOW)
+    with TestClient(app) as c:
         yield c
