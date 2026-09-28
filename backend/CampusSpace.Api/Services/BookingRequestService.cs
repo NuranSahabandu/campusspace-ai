@@ -33,6 +33,7 @@ public sealed class BookingRequestService(
     public const string BookingStartedMessage = "The booking has already started";
     public const string EquipmentOnLoanMessage = "Equipment is still on loan; check it in first";
     public const string BookingNotCancellableMessage = "The booking is no longer cancellable";
+    public const string NotRestartableMessage = "Only a failed or not-yet-started request can be (re)started";
 
     /// <summary>The 409 message for a status the state machine can't move to Cancelled.</summary>
     public static string NotCancellableMessage(string status) => status switch
@@ -242,6 +243,42 @@ public sealed class BookingRequestService(
         return await LoadDetailAsync(id, ct);
     }
 
+    public async Task<BookingRequestDetailDto?> RetryAgentAsync(long id, CancellationToken ct = default)
+    {
+        var officerId = CallerId;
+        var requesterId = await db.BookingRequests.Where(r => r.Id == id).Select(r => (long?)r.RequesterId).SingleOrDefaultAsync(ct);
+        if (requesterId is not { } ownerId)
+            return null;
+
+        Guid runId;
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            // The submit lock first (it guards the cap), then the request row: the order every writer uses.
+            await AdvisoryLocks.LockAsync(db.Database, AdvisoryLocks.RequesterOpenRequests, ownerId, ct);
+            var entity = (await LockForUpdateAsync(id, ct))!;
+            var restartable = entity.Status == RequestStatuses.AgentFailed
+                || (entity.Status == RequestStatuses.Submitted
+                    && !await db.AgentRuns.AnyAsync(r => r.RequestId == id && AgentRunStatuses.Active.Contains(r.Status), ct));
+            if (!restartable)
+                throw new ConflictException(NotRestartableMessage);
+
+            // The request becomes AgentProcessing, which is open: it must fit beside the requester's other open requests.
+            var open = await CountOpenAsync(ownerId, ct, exceptRequestId: id);
+            var max = (await policy.GetAsync(ct)).MaxOpenRequests;
+            if (open >= max)
+                throw new ConflictException(RequesterCapMessage(open, max));
+
+            var run = await runStarter.AddRunAsync(entity, ct);
+            stateMachine.Transition(entity, RequestStatuses.AgentProcessing, officerId);
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            runId = run.Id;
+        }
+
+        await StartInlineAsync(runId, id, ct);
+        return await LoadDetailAsync(id, ct);
+    }
+
     /// <summary>
     /// Loads the request tracked and row-locked (SELECT … FOR UPDATE) in the caller's transaction, so operations that
     /// change one request's status serialise and each sees the status the previous one committed. Cancel, retry-agent
@@ -271,6 +308,10 @@ public sealed class BookingRequestService(
 
     private static string CapMessage(int open, int max) =>
         $"You already have {open} open requests (the limit is {max})";
+
+    /// <summary>The cap message for the officer who retries someone else's request.</summary>
+    public static string RequesterCapMessage(int open, int max) =>
+        $"The requester already has {open} open requests (the limit is {max})";
 
     private static DateTime CampusDayStartUtc(DateOnly date) => CampusTime.StartOf(date).UtcDateTime;
 

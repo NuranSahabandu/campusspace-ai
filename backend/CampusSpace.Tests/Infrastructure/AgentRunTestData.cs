@@ -93,6 +93,25 @@ public static class AgentRunTestData
         return run.Id;
     }
 
+    /// <summary>
+    /// What the poller does when a run fails: the request's live run becomes Failed and the request AgentProcessing →
+    /// AgentFailed (the real state machine). Returns the run id.
+    /// </summary>
+    public static async Task<Guid> ToAgentFailedAsync(CustomWebApplicationFactory factory, long requestId, string reason = "test failure")
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var machine = scope.ServiceProvider.GetRequiredService<IRequestStateMachine>();
+        var request = await db.BookingRequests.SingleAsync(r => r.Id == requestId);
+        var run = await db.AgentRuns.SingleAsync(r => r.RequestId == requestId && AgentRunStatuses.Active.Contains(r.Status));
+        run.Status = AgentRunStatuses.Failed;
+        run.FailureReason = reason;
+        run.CompletedAt = DateTime.UtcNow;
+        machine.Transition(request, RequestStatuses.AgentFailed, changedById: null, reason);
+        await db.SaveChangesAsync();
+        return run.Id;
+    }
+
     private static async Task SaveAsync(CustomWebApplicationFactory factory, Action<AppDbContext> add)
     {
         await using var scope = factory.Services.CreateAsyncScope();

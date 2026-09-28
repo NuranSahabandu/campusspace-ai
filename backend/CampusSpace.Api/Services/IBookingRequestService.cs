@@ -35,6 +35,14 @@ public interface IBookingRequestService
     /// </summary>
     Task<BookingRequestDetailDto?> CancelAsync(long id, CancelBookingRequestRequest? request, CancellationToken ct = default);
 
+    /// <summary>
+    /// Officer only: starts a new agent run for a request whose run failed (AgentFailed), or for a Submitted request that
+    /// has no live run (seeded or legacy data). The new run gets the next RevisionNo; older runs keep their status. The
+    /// requester's open-request cap is re-checked under the submit lock. Null when the request doesn't exist (404); any
+    /// other status, or a cap that would be exceeded, is a ConflictException (409). The start itself is best-effort.
+    /// </summary>
+    Task<BookingRequestDetailDto?> RetryAgentAsync(long id, CancellationToken ct = default);
+
     /// <summary>Whether the caller can submit now, and the clubs they can submit for.</summary>
     Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default);
 
