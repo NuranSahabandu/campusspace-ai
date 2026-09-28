@@ -6,6 +6,8 @@ interface Props {
   title: string
   message: string
   confirmLabel: string
+  /** The dismiss button's text, when "Cancel" would be ambiguous (for example "Keep request"). */
+  cancelLabel?: string
   /** Red confirm button for actions that remove or undo something. */
   destructive?: boolean
   /** Disables both buttons while the action runs. */
@@ -16,7 +18,18 @@ interface Props {
   children?: ReactNode
 }
 
-export function ConfirmDialog({ open, title, message, confirmLabel, destructive, pending, onConfirm, onClose, children }: Props) {
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel = 'Cancel',
+  destructive,
+  pending,
+  onConfirm,
+  onClose,
+  children,
+}: Props) {
   return (
     <Dialog open={open} onClose={pending ? undefined : onClose} aria-labelledby="confirm-dialog-title">
       <DialogTitle id="confirm-dialog-title">{title}</DialogTitle>
@@ -26,7 +39,7 @@ export function ConfirmDialog({ open, title, message, confirmLabel, destructive,
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={pending}>
-          Cancel
+          {cancelLabel}
         </Button>
         <Button
           onClick={onConfirm}

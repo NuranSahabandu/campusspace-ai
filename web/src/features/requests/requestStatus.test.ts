@@ -1,7 +1,9 @@
 import {
+  CANCELLABLE_STATUSES,
   DEFAULT_STATUS_GROUP,
   REQUEST_STATUSES,
   STATUS_GROUPS,
+  isCancellable,
   isStatusGroup,
   requestStatusChipStyle,
   requestStatusLabel,
@@ -59,5 +61,11 @@ describe('requestStatus', () => {
     expect(DEFAULT_STATUS_GROUP).toBe('open')
     expect(isStatusGroup('closed')).toBe(true)
     expect(isStatusGroup('toString')).toBe(false)
+  })
+
+  it('cancels from the same statuses as the backend state machine and mobile', () => {
+    expect(CANCELLABLE_STATUSES).toEqual(['Submitted', 'PendingApproval', 'Approved'])
+    expect(REQUEST_STATUSES.filter(isCancellable)).toEqual(['Submitted', 'PendingApproval', 'Approved'])
+    expect(isCancellable('Unknown')).toBe(false)
   })
 })

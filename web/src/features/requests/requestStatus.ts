@@ -37,6 +37,19 @@ const LABELS: Record<RequestStatus, string> = {
 /** The friendly label for a status; an unknown status is shown as sent. */
 export const requestStatusLabel = (status: string): string => (isRequestStatus(status) ? LABELS[status] : status)
 
+/**
+ * The statuses a request can be cancelled from: the ones RequestStateMachine lets move to Cancelled
+ * (backend/CampusSpace.Api/Services/RequestStateMachine.cs), the same set as mobile RequestStatuses.cancellable. The
+ * server still decides: it can refuse with a 409 (for example a booking that has started or equipment still on loan).
+ */
+export const CANCELLABLE_STATUSES: readonly RequestStatus[] = [
+  RequestStatuses.Submitted,
+  RequestStatuses.PendingApproval,
+  RequestStatuses.Approved,
+]
+
+export const isCancellable = (status: string): boolean => (CANCELLABLE_STATUSES as readonly string[]).includes(status)
+
 export type ChipColor = 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error'
 export interface ChipStyle {
   color: ChipColor
