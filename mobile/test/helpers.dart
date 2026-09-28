@@ -120,9 +120,9 @@ PagedResult<Room> roomsPage(int page, int total, {int pageSize = 20}) {
 }
 
 /// Pumps [initialLocation] in a bare router with just the rooms screens (no auth), so screen
-/// tests only fake the facilities repository.
+/// tests only fake the facilities repository. "Now" is [now] (default [testNow], a Monday).
 Future<GoRouter> pumpRoomsScreens(WidgetTester tester, FacilitiesRepository repository,
-    {String initialLocation = '/rooms'}) async {
+    {String initialLocation = '/rooms', DateTime? now}) async {
   final router = GoRouter(
     initialLocation: initialLocation,
     routes: [
@@ -140,7 +140,10 @@ Future<GoRouter> pumpRoomsScreens(WidgetTester tester, FacilitiesRepository repo
   );
   addTearDown(router.dispose);
   await tester.pumpWidget(ProviderScope(
-    overrides: [facilitiesRepositoryProvider.overrideWithValue(repository)],
+    overrides: [
+      facilitiesRepositoryProvider.overrideWithValue(repository),
+      clockProvider.overrideWithValue(() => now ?? testNow),
+    ],
     child: MaterialApp.router(routerConfig: router),
   ));
   await tester.pumpAndSettle();
