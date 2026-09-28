@@ -19,6 +19,7 @@ import { useServerTable } from '../../hooks/useServerTable'
 import { ServerDataGrid } from '../../ui/ServerDataGrid'
 import { formatCampusTimeRange, formatDateTime } from '../../ui/formatDateTime'
 import { formatLkr } from '../../ui/formatLkr'
+import { CancellationFlags } from './CancellationFlags'
 import { RequestStatusChip } from './RequestStatusChip'
 import {
   DEFAULT_STATUS_GROUP,
@@ -162,8 +163,13 @@ export function BookingRequestsPage() {
     {
       field: 'status',
       headerName: 'Status',
-      width: 190,
-      renderCell: ({ row }) => <RequestStatusChip status={row.status} />,
+      width: 250,
+      renderCell: ({ row }) => (
+        <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', height: '100%' }}>
+          <RequestStatusChip status={row.status} />
+          <CancellationFlags isLateCancellation={row.isLateCancellation} cancelledByOfficer={row.cancelledByOfficer} />
+        </Stack>
+      ),
     },
     {
       field: 'createdAt',

@@ -1,8 +1,11 @@
-import { screen, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import type { BookingRequestDetailDto } from '../../api/types'
 import { Roles } from '../../auth/roles'
+import { BOOKING_REQUEST_DETAILS } from '../../test/fixtures'
 import { API, server } from '../../test/server'
 import { renderApp } from '../../test/utils'
+import { useToastStore } from '../../ui/toastStore'
 import { requestsHandlers } from './requestsHandlers'
 
 const card = (name: string) => screen.getByRole('region', { name })
@@ -97,5 +100,145 @@ describe('BookingRequestDetailPage', () => {
 
     expect(await screen.findByText(/Could not load the request/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
+  describe('cancellation', () => {
+    const base = BOOKING_REQUEST_DETAILS[2]
+
+    /** Serves request 3 with the given overrides (and records cancel bodies) on top of the usual handlers. */
+    function serveRequest(overrides: Partial<BookingRequestDetailDto>) {
+      requestsHandlers()
+      const bodies: unknown[] = []
+      server.use(
+        http.get(`${API}/api/booking-requests/3`, () => HttpResponse.json({ ...base, ...overrides })),
+        http.post(`${API}/api/booking-requests/3/cancel`, async ({ request }) => {
+          bodies.push(await request.json())
+          return HttpResponse.json({ ...base, status: 'Cancelled' })
+        }),
+      )
+      return bodies
+    }
+
+    const cancelledBy = (changedByName: string, reason: string | null) => ({
+      status: 'Cancelled',
+      cancelledAt: '2026-10-19T04:30:00Z',
+      history: [
+        ...base.history,
+        { fromStatus: 'PendingApproval', toStatus: 'Cancelled', changedById: 4, changedByName, reason, changedAt: '2026-10-19T04:30:00Z' },
+      ],
+    })
+
+    it('shows an officer cancellation with its reason as plain text, and no cancel action', async () => {
+      serveRequest({ ...cancelledBy('Mr. Perera', 'Room unavailable: <i>Rewiring</i>\nSorry'), cancelledByOfficer: true })
+      renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      const cancellation = await screen.findByRole('region', { name: 'Cancellation' })
+      // 04:30Z is 10:00 in Colombo.
+      expect(within(cancellation).getByText(/^Cancelled on .*10:00/)).toBeInTheDocument()
+      expect(within(cancellation).getByText('Cancelled by the facilities office')).toBeInTheDocument()
+      expect(within(cancellation).queryByText('Late cancellation')).not.toBeInTheDocument()
+      expect(within(cancellation).getByTestId('cancel-reason').textContent).toBe('Room unavailable: <i>Rewiring</i>\nSorry')
+      expect(within(cancellation).queryByRole('emphasis')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Cancel request' })).not.toBeInTheDocument()
+    })
+
+    it("shows an owner's late cancellation without a reason", async () => {
+      serveRequest({ ...cancelledBy('Kavindi Perera', null), isLateCancellation: true })
+      renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      const cancellation = await screen.findByRole('region', { name: 'Cancellation' })
+      expect(within(cancellation).getByText('Late cancellation')).toBeInTheDocument()
+      expect(within(cancellation).queryByText('Cancelled by the facilities office')).not.toBeInTheDocument()
+      expect(within(cancellation).getByText('No reason given')).toBeInTheDocument()
+    })
+
+    it('has no cancellation card for a request that is not cancelled', async () => {
+      serveRequest({})
+      renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await screen.findByRole('heading', { level: 1 })
+      expect(screen.queryByRole('region', { name: 'Cancellation' })).not.toBeInTheDocument()
+    })
+
+    it.each([
+      ['Submitted', true],
+      ['PendingApproval', true],
+      ['Approved', true],
+      ['AgentProcessing', false],
+      ['RevisionRequested', false],
+      ['Completed', false],
+      ['Rejected', false],
+    ])('offers Cancel request for %s: %s', async (status, offered) => {
+      serveRequest({ status })
+      renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await screen.findByRole('heading', { level: 1 })
+      expect(!!screen.queryByRole('button', { name: 'Cancel request' })).toBe(offered)
+    })
+
+    it('requires a reason, then cancels with it and reloads the request', async () => {
+      const bodies = serveRequest({ status: 'Approved' })
+      let reads = 0
+      server.use(
+        http.get(`${API}/api/booking-requests/3`, () => {
+          reads++
+          return HttpResponse.json({ ...base, status: 'Approved' })
+        }),
+      )
+      const { user } = renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await user.click(await screen.findByRole('button', { name: 'Cancel request' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Cancel request?' })
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel request' }))
+      expect(await within(dialog).findByText('A reason is required')).toBeInTheDocument()
+      await user.type(within(dialog).getByLabelText(/Reason/), '   ')
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel request' }))
+      expect(await within(dialog).findByText('A reason is required')).toBeInTheDocument()
+      expect(bodies).toHaveLength(0)
+
+      await user.clear(within(dialog).getByLabelText(/Reason/))
+      await user.type(within(dialog).getByLabelText(/Reason/), 'Exam scheduled')
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel request' }))
+
+      await waitFor(() => expect(bodies).toEqual([{ reason: 'Exam scheduled' }]))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      await waitFor(() => expect(reads).toBeGreaterThan(1))
+      expect(useToastStore.getState().current).toMatchObject({ severity: 'success', message: 'Request cancelled' })
+    })
+
+    it('closes with Keep request and sends nothing', async () => {
+      const bodies = serveRequest({ status: 'Submitted' })
+      const { user } = renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await user.click(await screen.findByRole('button', { name: 'Cancel request' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Cancel request?' })
+      await user.click(within(dialog).getByRole('button', { name: 'Keep request' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(bodies).toHaveLength(0)
+    })
+
+    it('shows a 409 title exactly as sent', async () => {
+      serveRequest({ status: 'Approved' })
+      server.use(
+        http.post(`${API}/api/booking-requests/3/cancel`, () =>
+          HttpResponse.json({ status: 409, title: 'Equipment is still on loan; check it in first' }, { status: 409 }),
+        ),
+      )
+      const { user } = renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await user.click(await screen.findByRole('button', { name: 'Cancel request' }))
+      const dialog = await screen.findByRole('dialog', { name: 'Cancel request?' })
+      await user.type(within(dialog).getByLabelText(/Reason/), 'Exam scheduled')
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel request' }))
+
+      await waitFor(() =>
+        expect(useToastStore.getState().current).toMatchObject({
+          severity: 'error',
+          message: 'Equipment is still on loan; check it in first',
+        }),
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    })
   })
 })
