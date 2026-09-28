@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:campusspace_mobile/app.dart';
 import 'package:campusspace_mobile/core/api/paged_result.dart';
@@ -6,6 +7,13 @@ import 'package:campusspace_mobile/core/campus_time.dart';
 import 'package:campusspace_mobile/features/auth/auth_repository.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/auth/token_storage.dart';
+import 'package:campusspace_mobile/features/loans/check_in_screen.dart';
+import 'package:campusspace_mobile/features/loans/handover_screen.dart';
+import 'package:campusspace_mobile/features/loans/handovers_screen.dart';
+import 'package:campusspace_mobile/features/loans/loans_repository.dart';
+import 'package:campusspace_mobile/features/loans/models.dart';
+import 'package:campusspace_mobile/features/loans/overdue_screen.dart';
+import 'package:campusspace_mobile/features/loans/photo_picker.dart';
 import 'package:campusspace_mobile/features/requests/models.dart';
 import 'package:campusspace_mobile/features/requests/my_requests_screen.dart';
 import 'package:campusspace_mobile/features/requests/new_request_screen.dart';
@@ -24,6 +32,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
+import 'fixtures/loans.dart';
 import 'fixtures/requests.dart';
 
 class MockAuthRepository extends Mock implements AuthRepository {}
@@ -248,6 +257,75 @@ Future<GoRouter> pumpRequestsScreens(
       requesterRoleProvider.overrideWithValue(role),
       currentUserIdProvider.overrideWithValue(userId),
       clockProvider.overrideWithValue(() => now ?? testNow),
+    ],
+    child: MaterialApp.router(routerConfig: router),
+  ));
+  await tester.pumpAndSettle();
+  return router;
+}
+
+class MockLoansRepository extends Mock implements LoansRepository {}
+
+/// Hands back [next] (or null: the user backed out) and remembers each source asked for.
+class FakePhotoPicker implements PhotoPicker {
+  FakePhotoPicker([this.next]);
+
+  PickedPhoto? next;
+  final sources = <PhotoSource>[];
+
+  @override
+  Future<PickedPhoto?> pick(PhotoSource source) async {
+    sources.add(source);
+    return next;
+  }
+}
+
+/// The first bytes of a JPEG: enough for the client and server magic-byte checks.
+final testJpeg = PickedPhoto(bytes: Uint8List.fromList([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46]), name: 'mic.jpg');
+
+/// The captured loan API responses as models.
+final liveHandovers = [for (final h in jsonDecode(todayJson) as List) Handover.fromJson(h as Map<String, dynamic>)];
+final liveBookingLoans = PagedResult.fromJson(_json(bookingLoansJson), Loan.fromJson).items;
+final liveOverdue = PagedResult.fromJson(_json(overdueJson), Loan.fromJson);
+final liveAvailableItems = PagedResult.fromJson(_json(availableItemsJson), EquipmentItem.fromJson).items;
+final liveOpenLoan = Loan.fromJson(_json(openLoanJson));
+final liveDamagedLoan = Loan.fromJson(_json(damagedLoanJson));
+
+/// Monday 28 Sep 2026, 10:40 campus time: "now" in the loans screen tests (booking 9 starts at 10:45).
+final loansNow = DateTime.utc(2026, 9, 28, 5, 10);
+
+/// Pumps [initialLocation] in a bare router with just the technician screens (no auth): /home is today's handovers.
+Future<GoRouter> pumpLoansScreens(
+  WidgetTester tester,
+  LoansRepository loans, {
+  PhotoPicker? picker,
+  String initialLocation = '/home',
+}) async {
+  tester.view.physicalSize = const Size(900, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+
+  final router = GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      GoRoute(path: '/home', builder: (_, _) => const Scaffold(body: TodayHandoversView())),
+      GoRoute(
+        path: '/handovers/:bookingId',
+        builder: (_, state) => HandoverScreen(bookingId: int.tryParse(state.pathParameters['bookingId']!)),
+      ),
+      GoRoute(path: '/overdue', builder: (_, _) => const OverdueScreen()),
+      GoRoute(
+        path: '/loans/:id/checkin',
+        builder: (_, state) => CheckInScreen(loanId: int.tryParse(state.pathParameters['id']!)),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      loansRepositoryProvider.overrideWithValue(loans),
+      photoPickerProvider.overrideWithValue(picker ?? FakePhotoPicker()),
+      clockProvider.overrideWithValue(() => loansNow),
     ],
     child: MaterialApp.router(routerConfig: router),
   ));

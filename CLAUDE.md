@@ -237,6 +237,15 @@ an invalidated list reloads when its screen shows again. Cancel: the button's st
 `RequestStatuses.cancellable`, and it shows only when `currentUserIdProvider` is the requester. The late warning uses
 `isLateCancellation` (`time_rules.dart`, same rule as the server). The server's `isLateCancellation` is what gets shown,
 and a 409 title is shown exactly as sent. Tests re-pump with `pumpWidget(SizedBox())` first to get a fresh ProviderScope.
+Technician loans (mobile, UC09–UC12): `/handovers`, `/overdue` and `/loans` are LabTechnician-only in `authRedirect`, and
+the technician's home body is `TodayHandoversView`. A booking's loans come from `GET /api/loans?bookingId=`; the picker
+reads `GET /api/equipment-items?typeId=&status=Available`. Every checkout/check-in error title is shown exactly as sent,
+and `invalidateLoanLists` reloads what changed. The check-in rules (Damaged needs a note and a photo; photo JPEG/PNG by
+magic bytes, ≤ 5 MB; note ≤ 1000) are mirrored in `CheckInRules` (`features/loans/models.dart`), with the server's
+messages, so keep them in step with `LoanService`/`DamagePhotoStore`. Photos come only through `photoPickerProvider`
+(image_picker with maxWidth 1600, imageQuality 80) as bytes, and are uploaded as dio `FormData`. A loan that is already
+checked in opens read-only. Tests use `pumpLoansScreens`, `MockLoansRepository`, `FakePhotoPicker` and the
+`live*` models from `test/fixtures/loans.dart`.
 
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 

@@ -79,6 +79,8 @@ public sealed class LoanService(
             loans = loans.Where(l => l.CheckedInAt == null && l.DueAt < now);
         else if (query.Overdue is false)
             loans = loans.Where(l => l.CheckedInAt != null || l.DueAt >= now);
+        if (query.BookingId is { } bookingId)
+            loans = loans.Where(l => l.BookingId == bookingId);
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             var pattern = query.Search.ToContainsPattern();

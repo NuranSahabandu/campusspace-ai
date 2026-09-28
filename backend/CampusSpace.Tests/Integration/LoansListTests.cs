@@ -139,6 +139,38 @@ public class LoansListTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task BookingId_lists_only_that_bookings_open_and_returned_loans()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var mine = await HandoverAsync(Factory, now.AddHours(-1), now.AddHours(2), reserved: 2);
+        var other = await HandoverAsync(Factory, now.AddHours(-1), now.AddHours(2));
+        var (tech, techId) = await TechnicianAsync(Factory);
+        var returned = await InsertLoanAsync(Factory, mine.BookingId, mine.ItemIds[0], techId, now.AddHours(-1), now.AddHours(2), now.AddMinutes(-10));
+        var open = await CheckoutOkAsync(tech, mine.BookingId, mine.ItemIds[1]);
+        await CheckoutOkAsync(tech, other.BookingId, other.ItemIds[0]);
+
+        var list = await ListAsync(tech, $"bookingId={mine.BookingId}&sort=dueAt");
+        var notOverdue = await ListAsync(tech, $"bookingId={mine.BookingId}&overdue=false");
+        var overdue = await ListAsync(tech, $"bookingId={mine.BookingId}&overdue=true");
+
+        list.Select(l => l.GetProperty("id").GetInt64()).Should().BeEquivalentTo([returned, open]);
+        list.Should().OnlyContain(l => l.GetProperty("bookingId").GetInt64() == mine.BookingId);
+        notOverdue.Should().HaveCount(2);
+        overdue.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task BookingId_must_be_positive()
+    {
+        var (tech, _) = await TechnicianAsync(Factory);
+
+        var response = await tech.GetAsync("/api/loans?bookingId=0");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.ReadJsonAsync()).GetProperty("errors").TryGetProperty("BookingId", out _).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task The_loan_list_is_staff_only_and_validates_sort()
     {
         (await TestAuth.CreateClient(Factory, Roles.Student).GetAsync("/api/loans?overdue=true")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
