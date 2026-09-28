@@ -57,3 +57,6 @@ htmlcov/
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/launch.json
+
+# ---------- API uploads (damage photos, Storage:DamagePhotosPath) ----------
+backend/CampusSpace.Api/App_Data/
