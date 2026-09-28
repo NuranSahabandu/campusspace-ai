@@ -7,6 +7,7 @@ import '../features/auth/login_screen.dart';
 import '../features/auth/register_screen.dart';
 import '../features/auth/models.dart';
 import '../features/home/home_screen.dart';
+import '../features/loans/handover_screen.dart';
 import '../features/loans/overdue_screen.dart';
 import '../features/requests/my_requests_screen.dart';
 import '../features/requests/new_request_screen.dart';
@@ -96,6 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => RequestDetailScreen(id: int.tryParse(state.pathParameters['id']!)),
           ),
         ],
+      ),
+      GoRoute(
+        path: '${AppRoutes.handovers}/:bookingId',
+        builder: (_, state) => HandoverScreen(bookingId: int.tryParse(state.pathParameters['bookingId']!)),
       ),
       GoRoute(path: AppRoutes.overdue, builder: (_, _) => const OverdueScreen()),
     ],
