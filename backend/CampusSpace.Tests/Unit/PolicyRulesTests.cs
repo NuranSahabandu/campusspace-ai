@@ -38,7 +38,8 @@ public class PolicyRulesTests
         p.OpeningHours[DayOfWeek.Sunday].Should().BeNull();
         p.Should().Match<PolicySnapshot>(s => s.MinLeadTimeHours == 48 && s.MaxAdvanceDaysStudent == 60
             && s.MaxAdvanceDaysLecturer == 90 && s.MaxDurationHours == 8 && s.MaxCapacityRatio == 3m
-            && s.SlotGranularityMinutes == 30 && s.FreeCancellationHours == 24 && s.MaxOpenRequests == 3);
+            && s.SlotGranularityMinutes == 30 && s.FreeCancellationHours == 24 && s.MaxOpenRequests == 3
+            && s.CheckoutWindowMinutes == 30);
     }
 
     [Fact]
@@ -160,6 +161,8 @@ public class PolicyRulesTests
     [InlineData(PolicyKeys.FreeCancellationHours, "721")]
     [InlineData(PolicyKeys.MaxOpenRequests, "0")]
     [InlineData(PolicyKeys.MaxOpenRequests, "21")]
+    [InlineData(PolicyKeys.CheckoutWindowMinutes, "-1")]
+    [InlineData(PolicyKeys.CheckoutWindowMinutes, "241")]
     public void Out_of_range_numbers_are_errors_on_their_key(string key, string value)
     {
         Check((key, value)).Keys.Should().Equal(key);
@@ -168,6 +171,8 @@ public class PolicyRulesTests
     [Theory]
     [InlineData(PolicyKeys.MinLeadTimeHours, "0")]
     [InlineData(PolicyKeys.MinLeadTimeHours, "720")]
+    [InlineData(PolicyKeys.CheckoutWindowMinutes, "0")]
+    [InlineData(PolicyKeys.CheckoutWindowMinutes, "240")]
     [InlineData(PolicyKeys.MaxAdvanceDaysStudent, "365")]
     [InlineData(PolicyKeys.MaxDurationHours, "1")]
     [InlineData(PolicyKeys.MaxCapacityRatio, "1")]

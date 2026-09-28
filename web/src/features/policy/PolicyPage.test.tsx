@@ -39,6 +39,21 @@ describe('PolicyPage', () => {
     expect(screen.getByLabelText('Monday opens')).toHaveAttribute('step', '1800')
   })
 
+  it('renders and saves the checkout window', async () => {
+    const { user, bodies } = await openPolicy()
+    expect(field('Checkout window')).toHaveValue('30')
+    expect(screen.getByText("How many minutes before a booking's start a technician may hand equipment over")).toBeInTheDocument()
+
+    await user.clear(field('Checkout window'))
+    await user.type(field('Checkout window'), '45')
+    await user.click(saveButton())
+    const dialog = await screen.findByRole('dialog', { name: 'Save booking policy?' })
+    expect(within(dialog).getByText('Checkout window: 30 → 45')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(bodies).toEqual([{ settings: [{ key: 'checkout_window_minutes', value: '45' }] }]))
+  })
+
   it('confirms a ratio change and sends only that key', async () => {
     const { user, bodies } = await openPolicy()
     expect(saveButton()).toBeDisabled()

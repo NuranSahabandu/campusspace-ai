@@ -79,7 +79,8 @@ const policyJson = r'''
   "max_capacity_ratio": 3,
   "slot_granularity_minutes": 30,
   "free_cancellation_hours": 24,
-  "max_open_requests": 3
+  "max_open_requests": 3,
+  "checkout_window_minutes": 30
 }
 ''';
 

@@ -15,12 +15,13 @@ public static class PolicyKeys
     public const string SlotGranularityMinutes = "slot_granularity_minutes";
     public const string FreeCancellationHours = "free_cancellation_hours";
     public const string MaxOpenRequests = "max_open_requests";
+    public const string CheckoutWindowMinutes = "checkout_window_minutes";
 
     /// <summary>Every key, in the order the policy page lists them.</summary>
     public static readonly IReadOnlyList<string> All =
     [
         OpeningHours, MinLeadTimeHours, MaxAdvanceDaysStudent, MaxAdvanceDaysLecturer, MaxDurationHours,
-        MaxCapacityRatio, SlotGranularityMinutes, FreeCancellationHours, MaxOpenRequests,
+        MaxCapacityRatio, SlotGranularityMinutes, FreeCancellationHours, MaxOpenRequests, CheckoutWindowMinutes,
     ];
 
     /// <summary>The ValueType each key must have.</summary>
@@ -35,6 +36,7 @@ public static class PolicyKeys
         [SlotGranularityMinutes] = PolicyValueTypes.Int,
         [FreeCancellationHours] = PolicyValueTypes.Int,
         [MaxOpenRequests] = PolicyValueTypes.Int,
+        [CheckoutWindowMinutes] = PolicyValueTypes.Int,
     };
 }
 

@@ -292,7 +292,7 @@ const setting = (key: string, valueType: string, value: string, description: str
   updatedByName: null,
 })
 
-/** The nine default settings (PolicySettingDefaults), in PolicyKeys.All order; one was changed by the officer. */
+/** The ten default settings (PolicySettingDefaults), in PolicyKeys.All order; one was changed by the officer. */
 export const POLICY_SETTINGS: PolicySettingDto[] = [
   setting('opening_hours', 'json', DEFAULT_OPENING_HOURS, 'Opening hours per weekday in campus time (null = closed)'),
   setting('min_lead_time_hours', 'int', '48', 'Minimum hours between submitting a request and the booking start'),
@@ -312,6 +312,12 @@ export const POLICY_SETTINGS: PolicySettingDto[] = [
     'Cancelling more than this many hours before the start is free; later is flagged as late',
   ),
   setting('max_open_requests', 'int', '3', 'Most open requests a requester can have at once'),
+  setting(
+    'checkout_window_minutes',
+    'int',
+    '30',
+    "How many minutes before a booking's start a technician may hand equipment over",
+  ),
 ]
 
 /** Active clubs as an officer reads them from GET /api/clubs (the request list's Club filter). */

@@ -89,7 +89,8 @@ public class PolicySettingsEndpointsTests(PostgresFixture fixture)
         var response = await officer.PutAsJsonAsync(Url, Body(
             (PolicyKeys.OpeningHours, hours), (PolicyKeys.MinLeadTimeHours, "24"), (PolicyKeys.MaxAdvanceDaysStudent, "30"),
             (PolicyKeys.MaxAdvanceDaysLecturer, "120"), (PolicyKeys.MaxDurationHours, "6"), (PolicyKeys.MaxCapacityRatio, "2.5"),
-            (PolicyKeys.SlotGranularityMinutes, "60"), (PolicyKeys.FreeCancellationHours, "12"), (PolicyKeys.MaxOpenRequests, "5")));
+            (PolicyKeys.SlotGranularityMinutes, "60"), (PolicyKeys.FreeCancellationHours, "12"), (PolicyKeys.MaxOpenRequests, "5"),
+            (PolicyKeys.CheckoutWindowMinutes, "45")));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var saved = ByKey(await response.ReadJsonAsync());
@@ -100,6 +101,7 @@ public class PolicySettingsEndpointsTests(PostgresFixture fixture)
         var values = await (await TestAuth.CreateClient(factory, Roles.Student).GetAsync($"{Url}/public")).ReadJsonAsync();
         values.GetProperty(PolicyKeys.MaxCapacityRatio).GetDecimal().Should().Be(2.5m);
         values.GetProperty(PolicyKeys.SlotGranularityMinutes).GetInt32().Should().Be(60);
+        values.GetProperty(PolicyKeys.CheckoutWindowMinutes).GetInt32().Should().Be(45);
         values.GetProperty(PolicyKeys.OpeningHours).GetProperty("sun").GetProperty("close").GetString().Should().Be("14:00");
 
         await using var scope = factory.Services.CreateAsyncScope();
@@ -133,6 +135,7 @@ public class PolicySettingsEndpointsTests(PostgresFixture fixture)
         { PolicyKeys.FreeCancellationHours, "-1", PolicyKeys.FreeCancellationHours },
         { PolicyKeys.MaxOpenRequests, "21", PolicyKeys.MaxOpenRequests },
         { PolicyKeys.MaxOpenRequests, "lots", PolicyKeys.MaxOpenRequests },
+        { PolicyKeys.CheckoutWindowMinutes, "241", PolicyKeys.CheckoutWindowMinutes },
         { "max_group_size", "10", "max_group_size" },
     };
 

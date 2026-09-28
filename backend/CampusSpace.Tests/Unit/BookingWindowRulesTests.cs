@@ -32,7 +32,8 @@ public class BookingWindowRulesTests
             [DayOfWeek.Sunday] = null,
         }.ToImmutableDictionary();
         return new PolicySnapshot(hours, leadHours, MaxAdvanceDaysStudent: 60, MaxAdvanceDaysLecturer: 90, maxHours,
-            MaxCapacityRatio: 3, granularity, FreeCancellationHours: 24, MaxOpenRequests: 3);
+            MaxCapacityRatio: 3, granularity, FreeCancellationHours: 24, MaxOpenRequests: 3,
+            CheckoutWindowMinutes: 30);
     }
 
     private static DateTimeOffset At(DateOnly date, string time) => CampusTime.At(date, TimeOnly.Parse(time));

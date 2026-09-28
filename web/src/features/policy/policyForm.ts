@@ -27,6 +27,7 @@ export const NUMBER_FIELDS = [
   { key: 'slot_granularity_minutes', label: 'Slot granularity', unit: 'minutes' },
   { key: 'free_cancellation_hours', label: 'Free cancellation', unit: 'hours' },
   { key: 'max_open_requests', label: 'Open requests per requester', unit: 'requests' },
+  { key: 'checkout_window_minutes', label: 'Checkout window', unit: 'minutes' },
 ] as const
 export type NumberKey = (typeof NUMBER_FIELDS)[number]['key']
 
@@ -148,6 +149,7 @@ export const policySchema = z
       .refine((g) => (GRANULARITIES as readonly string[]).includes(g), `Must be one of: ${GRANULARITIES.join(', ')}.`),
     free_cancellation_hours: intField(0, 720),
     max_open_requests: intField(1, 20),
+    checkout_window_minutes: intField(0, 240),
   })
   .superRefine((form, ctx) => {
     const granularity = Number(form.slot_granularity_minutes)

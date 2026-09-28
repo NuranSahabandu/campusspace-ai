@@ -64,7 +64,8 @@ public static partial class PolicyRules
             ratio,
             ints[PolicyKeys.SlotGranularityMinutes],
             ints[PolicyKeys.FreeCancellationHours],
-            ints[PolicyKeys.MaxOpenRequests]);
+            ints[PolicyKeys.MaxOpenRequests],
+            ints[PolicyKeys.CheckoutWindowMinutes]);
     }
 
     /// <summary>
@@ -96,6 +97,7 @@ public static partial class PolicyRules
         Range(errors, PolicyKeys.MaxAdvanceDaysLecturer, p.MaxAdvanceDaysLecturer, 1, 365);
         Range(errors, PolicyKeys.FreeCancellationHours, p.FreeCancellationHours, 0, 720);
         Range(errors, PolicyKeys.MaxOpenRequests, p.MaxOpenRequests, 1, 20);
+        Range(errors, PolicyKeys.CheckoutWindowMinutes, p.CheckoutWindowMinutes, 0, 240);
 
         if (p.MaxCapacityRatio is < 1 or > 10)
             Add(errors, PolicyKeys.MaxCapacityRatio, "Must be between 1 and 10.");
@@ -129,6 +131,7 @@ public static partial class PolicyRules
         [PolicyKeys.SlotGranularityMinutes] = Text(p.SlotGranularityMinutes),
         [PolicyKeys.FreeCancellationHours] = Text(p.FreeCancellationHours),
         [PolicyKeys.MaxOpenRequests] = Text(p.MaxOpenRequests),
+        [PolicyKeys.CheckoutWindowMinutes] = Text(p.CheckoutWindowMinutes),
     };
 
     /// <summary>{"mon":{"open":"HH:mm","close":"HH:mm"}|null, ... "sun":...}: exactly the seven days, nothing else.</summary>
