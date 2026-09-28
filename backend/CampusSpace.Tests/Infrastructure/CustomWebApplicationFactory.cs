@@ -24,6 +24,9 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
     /// <summary>A fresh signing key for every test run (64 hex chars = 64 bytes).</summary>
     public string JwtKey { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
+    /// <summary>A fresh X-Agent-Key for every test run (AgentTools:Key), different from the JWT key.</summary>
+    public string AgentToolsKey { get; } = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
     /// <summary>This factory's own damage-photo folder (Storage:DamagePhotosPath), deleted on dispose.</summary>
     public string DamagePhotosPath { get; } =
         Path.Combine(Path.GetTempPath(), "campusspace-tests", "damage-photos", Guid.NewGuid().ToString("N"));
@@ -36,6 +39,7 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
         builder.UseSetting("Jwt:Audience", JwtAudience);
         builder.UseSetting("Storage:DamagePhotosPath", DamagePhotosPath);
+        builder.UseSetting("AgentTools:Key", AgentToolsKey);
         // The agent service is not running in tests: its /health always answers 200.
         builder.ConfigureTestServices(services => services.AddHttpClient(AgentServiceHealthCheck.ClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK))));

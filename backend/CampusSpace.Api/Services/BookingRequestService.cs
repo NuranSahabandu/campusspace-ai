@@ -1,5 +1,6 @@
 using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
+using CampusSpace.Api.Dtos.AgentTools;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Requests;
 using CampusSpace.Api.Extensions;
@@ -262,8 +263,34 @@ public sealed class BookingRequestService(
 
     private static DateTime CampusDayStartUtc(DateOnly date) => CampusTime.StartOf(date).UtcDateTime;
 
-    private Task<int> CountOpenAsync(long requesterId, CancellationToken ct) =>
-        db.BookingRequests.CountAsync(r => r.RequesterId == requesterId && RequestStatuses.Open.Contains(r.Status), ct);
+    /// <param name="exceptRequestId">Leave this request out (the agent's context counts the requester's other requests).</param>
+    private Task<int> CountOpenAsync(long requesterId, CancellationToken ct, long? exceptRequestId = null) =>
+        db.BookingRequests.CountAsync(r => r.RequesterId == requesterId && RequestStatuses.Open.Contains(r.Status)
+            && r.Id != exceptRequestId, ct);
+
+    public async Task<AgentRequestContextDto?> GetAgentContextAsync(long id, CancellationToken ct = default)
+    {
+        // Only what the Supervisor needs: no names, emails or user ids leave this query.
+        var row = await db.BookingRequests.AsNoTracking().Where(r => r.Id == id).Select(r => new
+        {
+            r.Id, r.Status, r.RequesterId, RequesterRole = r.Requester.Role,
+            Club = r.Club != null ? new { r.Club.Name, r.Club.IsActive } : null,
+            IsRepresentative = r.ClubId != null && db.ClubMembers.Any(
+                m => m.ClubId == r.ClubId && m.UserId == r.RequesterId && m.IsRepresentative),
+            r.Purpose, r.Attendees, r.RequestedStart, r.RequestedEnd, r.RequiredFeatures, r.BudgetLkr, r.Notes,
+            Equipment = r.EquipmentLines.OrderBy(l => l.Type.Code).Select(l => new AgentEquipmentLineDto(l.Type.Code, l.Quantity)).ToList(),
+        }).SingleOrDefaultAsync(ct);
+        if (row is null)
+            return null;
+
+        var open = await CountOpenAsync(row.RequesterId, ct, exceptRequestId: row.Id);
+        var max = (await policy.GetAsync(ct)).MaxOpenRequests;
+        return new AgentRequestContextDto(
+            row.Id, row.Status, row.RequesterRole,
+            row.Club is { } club ? new AgentClubContextDto(club.Name, club.IsActive, row.IsRepresentative) : null,
+            open, max, row.Purpose, row.Attendees, row.RequestedStart, row.RequestedEnd,
+            row.RequiredFeatures, row.Equipment, row.BudgetLkr, row.Notes);
+    }
 
     public async Task<bool> EnsureCanReadAsync(long id, CancellationToken ct = default)
     {

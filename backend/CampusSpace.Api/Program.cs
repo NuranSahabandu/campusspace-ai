@@ -1,5 +1,6 @@
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Health;
+using CampusSpace.Api.Middleware;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 
@@ -18,10 +19,16 @@ builder.Services.AddJwtAuth();
 builder.Services.AddApplicationServices();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options => options.AddBearerSecurity());
+builder.Services.AddSwaggerGen(options =>
+{
+    options.AddBearerSecurity();
+    options.HideInternalRoutes();
+});
 
 var app = builder.Build();
 
+// First, so it logs the final status of every agent-tool call, including 401s and handled exceptions.
+app.UseAgentToolRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();

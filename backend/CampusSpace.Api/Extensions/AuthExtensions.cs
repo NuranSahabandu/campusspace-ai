@@ -2,6 +2,7 @@ using System.Text;
 using CampusSpace.Api.Auth;
 using CampusSpace.Api.Options;
 using CampusSpace.Api.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
@@ -26,7 +27,17 @@ public static class AuthExtensions
                 JwtOptions.KeyTooShortMessage)
             .ValidateOnStart();
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+        services.AddOptions<AgentToolsOptions>()
+            .BindConfiguration(AgentToolsOptions.SectionName)
+            .ValidateDataAnnotations()
+            .Validate(o => Encoding.UTF8.GetByteCount(o.Key ?? string.Empty) >= AgentToolsOptions.MinKeyBytes,
+                AgentToolsOptions.KeyTooShortMessage)
+            .ValidateOnStart();
+
+        // Bearer stays the default scheme; AgentKey runs only where the AgentTools policy names it.
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer()
+            .AddScheme<AuthenticationSchemeOptions, AgentKeyAuthenticationHandler>(AgentKeyDefaults.Scheme, null);
 
         // Configured when the options are first resolved, so test UseSetting overrides are picked up.
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
@@ -52,13 +63,27 @@ public static class AuthExtensions
                 };
             });
 
-        services.AddAuthorization(options => options.FallbackPolicy =
-            new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+        services.AddAuthorization(options =>
+        {
+            // JWT only, named explicitly: the agent principal can never satisfy [Authorize] or the fallback on /api.
+            var jwtUser = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme).RequireAuthenticatedUser().Build();
+            options.DefaultPolicy = jwtUser;
+            options.FallbackPolicy = jwtUser;
+            // /internal/agent-tools only: the X-Agent-Key scheme and nothing else, so a user JWT gets a 401 there.
+            options.AddPolicy(AgentKeyDefaults.Policy, policy => policy
+                .AddAuthenticationSchemes(AgentKeyDefaults.Scheme)
+                .RequireClaim(AgentKeyDefaults.ClaimType, AgentKeyDefaults.ClaimValue));
+        });
 
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ITokenService, TokenService>();
         return services;
     }
+
+    /// <summary>Keeps /internal (the agent tools, X-Agent-Key) out of the public Swagger document (§9).</summary>
+    public static void HideInternalRoutes(this SwaggerGenOptions options) =>
+        options.DocInclusionPredicate((_, api) =>
+            !(api.RelativePath ?? string.Empty).StartsWith("internal/", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Adds the "Bearer" scheme so Swagger UI shows the Authorize button (Lab 04 Task 04).</summary>
     public static void AddBearerSecurity(this SwaggerGenOptions options)

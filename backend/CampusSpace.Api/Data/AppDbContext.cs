@@ -32,6 +32,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<EquipmentLoan> EquipmentLoans => Set<EquipmentLoan>();
     public DbSet<Quotation> Quotations => Set<Quotation>();
     public DbSet<QuotationLine> QuotationLines => Set<QuotationLine>();
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
+    public DbSet<AgentStep> AgentSteps => Set<AgentStep>();
+    public DbSet<AgentToolCall> AgentToolCalls => Set<AgentToolCall>();
+    public DbSet<AgentValidationResult> ValidationResults => Set<AgentValidationResult>();
+    public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

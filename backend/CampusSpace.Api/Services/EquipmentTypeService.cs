@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Data.Configurations;
+using CampusSpace.Api.Dtos.AgentTools;
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Equipment;
 using CampusSpace.Api.Extensions;
@@ -102,6 +103,11 @@ public sealed class EquipmentTypeService(AppDbContext db) : IEquipmentTypeServic
         await db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<IReadOnlyList<AgentEquipmentTypeDto>> ListCatalogAsync(CancellationToken ct = default) =>
+        await db.EquipmentTypes.AsNoTracking().OrderBy(t => t.Code)
+            .Select(t => new AgentEquipmentTypeDto(t.Code, t.Name, t.Category, t.FeePerBooking, t.CoveredByFeatureCode))
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyList<EquipmentTypeRefDto>?> GetSubstitutesAsync(long id, CancellationToken ct = default)
     {
