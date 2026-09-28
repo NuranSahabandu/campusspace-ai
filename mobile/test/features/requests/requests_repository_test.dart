@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:campusspace_mobile/features/requests/models.dart';
 import 'package:campusspace_mobile/features/requests/requests_repository.dart';
@@ -8,26 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../fixtures/requests.dart';
-
-/// Answers every request with [body] and remembers what was sent, so tests see the real URL and JSON.
-class RecordingAdapter implements HttpClientAdapter {
-  RecordingAdapter(this.body, {this.status = 200});
-
-  final String body;
-  final int status;
-  final requests = <RequestOptions>[];
-
-  @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
-    requests.add(options);
-    return ResponseBody.fromString(body, status, headers: {
-      Headers.contentTypeHeader: [Headers.jsonContentType],
-    });
-  }
-
-  @override
-  void close({bool force = false}) {}
-}
+import '../../recording_adapter.dart';
 
 void main() {
   (RequestsRepository, RecordingAdapter) repository(String body, {int status = 200}) {

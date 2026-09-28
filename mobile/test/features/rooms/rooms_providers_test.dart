@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:campusspace_mobile/core/api/paged_result.dart';
+import 'package:campusspace_mobile/core/campus_time.dart';
 import 'package:campusspace_mobile/features/rooms/facilities_repository.dart';
 import 'package:campusspace_mobile/features/rooms/models.dart';
 import 'package:campusspace_mobile/features/rooms/room_filter.dart';
@@ -14,7 +15,10 @@ import '../../helpers.dart';
 void main() {
   late MockFacilitiesRepository repository;
 
-  setUpAll(() => registerFallbackValue(const RoomFilter()));
+  setUpAll(() {
+    registerFallbackValue(const RoomFilter());
+    registerFallbackValue(DateTime.utc(2026));
+  });
 
   setUp(() => repository = MockFacilitiesRepository());
 
@@ -116,5 +120,50 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(container.read(roomFilterProvider), const RoomFilter());
+  });
+
+  group('schedule', () {
+    // 23:00 UTC on Sun 27 Sep is already Monday 04:30 on campus.
+    final lateSunday = DateTime.utc(2026, 9, 27, 23);
+
+    ProviderContainer scheduleContainer() {
+      final container = ProviderContainer(overrides: [
+        facilitiesRepositoryProvider.overrideWithValue(repository),
+        clockProvider.overrideWithValue(() => lateSunday),
+      ]);
+      addTearDown(container.dispose);
+      container.listen(scheduleDateProvider(3), (_, _) {});
+      return container;
+    }
+
+    test('the date starts at campus today, not the UTC date, and moves by whole days', () {
+      final container = scheduleContainer();
+      final dates = container.read(scheduleDateProvider(3).notifier);
+
+      expect(container.read(scheduleDateProvider(3)), DateTime.utc(2026, 9, 28));
+      dates.move(1);
+      expect(container.read(scheduleDateProvider(3)), DateTime.utc(2026, 9, 29));
+      dates.move(-1);
+      expect(container.read(scheduleDateProvider(3)), DateTime.utc(2026, 9, 28));
+      // The picker returns local midnight; only its year, month and day count.
+      dates.select(DateTime(2026, 10, 4));
+      expect(container.read(scheduleDateProvider(3)), DateTime.utc(2026, 10, 4));
+    });
+
+    test('roomScheduleProvider is keyed by (roomId, date)', () async {
+      when(() => repository.getSchedule(any(), any())).thenAnswer((_) async => RoomSchedule(
+            date: DateTime.utc(2026, 9, 28),
+            granularityMinutes: 30,
+          ));
+      final container = scheduleContainer();
+      final key = (roomId: 3, date: DateTime.utc(2026, 9, 28));
+      container.listen(roomScheduleProvider(key), (_, _) {});
+
+      await container.read(roomScheduleProvider(key).future);
+      // An equal record is the same entry: no second request.
+      await container.read(roomScheduleProvider((roomId: 3, date: DateTime.utc(2026, 9, 28))).future);
+
+      verify(() => repository.getSchedule(3, DateTime.utc(2026, 9, 28))).called(1);
+    });
   });
 }

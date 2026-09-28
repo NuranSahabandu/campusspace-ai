@@ -36,6 +36,10 @@ String campusIso(DateTime date, TimeOfDay time) =>
     '${_pad(date.year, 4)}-${_pad(date.month)}-${_pad(date.day)}'
     'T${_pad(time.hour)}:${_pad(time.minute)}:00$_campusOffsetText';
 
+/// "2026-10-20": a campus date as the API's DateOnly query value.
+String campusDateParam(DateTime campusDate) =>
+    '${_pad(campusDate.year, 4)}-${_pad(campusDate.month)}-${_pad(campusDate.day)}';
+
 /// Minutes since midnight.
 int minutesOf(TimeOfDay time) => time.hour * 60 + time.minute;
 

@@ -25,6 +25,11 @@ void main() {
     });
   });
 
+  test('campusDateParam is the API DateOnly text of a campus date', () {
+    expect(campusDateParam(DateTime.utc(2026, 9, 28)), '2026-09-28');
+    expect(campusDateParam(DateTime.utc(2027, 1, 5)), '2027-01-05');
+  });
+
   group('UTC → campus', () {
     test('an API instant shows in campus time', () {
       final start = DateTime.parse('2026-10-20T08:30:00Z');
