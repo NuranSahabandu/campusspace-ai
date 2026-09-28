@@ -16,7 +16,10 @@ namespace CampusSpace.Api.Controllers;
 [Authorize(Roles = $"{Roles.LabTechnician},{Roles.FacilitiesOfficer}")]
 public class LoansController(ILoanService loans) : ControllerBase
 {
-    /// <summary>The largest check-in body accepted: the 5 MB photo plus the form fields. Larger bodies get 413.</summary>
+    /// <summary>
+    /// The largest check-in body read: the 5 MB photo plus the form fields. A larger body is refused while it is read,
+    /// without buffering it; MVC reports the failed form read as a 400 validation Problem Details.
+    /// </summary>
     private const long MaxCheckInBodyBytes = 6 * 1024 * 1024;
 
     [HttpGet("today")]

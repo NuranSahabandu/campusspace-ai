@@ -141,6 +141,22 @@ public class LoansCheckInTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task A_body_over_the_6_MB_form_limit_is_refused_without_changing_anything()
+    {
+        var (tech, loanId, itemId) = await OnLoanAsync(Factory);
+        var huge = new byte[7 * 1024 * 1024];
+        PngBytes.CopyTo(huge, 0);
+
+        var response = await CheckInAsync(tech, loanId, EquipmentConditions.Damaged, "Cracked", huge);
+
+        (await response.ShouldBeProblemAsync(400)).GetProperty("errors").ToString()
+            .Should().Contain("Failed to read the request form"); // Kestrel: body size limit; TestServer: multipart limit
+        (await LoanAsync(Factory, loanId)).CheckedInAt.Should().BeNull();
+        (await ItemAsync(Factory, itemId)).Status.Should().Be(EquipmentItemStatuses.OnLoan);
+        (await LoanAsync(Factory, loanId)).DamagePhotoPath.Should().BeNull();
+    }
+
+    [Fact]
     public async Task An_unknown_condition_is_a_400()
     {
         var (tech, loanId, _) = await OnLoanAsync(Factory);
