@@ -52,6 +52,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEquipmentAvailabilityService, EquipmentAvailabilityService>();
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
+        services.AddScoped<ILoanService, LoanService>();
         services.AddOptions<StorageOptions>()
             .BindConfiguration(StorageOptions.SectionName)
             .ValidateDataAnnotations()
