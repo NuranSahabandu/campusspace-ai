@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:campusspace_mobile/features/requests/models.dart';
 import 'package:campusspace_mobile/features/requests/requests_repository.dart';
@@ -8,26 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../fixtures/requests.dart';
-
-/// Answers every request with [body] and remembers what was sent, so tests see the real URL and JSON.
-class RecordingAdapter implements HttpClientAdapter {
-  RecordingAdapter(this.body, {this.status = 200});
-
-  final String body;
-  final int status;
-  final requests = <RequestOptions>[];
-
-  @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
-    requests.add(options);
-    return ResponseBody.fromString(body, status, headers: {
-      Headers.contentTypeHeader: [Headers.jsonContentType],
-    });
-  }
-
-  @override
-  void close({bool force = false}) {}
-}
+import '../../recording_adapter.dart';
 
 void main() {
   (RequestsRepository, RecordingAdapter) repository(String body, {int status = 200}) {
@@ -82,5 +62,29 @@ void main() {
     expect(sent.uri.path, '/api/booking-requests');
     expect(jsonDecode(jsonEncode(sent.data))['requestedStart'], '2026-10-26T10:00:00+05:30');
     expect(created.id, 2);
+  });
+
+  test('cancel POSTs the trimmed reason and returns the cancelled request', () async {
+    final (repo, adapter) = repository(cancelledRequestJson);
+
+    final cancelled = await repo.cancel(6, reason: '  Speaker unavailable \n');
+
+    final sent = adapter.requests.single;
+    expect(sent.method, 'POST');
+    expect(sent.uri.path, '/api/booking-requests/6/cancel');
+    expect(jsonDecode(jsonEncode(sent.data)), {'reason': 'Speaker unavailable'});
+    expect(cancelled.status, 'Cancelled');
+    expect(cancelled.cancelledAt, isNotNull);
+  });
+
+  test('cancel sends a null reason when none was typed', () async {
+    final (repo, adapter) = repository(cancelledRequestJson);
+
+    await repo.cancel(6, reason: '   ');
+    await repo.cancel(6);
+
+    for (final sent in adapter.requests) {
+      expect(jsonDecode(jsonEncode(sent.data)), {'reason': null});
+    }
   });
 }

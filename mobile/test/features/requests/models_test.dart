@@ -38,6 +38,7 @@ void main() {
     expect(policy.maxAdvanceDays('Lecturer'), 90);
     expect(policy.maxDurationHours, 8);
     expect(policy.slotGranularityMinutes, 30);
+    expect(policy.freeCancellationHours, 24);
   });
 
   test('equipment types parse, including the covering feature', () {
@@ -71,6 +72,18 @@ void main() {
     expect(detail.budgetLkr, 0);
     expect(detail.cancelledAt, isNull);
     expect(detail.isLateCancellation, isFalse);
+  });
+
+  test('an officer cancellation and a late owner cancellation read their flags', () {
+    final officer = RequestDetail.fromJson(json(officerCancelledJson));
+    expect(officer.cancelledByOfficer, isTrue);
+    expect(officer.isLateCancellation, isFalse);
+    expect(officer.history.last.changedByName, 'Mr. Perera');
+
+    final late = RequestDetail.fromJson(json(lateCancelledJson));
+    expect(late.isLateCancellation, isTrue);
+    expect(late.cancelledByOfficer, isFalse);
+    expect(late.history.map((h) => h.toStatus), ['Submitted', 'Approved', 'Cancelled']);
   });
 
   test('a cancelled detail reads the cancellation fields and the reason', () {

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:campusspace_mobile/core/campus_time.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/requests/models.dart';
+import 'package:campusspace_mobile/features/requests/request_status.dart';
 import 'package:campusspace_mobile/features/requests/time_rules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,5 +88,38 @@ void main() {
       expect(check(tuesday, t(18, 30), t(19, 30), now: sundayEvening).start, 'Must start at least 48 hours from now');
       expect(check(tuesday, t(19), t(20), now: sundayEvening), (start: null, end: null));
     });
+  });
+
+  group('isLateCancellation (free_cancellation_hours = 24)', () {
+    // Mon 26 Oct 2026, 10:00 campus time.
+    final start = campusInstant(DateTime.utc(2026, 10, 26), t(10));
+    final boundary = start.subtract(const Duration(hours: 24));
+
+    bool late(String status, DateTime now) =>
+        isLateCancellation(status: status, startUtc: start, nowUtc: now, policy: policy);
+
+    test('an approved request is late only after start − 24 h; the boundary itself is free', () {
+      expect(late(RequestStatuses.approved, boundary.subtract(const Duration(minutes: 1))), isFalse);
+      expect(late(RequestStatuses.approved, boundary), isFalse);
+      expect(late(RequestStatuses.approved, boundary.add(const Duration(minutes: 1))), isTrue);
+    });
+
+    test('a request that is not approved is never late', () {
+      final inside = boundary.add(const Duration(hours: 1));
+      expect(late(RequestStatuses.submitted, inside), isFalse);
+      expect(late(RequestStatuses.pendingApproval, inside), isFalse);
+    });
+
+    test('reads the hours from the policy, never a fixed 24', () {
+      final strict = PublicPolicy.fromJson(
+          {...jsonDecode(policyJson) as Map<String, dynamic>, 'free_cancellation_hours': 48});
+      final now = start.subtract(const Duration(hours: 30));
+      expect(late(RequestStatuses.approved, now), isFalse);
+      expect(isLateCancellation(status: RequestStatuses.approved, startUtc: start, nowUtc: now, policy: strict), isTrue);
+    });
+  });
+
+  test('RequestStatuses.cancellable matches the backend state machine', () {
+    expect(RequestStatuses.cancellable, {'Submitted', 'PendingApproval', 'Approved'});
   });
 }

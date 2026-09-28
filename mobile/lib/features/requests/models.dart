@@ -73,6 +73,7 @@ class PublicPolicy {
     required this.maxAdvanceDaysLecturer,
     required this.maxDurationHours,
     required this.slotGranularityMinutes,
+    required this.freeCancellationHours,
     required this.maxOpenRequests,
   });
 
@@ -87,6 +88,7 @@ class PublicPolicy {
       maxAdvanceDaysLecturer: (json['max_advance_days_lecturer'] as num).toInt(),
       maxDurationHours: (json['max_duration_hours'] as num).toInt(),
       slotGranularityMinutes: (json['slot_granularity_minutes'] as num).toInt(),
+      freeCancellationHours: (json['free_cancellation_hours'] as num).toInt(),
       maxOpenRequests: (json['max_open_requests'] as num).toInt(),
     );
   }
@@ -109,6 +111,9 @@ class PublicPolicy {
   final int maxAdvanceDaysLecturer;
   final int maxDurationHours;
   final int slotGranularityMinutes;
+
+  /// An owner's cancellation of an approved booking later than this many hours before its start is flagged as late.
+  final int freeCancellationHours;
   final int maxOpenRequests;
 
   OpeningHours? hoursOn(DateTime date) => openingHours[date.weekday];

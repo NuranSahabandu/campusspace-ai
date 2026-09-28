@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/campus_time.dart';
 import 'facilities_repository.dart';
 import 'models.dart';
 import 'room_filter.dart';
@@ -135,5 +136,29 @@ final featuresProvider = FutureProvider<List<Feature>>(
 
 final roomDetailProvider = FutureProvider.autoDispose.family<Room, int>(
   (ref, id) => ref.watch(facilitiesRepositoryProvider).getRoom(id),
+  retry: _noRetry,
+);
+
+/// The day shown in a room's schedule, per room. Starts at campus today; reset when room detail closes.
+class ScheduleDateNotifier extends Notifier<DateTime> {
+  ScheduleDateNotifier(this.roomId);
+
+  final int roomId;
+
+  @override
+  DateTime build() => campusToday(ref.read(clockProvider)());
+
+  /// [date] is a campus date (see core/campus_time.dart).
+  void select(DateTime date) => state = campusDate(date);
+
+  void move(int days) => state = state.add(Duration(days: days));
+}
+
+final scheduleDateProvider =
+    NotifierProvider.autoDispose.family<ScheduleDateNotifier, DateTime, int>(ScheduleDateNotifier.new);
+
+/// GET /api/rooms/{id}/schedule for one campus date, keyed by (roomId, date).
+final roomScheduleProvider = FutureProvider.autoDispose.family<RoomSchedule, ({int roomId, DateTime date})>(
+  (ref, key) => ref.watch(facilitiesRepositoryProvider).getSchedule(key.roomId, key.date),
   retry: _noRetry,
 );

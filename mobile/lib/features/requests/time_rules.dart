@@ -2,8 +2,9 @@ import 'package:flutter/material.dart' show TimeOfDay;
 
 import '../../core/campus_time.dart';
 import 'models.dart';
+import 'request_status.dart';
 
-// Client-side date and time rules for the New request form. The server enforces lead time, opening hours,
+// Client-side date and time rules for the New request form and the cancel dialog. The server enforces lead time, opening hours,
 // granularity, duration and the advance window from Phase 2 (V05/V06); until then these checks are the only guide.
 // Both sides read the same live policy (GET /api/policy-settings/public), never hard-coded numbers.
 // Pure functions: "now" is always passed in, and dates are campus dates (see core/campus_time.dart).
@@ -75,3 +76,15 @@ TimeErrors validateTimes({
 
   return (start: startError, end: endError);
 }
+
+/// Whether cancelling now will be recorded as late: the request is Approved and [nowUtc] is past
+/// start − free_cancellation_hours (the boundary itself is free). Mirrors BookingRequestService.CancelAsync; the
+/// server decides and returns isLateCancellation. [startUtc] is the requested start: the request detail has no booking
+/// time, and a Phase 2 booking keeps the requested times.
+bool isLateCancellation({
+  required String status,
+  required DateTime startUtc,
+  required DateTime nowUtc,
+  required PublicPolicy policy,
+}) =>
+    status == RequestStatuses.approved && nowUtc.isAfter(startUtc.subtract(Duration(hours: policy.freeCancellationHours)));

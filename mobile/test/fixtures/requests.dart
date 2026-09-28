@@ -387,6 +387,124 @@ const cancelledRequestJson = r'''
 }
 ''';
 
+/// POST /api/booking-requests/6/cancel as lecturer@ when it is already cancelled (409).
+const cancelConflictJson = r'''
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "The request is already cancelled",
+  "status": 409,
+  "traceId": "7ea19d0b24f9cd99ddbb1a72ca0b9d02"
+}
+''';
+
+/// POST /api/booking-requests/10/cancel as perera@ (Facilities Officer) with {"reason": "Hall reserved for the
+/// convocation"} (200).
+const officerCancelledJson = r'''
+{
+  "id": 10,
+  "purpose": "Research seminar",
+  "status": "Cancelled",
+  "attendees": 30,
+  "requestedStart": "2026-10-28T04:30:00Z",
+  "requestedEnd": "2026-10-28T06:30:00Z",
+  "budgetLkr": 0.00,
+  "notes": null,
+  "requester": {
+    "id": 2,
+    "name": "Dr. Nimal Fernando",
+    "email": "lecturer@campusspace.local"
+  },
+  "club": null,
+  "requiredFeatures": [
+    {
+      "code": "projector",
+      "name": "Projector"
+    }
+  ],
+  "equipment": [],
+  "history": [
+    {
+      "fromStatus": null,
+      "toStatus": "Submitted",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": null,
+      "changedAt": "2026-09-28T04:43:52.593496Z"
+    },
+    {
+      "fromStatus": "Submitted",
+      "toStatus": "Cancelled",
+      "changedById": 4,
+      "changedByName": "Mr. Perera",
+      "reason": "Hall reserved for the convocation",
+      "changedAt": "2026-09-28T04:43:52.673804Z"
+    }
+  ],
+  "latestProposal": null,
+  "cancelledAt": "2026-09-28T04:43:52.669835Z",
+  "isLateCancellation": false,
+  "cancelledByOfficer": true,
+  "createdAt": "2026-09-28T04:43:52.601317Z",
+  "updatedAt": "2026-09-28T04:43:52.673806Z"
+}
+''';
+
+/// POST /api/booking-requests/12/cancel as lecturer@ with {"reason": "External examiner unavailable"} (200), 04:44 UTC
+/// on 28 Sep for a booking at 10:00 campus on 29 Sep: inside free_cancellation_hours, so late. (Approved and its
+/// booking were set up with psql; no endpoint approves until Phase 3.)
+const lateCancelledJson = r'''
+{
+  "id": 12,
+  "purpose": "Thesis defence rehearsal",
+  "status": "Cancelled",
+  "attendees": 20,
+  "requestedStart": "2026-09-29T04:30:00Z",
+  "requestedEnd": "2026-09-29T06:30:00Z",
+  "budgetLkr": 0.00,
+  "notes": null,
+  "requester": {
+    "id": 2,
+    "name": "Dr. Nimal Fernando",
+    "email": "lecturer@campusspace.local"
+  },
+  "club": null,
+  "requiredFeatures": [],
+  "equipment": [],
+  "history": [
+    {
+      "fromStatus": null,
+      "toStatus": "Submitted",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": null,
+      "changedAt": "2026-09-28T04:44:23.933909Z"
+    },
+    {
+      "fromStatus": "Submitted",
+      "toStatus": "Approved",
+      "changedById": 4,
+      "changedByName": "Mr. Perera",
+      "reason": null,
+      "changedAt": "2026-09-28T04:44:24.061134Z"
+    },
+    {
+      "fromStatus": "Approved",
+      "toStatus": "Cancelled",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": "External examiner unavailable",
+      "changedAt": "2026-09-28T04:44:24.080785Z"
+    }
+  ],
+  "latestProposal": null,
+  "cancelledAt": "2026-09-28T04:44:24.079303Z",
+  "isLateCancellation": true,
+  "cancelledByOfficer": false,
+  "createdAt": "2026-09-28T04:44:23.934094Z",
+  "updatedAt": "2026-09-28T04:44:24.080786Z"
+}
+''';
+
 /// GET /api/booking-requests/2 as kavindi@ (someone else's request).
 const forbiddenJson = r'''
 {
