@@ -51,6 +51,12 @@ if (( ${#missing[@]} > 0 )); then
   exit 1
 fi
 
+# X-Service-Key (.NET -> agent) and X-Agent-Key (agent tools -> .NET) must be different secrets (plan §15.3).
+if [[ "$(lookup AgentService__ServiceKey)" == "$(lookup AgentTools__Key)" ]]; then
+  echo "error: AgentService__ServiceKey and AgentTools__Key must differ. Generate each with: openssl rand -hex 32" >&2
+  exit 1
+fi
+
 for key in "${keys[@]}"; do
   value="$(lookup "$key")"
   # `set` echoes the value on stdout, so discard it.
