@@ -7,8 +7,15 @@ from app.config import Settings
 from app.main import create_app
 
 TEST_SERVICE_KEY = "t" * 64
+TEST_TOOLS_KEY = "k" * 64
 
-ENV_NAMES = ("AgentService__ServiceKey", "AgentTools__Key", "GOOGLE_API_KEY", "API_BASE_URL")
+ENV_NAMES = (
+    "AgentService__ServiceKey",
+    "AgentTools__Key",
+    "GOOGLE_API_KEY",
+    "API_BASE_URL",
+    "AGENT_CHECKPOINT_PATH",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +28,7 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def make_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Settings:
     """Settings from the given env only (_env_file=None: the real .env is never read)."""
     monkeypatch.setenv("AgentService__ServiceKey", TEST_SERVICE_KEY)
+    monkeypatch.setenv("AgentTools__Key", TEST_TOOLS_KEY)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     return Settings(_env_file=None)
