@@ -15,6 +15,12 @@ final requesterRoleProvider = Provider<String?>((ref) => switch (ref.watch(authC
       _ => null,
     });
 
+/// The signed-in user's id (null when signed out). Only the owner of a request sees its Cancel button.
+final currentUserIdProvider = Provider<int?>((ref) => switch (ref.watch(authControllerProvider).value) {
+      Authenticated(:final user) => user.id,
+      _ => null,
+    });
+
 /// Whether the caller can submit now, their clubs and open-request count. Invalidated after a submit.
 final eligibilityProvider = FutureProvider.autoDispose<Eligibility>(
   (ref) => ref.watch(requestsRepositoryProvider).getEligibility(),

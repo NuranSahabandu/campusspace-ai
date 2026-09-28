@@ -13,6 +13,10 @@ abstract final class RequestStatuses {
   static const rejected = 'Rejected';
   static const cancelled = 'Cancelled';
 
+  /// The statuses a requester can cancel from (mirrors the backend state machine's → Cancelled transitions).
+  /// Processing, revision and failed requests are busy with the agent; the server answers them with a 409.
+  static const cancellable = {submitted, pendingApproval, approved};
+
   static String label(String status) => switch (status) {
         submitted => 'Submitted',
         agentProcessing => 'Processing',

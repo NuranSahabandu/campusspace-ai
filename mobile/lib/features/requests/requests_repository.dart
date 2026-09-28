@@ -54,6 +54,16 @@ class RequestsRepository {
     return RequestDetail.fromJson(response.data!);
   }
 
+  /// UC07: cancels the request and returns it. An empty [reason] is sent as null (the owner's reason is optional).
+  Future<RequestDetail> cancel(int id, {String? reason}) async {
+    final trimmed = reason?.trim();
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/api/booking-requests/$id/cancel',
+      data: {'reason': (trimmed == null || trimmed.isEmpty) ? null : trimmed},
+    );
+    return RequestDetail.fromJson(response.data!);
+  }
+
   /// Saves the request as Submitted and returns it (201).
   Future<RequestDetail> create(NewRequestBody body) async {
     final response = await _dio.post<Map<String, dynamic>>('/api/booking-requests', data: body.toJson());
