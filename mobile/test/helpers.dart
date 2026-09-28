@@ -7,6 +7,7 @@ import 'package:campusspace_mobile/core/campus_time.dart';
 import 'package:campusspace_mobile/features/auth/auth_repository.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
 import 'package:campusspace_mobile/features/auth/token_storage.dart';
+import 'package:campusspace_mobile/features/loans/check_in_screen.dart';
 import 'package:campusspace_mobile/features/loans/handover_screen.dart';
 import 'package:campusspace_mobile/features/loans/handovers_screen.dart';
 import 'package:campusspace_mobile/features/loans/loans_repository.dart';
@@ -313,6 +314,10 @@ Future<GoRouter> pumpLoansScreens(
         builder: (_, state) => HandoverScreen(bookingId: int.tryParse(state.pathParameters['bookingId']!)),
       ),
       GoRoute(path: '/overdue', builder: (_, _) => const OverdueScreen()),
+      GoRoute(
+        path: '/loans/:id/checkin',
+        builder: (_, state) => CheckInScreen(loanId: int.tryParse(state.pathParameters['id']!)),
+      ),
     ],
   );
   addTearDown(router.dispose);
