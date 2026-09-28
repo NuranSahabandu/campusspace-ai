@@ -175,6 +175,49 @@ public class RoomBlackoutsEndpointsTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task The_list_and_get_count_active_clashes_with_the_same_rule_as_the_clashes_endpoint()
+    {
+        var (officer, _) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.FacilitiesOfficer);
+        var roomId = await RoomAsync();
+        var otherRoomId = await RoomAsync();
+        async Task<long> Book(long room, string from, string to, string status = BookingStatuses.Confirmed)
+        {
+            var (start, end) = CampusSlot(ClashDay, from, to);
+            return await InsertBookingAsync(fixture.Factory, room, start, end, status);
+        }
+        var confirmed = await Book(roomId, "09:00", "11:00");
+        await Book(roomId, "12:00", "14:00", BookingStatuses.CheckedIn);
+        await Book(roomId, "10:00", "12:00", BookingStatuses.Cancelled);
+        await Book(roomId, "14:00", "16:00");
+        await Book(otherRoomId, "10:00", "12:00");
+
+        var clashing = await (await officer.PostAsJsonAsync($"/api/rooms/{roomId}/blackouts", BlackoutBody("10:00", "14:00"))).ReadJsonAsync();
+        clashing.GetProperty("clashCount").GetInt32().Should().Be(2);
+        var clashingId = clashing.GetProperty("id").GetInt64();
+        var empty = await (await officer.PostAsJsonAsync($"/api/rooms/{roomId}/blackouts", BlackoutBody("16:00", "18:00"))).ReadJsonAsync();
+        var emptyId = empty.GetProperty("id").GetInt64();
+
+        async Task<Dictionary<long, int>> ListedCounts() =>
+            (await (await officer.GetAsync($"/api/rooms/{roomId}/blackouts")).ReadJsonAsync()).GetProperty("items").EnumerateArray()
+                .ToDictionary(b => b.GetProperty("id").GetInt64(), b => b.GetProperty("clashCount").GetInt32());
+
+        (await ListedCounts()).Should().Equal(new Dictionary<long, int> { [clashingId] = 2, [emptyId] = 0 });
+        (await (await officer.GetAsync($"/api/rooms/{roomId}/blackouts/{clashingId}")).ReadJsonAsync())
+            .GetProperty("clashCount").GetInt32().Should().Be(2);
+
+        // A booking that stops being active no longer counts, in the list and in the clashes endpoint alike.
+        await using (var scope = fixture.Factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.Bookings.Where(b => b.Id == confirmed)
+                .ExecuteUpdateAsync(s => s.SetProperty(b => b.Status, BookingStatuses.Cancelled));
+        }
+        (await ListedCounts())[clashingId].Should().Be(1);
+        (await (await officer.GetAsync($"/api/rooms/{roomId}/blackouts/{clashingId}/clashes")).ReadJsonAsync())
+            .GetArrayLength().Should().Be(1);
+    }
+
+    [Fact]
     public async Task A_blackout_on_an_empty_slot_has_no_clashes()
     {
         var (officer, _) = await TestAuth.CreateUserClientAsync(fixture.Factory, Roles.FacilitiesOfficer);

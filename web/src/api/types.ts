@@ -156,7 +156,7 @@ export interface UpdateRoomRequest extends CreateRoomRequest {
   isActive: boolean
 }
 
-/** A maintenance blackout as [start, end), both UTC. */
+/** A maintenance blackout as [start, end), both UTC. clashCount: active bookings it clashes with now (same rule as .../clashes). */
 export interface BlackoutDto {
   id: number
   roomId: number
@@ -166,6 +166,7 @@ export interface BlackoutDto {
   createdById: number
   createdByName: string
   createdAt: string
+  clashCount: number
 }
 
 /** An active booking of the blackout's room that overlaps it (UC14). Start/end are UTC. */

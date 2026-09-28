@@ -55,7 +55,8 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
         var dto = (await GetAsync(roomId, blackout.Id, ct))!;
         var clashes = await ClashesOf(roomId, blackout.TimeRange).ToListAsync(ct);
         return new BlackoutWithClashesDto(
-            dto.Id, dto.RoomId, dto.Start, dto.End, dto.Reason, dto.CreatedById, dto.CreatedByName, dto.CreatedAt, clashes);
+            dto.Id, dto.RoomId, dto.Start, dto.End, dto.Reason, dto.CreatedById, dto.CreatedByName, dto.CreatedAt,
+            clashes.Count, clashes);
     }
 
     public async Task<IReadOnlyList<BlackoutClashDto>?> GetClashesAsync(long roomId, long blackoutId, CancellationToken ct = default)
@@ -79,7 +80,10 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
         return true;
     }
 
-    /// <summary>Active bookings of the room overlapping <paramref name="range"/> (&& in SQL). They are reported, never cancelled.</summary>
+    /// <summary>
+    /// Active bookings of the room overlapping <paramref name="range"/> (&& in SQL). They are reported, never cancelled.
+    /// ToDtos counts ClashCount with the same predicate; keep the two in step.
+    /// </summary>
     private IQueryable<BlackoutClashDto> ClashesOf(long roomId, NpgsqlRange<DateTime> range) => db.Bookings.AsNoTracking()
         .Where(b => b.RoomId == roomId && BookingStatuses.Active.Contains(b.Status) && b.TimeRange.Overlaps(range))
         .OrderBy(b => b.TimeRange.LowerBound).ThenBy(b => b.Id)
@@ -87,6 +91,8 @@ public sealed class RoomBlackoutService(AppDbContext db, ICurrentUser currentUse
             b.Id, b.RequestId, b.TimeRange.LowerBound, b.TimeRange.UpperBound, b.Status,
             b.Request.Requester.FullName, b.Request.Requester.Email));
 
-    private static IQueryable<BlackoutDto> ToDtos(IQueryable<RoomBlackout> blackouts) => blackouts.Select(b => new BlackoutDto(
-        b.Id, b.RoomId, b.TimeRange.LowerBound, b.TimeRange.UpperBound, b.Reason, b.CreatedById, b.CreatedBy.FullName, b.CreatedAt));
+    /// <summary>ClashCount is a correlated COUNT in the same SQL query, with ClashesOf's predicate (no N+1).</summary>
+    private IQueryable<BlackoutDto> ToDtos(IQueryable<RoomBlackout> blackouts) => blackouts.Select(b => new BlackoutDto(
+        b.Id, b.RoomId, b.TimeRange.LowerBound, b.TimeRange.UpperBound, b.Reason, b.CreatedById, b.CreatedBy.FullName, b.CreatedAt,
+        db.Bookings.Count(bk => bk.RoomId == b.RoomId && BookingStatuses.Active.Contains(bk.Status) && bk.TimeRange.Overlaps(b.TimeRange))));
 }

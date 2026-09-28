@@ -158,6 +158,7 @@ export const BLACKOUTS: BlackoutDto[] = [
     createdById: 4,
     createdByName: 'Mr. Perera',
     createdAt: '2026-09-20T08:00:00Z',
+    clashCount: 0,
   },
 ]
 
