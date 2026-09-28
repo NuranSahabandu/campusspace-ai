@@ -27,7 +27,9 @@ public class LoansCheckoutTests(PostgresFixture fixture)
 
     private static (DateTimeOffset Start, DateTimeOffset End) Soon()
     {
-        var start = DateTimeOffset.UtcNow.AddMinutes(10);
+        // Whole seconds: PostgreSQL keeps microseconds, so a raw UtcNow (100 ns ticks) would not round-trip exactly.
+        var now = DateTimeOffset.UtcNow;
+        var start = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerSecond)).AddMinutes(10);
         return (start, start.AddHours(2));
     }
 
