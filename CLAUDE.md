@@ -231,6 +231,12 @@ the My requests filter groups live only in `lib/features/requests/request_status
 live policy (`policyProvider`) through the pure rules in `time_rules.dart`. Requests screen tests use
 `pumpRequestsScreens` + `stubRequestsReferenceData`; fixtures in `test/fixtures/requests.dart` are real API responses.
 A request's history rows carry `changedById`; show "You" by comparing it with the requester's id, never by name.
+Room schedule: `roomScheduleProvider((roomId:, date:))` with the day in `scheduleDateProvider(roomId)`; send campus
+dates to the API with `campusDateParam` ("yyyy-MM-dd"). Riverpod 3 pauses providers that only hidden routes watch, so
+an invalidated list reloads when its screen shows again. Cancel: the button's statuses come only from
+`RequestStatuses.cancellable`, and it shows only when `currentUserIdProvider` is the requester. The late warning uses
+`isLateCancellation` (`time_rules.dart`, same rule as the server). The server's `isLateCancellation` is what gets shown,
+and a 409 title is shown exactly as sent. Tests re-pump with `pumpWidget(SizedBox())` first to get a fresh ProviderScope.
 
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 
