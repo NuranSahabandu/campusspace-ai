@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
 import { type ListParams, usePagedQuery } from '../../api/list'
-import type { BlackoutDto, BuildingDto, FeatureDto, RoomDto } from '../../api/types'
+import type { BlackoutClashDto, BlackoutDto, BuildingDto, FeatureDto, RoomDto } from '../../api/types'
 
 /** GET /api/rooms filters. features is a comma-separated list of codes (a room must have all of them). */
 export interface RoomsParams extends ListParams {
@@ -18,13 +18,14 @@ export interface BlackoutsParams extends ListParams {
   to?: string
 }
 
-// Room writes invalidate roomsKeys.all (list, detail and blackouts). Building and feature writes also
-// invalidate it, because rooms embed building and feature names.
+// Room writes invalidate roomsKeys.all (list, detail, blackouts and their clashes; a request cancellation does too).
+// Building and feature writes also invalidate it, because rooms embed building and feature names.
 export const roomsKeys = {
   all: ['rooms'] as const,
   list: (params: RoomsParams) => [...roomsKeys.all, 'list', params] as const,
   detail: (id: number) => [...roomsKeys.all, 'detail', id] as const,
   blackouts: (roomId: number, params: BlackoutsParams) => [...roomsKeys.all, 'blackouts', roomId, params] as const,
+  clashes: (roomId: number, blackoutId: number) => [...roomsKeys.all, 'clashes', roomId, blackoutId] as const,
 }
 export const buildingsKeys = { all: ['buildings'] as const }
 export const featuresKeys = { all: ['features'] as const }
@@ -50,6 +51,19 @@ export function useRoom(id: number) {
 
 export function useBlackouts(roomId: number, params: BlackoutsParams) {
   return usePagedQuery<BlackoutDto>(roomsKeys.blackouts(roomId, params), `/api/rooms/${roomId}/blackouts`, params)
+}
+
+/**
+ * GET /api/rooms/{id}/blackouts/{blackoutId}/clashes: the active bookings the blackout clashes with now. initialData
+ * seeds it from the create response, so the add-blackout warning shows at once and still refreshes after a cancel.
+ */
+export function useBlackoutClashes(roomId: number, blackoutId: number, initialData?: BlackoutClashDto[]) {
+  return useQuery({
+    queryKey: roomsKeys.clashes(roomId, blackoutId),
+    queryFn: async ({ signal }) =>
+      (await api.get<BlackoutClashDto[]>(`/api/rooms/${roomId}/blackouts/${blackoutId}/clashes`, { signal })).data,
+    initialData,
+  })
 }
 
 /** Small, unpaged reference lists. */
