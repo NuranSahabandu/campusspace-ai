@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { Roles } from '../../auth/roles'
-import { BOOKING_REQUESTS } from '../../test/fixtures'
+import { BOOKING_REQUESTS, pageOf } from '../../test/fixtures'
+import { API, server } from '../../test/server'
 import { renderApp } from '../../test/utils'
 import { requestsHandlers } from './requestsHandlers'
 
@@ -244,4 +246,22 @@ describe('BookingRequestsPage', () => {
     expect(first.get('sort')).toBe('-createdAt')
     expect(first.get('page')).toBe('1')
   })
+
+  it('re-fetches the list while a row is AgentProcessing and stops once none is', async () => {
+    requestsHandlers()
+    let calls = 0
+    server.use(
+      http.get(`${API}/api/booking-requests`, () => {
+        calls++
+        const status = calls === 1 ? 'AgentProcessing' : 'PendingApproval'
+        return HttpResponse.json(pageOf(BOOKING_REQUESTS.map((r, i) => (i === 0 ? { ...r, status } : r))))
+      }),
+    )
+    renderApp('/requests', { role: Roles.FacilitiesOfficer })
+
+    expect(await screen.findByText('Processing')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Processing')).not.toBeInTheDocument(), { timeout: 5000 })
+    await new Promise((resolve) => setTimeout(resolve, 3500))
+    expect(calls).toBe(2)
+  }, 15_000)
 })
