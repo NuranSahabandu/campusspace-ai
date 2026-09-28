@@ -1,11 +1,23 @@
+import 'dart:convert';
+
 import 'package:campusspace_mobile/features/requests/models.dart';
 import 'package:campusspace_mobile/features/requests/request_detail_screen.dart';
+import 'package:campusspace_mobile/features/requests/request_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../fixtures/requests.dart';
 import '../../helpers.dart';
+
+Map<String, dynamic> _json(String text) => jsonDecode(text) as Map<String, dynamic>;
+
+/// The lecturer's real request 2 (Mon 26 Oct 2026, 10:00–12:00 campus) with [status].
+RequestDetail _lecturerRequestIn(String status) =>
+    RequestDetail.fromJson({..._json(requestDetailJson), 'status': status});
+
+/// The lecturer (id 2, the requester of request 2).
+const _lecturerId = 2;
 
 void main() {
   late MockRequestsRepository repository;
@@ -105,5 +117,200 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(find.text('Robotics Club workshop'), findsOneWidget);
+  });
+
+  group('cancel', () {
+    final cancelButton = find.byKey(const Key('request.cancel'));
+    final lateWarning = find.byKey(const Key('cancel.lateWarning'));
+    // Request 2 starts Mon 26 Oct 10:00 campus; free_cancellation_hours is 24.
+    final lateBoundary = DateTime.utc(2026, 10, 26, 4, 30).subtract(const Duration(hours: 24));
+
+    setUp(() {
+      stubRequestsReferenceData(repository, MockFacilitiesRepository());
+    });
+
+    // A fresh ProviderScope each time: re-pumping the same one would keep the cached request.
+    Future<void> pumpDetail(WidgetTester tester, {int userId = _lecturerId, DateTime? now}) async {
+      await tester.pumpWidget(const SizedBox());
+      await pumpRequestsScreens(tester, repository,
+          initialLocation: '/requests/2', role: 'Lecturer', userId: userId, now: now);
+    }
+
+    Future<void> openDialog(WidgetTester tester) async {
+      await tester.tap(cancelButton);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the button shows only on the owner\'s requests in a cancellable status', (tester) async {
+      const statuses = [
+        'Submitted', 'AgentProcessing', 'PendingApproval', 'Approved', 'Completed', 'AgentFailed',
+        'RevisionRequested', 'Rejected', 'Cancelled',
+      ];
+      for (final status in statuses) {
+        when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn(status));
+        await pumpDetail(tester);
+        expect(cancelButton, RequestStatuses.cancellable.contains(status) ? findsOneWidget : findsNothing,
+            reason: status);
+      }
+
+      // Not the owner (an officer's own screens are on the web portal).
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Submitted'));
+      await pumpDetail(tester, userId: kavindiId);
+      expect(cancelButton, findsNothing);
+    });
+
+    testWidgets('the dialog sends the typed reason; Keep request sends nothing', (tester) async {
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Submitted'));
+      when(() => repository.cancel(2, reason: any(named: 'reason')))
+          .thenAnswer((_) async => RequestDetail.fromJson(_json(cancelledRequestJson)));
+      await pumpDetail(tester);
+
+      await openDialog(tester);
+      expect(find.text(CancelRequestDialog.title), findsOneWidget);
+      expect(find.text('0/500'), findsOneWidget);
+      await tester.tap(find.text(CancelRequestDialog.keep));
+      await tester.pumpAndSettle();
+      verifyNever(() => repository.cancel(any(), reason: any(named: 'reason')));
+
+      await openDialog(tester);
+      await tester.enterText(find.byKey(const Key('cancel.reason')), 'Speaker unavailable');
+      await tester.pump();
+      expect(find.text('19/500'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cancel.confirm')));
+      await tester.pumpAndSettle();
+
+      verify(() => repository.cancel(2, reason: 'Speaker unavailable')).called(1);
+    });
+
+    testWidgets('success refreshes the detail and My requests and says so', (tester) async {
+      var calls = 0;
+      when(() => repository.getRequest(2)).thenAnswer((_) async =>
+          calls++ == 0 ? _lecturerRequestIn('Submitted') : RequestDetail.fromJson(_json(cancelledRequestJson)));
+      when(() => repository.cancel(2, reason: any(named: 'reason')))
+          .thenAnswer((_) async => RequestDetail.fromJson(_json(cancelledRequestJson)));
+      await tester.pumpWidget(const SizedBox());
+      final router = await pumpRequestsScreens(tester, repository,
+          initialLocation: '/requests/2', role: 'Lecturer', userId: _lecturerId);
+      // My requests sits under the detail in the route stack.
+      verify(() => repository.getRequests(any(), page: 1, pageSize: any(named: 'pageSize'))).called(1);
+
+      await openDialog(tester);
+      await tester.tap(find.byKey(const Key('cancel.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(CancelRequestButton.cancelled), findsOneWidget);
+      expect(calls, 2);
+      expect(find.byKey(const Key('request.cancellation')), findsOneWidget);
+      expect(cancelButton, findsNothing);
+
+      // Riverpod pauses the hidden list; it reloads once it is back on screen.
+      router.pop();
+      await tester.pumpAndSettle();
+      verify(() => repository.getRequests(any(), page: 1, pageSize: any(named: 'pageSize'))).called(1);
+    });
+
+    testWidgets('a 409 shows the server message as sent and reloads the request', (tester) async {
+      final conflict = _json(cancelConflictJson);
+      var calls = 0;
+      when(() => repository.getRequest(2)).thenAnswer((_) async {
+        calls++;
+        return _lecturerRequestIn('Submitted');
+      });
+      when(() => repository.cancel(2, reason: any(named: 'reason')))
+          .thenThrow(httpError('/api/booking-requests/2/cancel', 409, body: conflict));
+      await pumpDetail(tester);
+
+      await openDialog(tester);
+      await tester.tap(find.byKey(const Key('cancel.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('The request is already cancelled'), findsOneWidget);
+      expect(find.text(conflict['title'] as String), findsOneWidget);
+      expect(calls, 2);
+    });
+
+    testWidgets('another error shows its title', (tester) async {
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Submitted'));
+      when(() => repository.cancel(2, reason: any(named: 'reason')))
+          .thenThrow(httpError('/api/booking-requests/2/cancel', 503, body: {'title': 'Service unavailable'}));
+      await pumpDetail(tester);
+
+      await openDialog(tester);
+      await tester.tap(find.byKey(const Key('cancel.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Service unavailable'), findsOneWidget);
+      expect(cancelButton, findsOneWidget);
+    });
+
+    testWidgets('the late warning appears for an approved request only after start − free_cancellation_hours',
+        (tester) async {
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Approved'));
+
+      await pumpDetail(tester, now: lateBoundary);
+      await openDialog(tester);
+      expect(lateWarning, findsNothing);
+
+      await pumpDetail(tester, now: lateBoundary.add(const Duration(minutes: 1)));
+      await openDialog(tester);
+      expect(lateWarning, findsOneWidget);
+      expect(find.text(CancelRequestDialog.lateWarning), findsOneWidget);
+
+      // Submitted is never late, even inside the window.
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Submitted'));
+      await pumpDetail(tester, now: lateBoundary.add(const Duration(hours: 1)));
+      await openDialog(tester);
+      expect(lateWarning, findsNothing);
+    });
+
+    testWidgets('the snackbar reports the server\'s late flag', (tester) async {
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Approved'));
+      when(() => repository.cancel(2, reason: any(named: 'reason')))
+          .thenAnswer((_) async => RequestDetail.fromJson(_json(lateCancelledJson)));
+      await pumpDetail(tester, now: lateBoundary.add(const Duration(hours: 1)));
+
+      await openDialog(tester);
+      await tester.tap(find.byKey(const Key('cancel.confirm')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(CancelRequestButton.cancelledLate), findsOneWidget);
+    });
+  });
+
+  group('cancelled detail', () {
+    testWidgets('an officer cancellation shows when, who, and the reason in the timeline', (tester) async {
+      when(() => repository.getRequest(10)).thenAnswer((_) async => RequestDetail.fromJson(_json(officerCancelledJson)));
+      await pumpRequestsScreens(tester, repository, initialLocation: '/requests/10', userId: _lecturerId);
+
+      final info = find.byKey(const Key('request.cancellation'));
+      // 04:43:52Z is 10:13 on campus.
+      expect(find.descendant(of: info, matching: find.text('Cancelled on Mon 28 Sep 2026, 10:13')), findsOneWidget);
+      expect(find.descendant(of: info, matching: find.text(CancellationInfo.byOfficer)), findsOneWidget);
+      expect(find.text(CancellationInfo.lateChip), findsNothing);
+      expect(find.byKey(const Key('request.cancel')), findsNothing);
+      final last = find.byKey(const Key('timeline.1'));
+      expect(find.descendant(of: last, matching: find.text('Cancelled')), findsOneWidget);
+      expect(find.descendant(of: last, matching: find.text('Mon 28 Sep 2026, 10:13 · Mr. Perera')), findsOneWidget);
+      expect(find.descendant(of: last, matching: find.text('Hall reserved for the convocation')), findsOneWidget);
+    });
+
+    testWidgets("an owner's late cancellation shows the Late cancellation chip", (tester) async {
+      when(() => repository.getRequest(12)).thenAnswer((_) async => RequestDetail.fromJson(_json(lateCancelledJson)));
+      await pumpRequestsScreens(tester, repository, initialLocation: '/requests/12', userId: _lecturerId);
+
+      final info = find.byKey(const Key('request.cancellation'));
+      expect(find.descendant(of: info, matching: find.widgetWithText(Chip, CancellationInfo.lateChip)), findsOneWidget);
+      expect(find.text(CancellationInfo.byOfficer), findsNothing);
+      final last = find.byKey(const Key('timeline.2'));
+      expect(find.descendant(of: last, matching: find.textContaining('· You')), findsOneWidget);
+      expect(find.descendant(of: last, matching: find.text('External examiner unavailable')), findsOneWidget);
+    });
+
+    testWidgets('a request that was never cancelled has no cancellation card', (tester) async {
+      when(() => repository.getRequest(2)).thenAnswer((_) async => lecturerRequest);
+      await pumpRequestsScreens(tester, repository, initialLocation: '/requests/2');
+
+      expect(find.byKey(const Key('request.cancellation')), findsNothing);
+    });
   });
 }

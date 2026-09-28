@@ -206,14 +206,19 @@ void stubRequestsReferenceData(MockRequestsRepository requests, MockFacilitiesRe
       ]);
 }
 
-/// Pumps [initialLocation] in a bare router with just the requests screens (no auth), as [role] at [testNow].
-/// A tall surface keeps every stepper step on screen.
+/// Kavindi's id in the seeded database: the default signed-in user in the requests screen tests.
+const kavindiId = 1;
+
+/// Pumps [initialLocation] in a bare router with just the requests screens (no auth), as user [userId] with [role]
+/// at [now] (default [testNow]). A tall surface keeps every stepper step on screen.
 Future<GoRouter> pumpRequestsScreens(
   WidgetTester tester,
   RequestsRepository requests, {
   FacilitiesRepository? facilities,
   String initialLocation = '/requests',
   String role = Roles.student,
+  int userId = kavindiId,
+  DateTime? now,
 }) async {
   tester.view.physicalSize = const Size(900, 2400);
   tester.view.devicePixelRatio = 1;
@@ -241,7 +246,8 @@ Future<GoRouter> pumpRequestsScreens(
       requestsRepositoryProvider.overrideWithValue(requests),
       if (facilities != null) facilitiesRepositoryProvider.overrideWithValue(facilities),
       requesterRoleProvider.overrideWithValue(role),
-      clockProvider.overrideWithValue(() => testNow),
+      currentUserIdProvider.overrideWithValue(userId),
+      clockProvider.overrideWithValue(() => now ?? testNow),
     ],
     child: MaterialApp.router(routerConfig: router),
   ));
