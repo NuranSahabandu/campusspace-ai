@@ -17,6 +17,14 @@ abstract final class RequestStatuses {
   /// Processing, revision and failed requests are busy with the agent; the server answers them with a 409.
   static const cancellable = {submitted, pendingApproval, approved};
 
+  /// The statuses the server moves on its own (the agent run after a 202 submit), so screens showing one re-fetch
+  /// every [refreshInterval] until it changes. The only list of them (mirrors web `REFRESHING_STATUSES`).
+  static const refreshing = {agentProcessing};
+
+  static const refreshInterval = Duration(seconds: 3);
+
+  static bool needsRefresh(String status) => refreshing.contains(status);
+
   static String label(String status) => switch (status) {
         submitted => 'Submitted',
         agentProcessing => 'Processing',

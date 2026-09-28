@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
@@ -8,6 +10,15 @@ import 'requests_repository.dart';
 // Riverpod 3 retries failing providers by default. These screens show the error with their own Retry button (and a
 // 403 must show at once), so they never retry on their own.
 Duration? _noRetry(int _, Object _) => null;
+
+/// Reloads [ref]'s provider after [RequestStatuses.refreshInterval] when [refresh] is true: a request the agent is
+/// still planning (202 from submit) changes on the server without the requester. The timer is cancelled whenever the
+/// provider rebuilds or is disposed, so there is never more than one.
+void _refreshWhile(Ref ref, bool refresh) {
+  if (!refresh || !ref.mounted) return;
+  final timer = Timer(RequestStatuses.refreshInterval, ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+}
 
 /// The signed-in user's role (null when signed out). Picks the advance window for the date picker.
 final requesterRoleProvider = Provider<String?>((ref) => switch (ref.watch(authControllerProvider).value) {
@@ -81,6 +92,8 @@ class MyRequestsNotifier extends AsyncNotifier<RequestsPage> {
     final filter = ref.watch(requestStatusFilterProvider);
     final result =
         await ref.read(requestsRepositoryProvider).getRequests(filter.statuses, page: 1, pageSize: pageSize);
+    // Reloads page 1 only; the screen keeps showing the list while it does.
+    _refreshWhile(ref, result.items.any((r) => RequestStatuses.needsRefresh(r.status)));
     return RequestsPage(items: result.items, total: result.total, page: 1);
   }
 
@@ -120,6 +133,10 @@ final myRequestsProvider =
     AsyncNotifierProvider.autoDispose<MyRequestsNotifier, RequestsPage>(MyRequestsNotifier.new, retry: _noRetry);
 
 final requestDetailProvider = FutureProvider.autoDispose.family<RequestDetail, int>(
-  (ref, id) => ref.watch(requestsRepositoryProvider).getRequest(id),
+  (ref, id) async {
+    final detail = await ref.watch(requestsRepositoryProvider).getRequest(id);
+    _refreshWhile(ref, RequestStatuses.needsRefresh(detail.status));
+    return detail;
+  },
   retry: _noRetry,
 );
