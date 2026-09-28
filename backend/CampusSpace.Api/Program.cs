@@ -17,6 +17,7 @@ builder.Services.AddFrontendCors(builder.Configuration);
 builder.Services.AddApiHealthChecks();
 builder.Services.AddJwtAuth();
 builder.Services.AddApplicationServices();
+builder.Services.AddAgentService();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

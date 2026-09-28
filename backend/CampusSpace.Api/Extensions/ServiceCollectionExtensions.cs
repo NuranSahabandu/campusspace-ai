@@ -75,9 +75,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddHttpClient(AgentServiceHealthCheck.ClientName, (sp, client) =>
         {
-            var baseUrl = sp.GetRequiredService<IConfiguration>()["AgentService:BaseUrl"]
-                ?? throw new InvalidOperationException("AgentService:BaseUrl is not configured.");
-            client.BaseAddress = new Uri(baseUrl);
+            client.BaseAddress = AgentServiceExtensions.BaseAddress(sp.GetRequiredService<IOptions<AgentServiceOptions>>().Value.BaseUrl);
             client.Timeout = TimeSpan.FromSeconds(3);
         });
 

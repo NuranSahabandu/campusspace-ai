@@ -1,0 +1,46 @@
+{
+  "thread_id": "35b588de-5745-46a6-9f90-81d4db673827",
+  "status": "failed",
+  "revision": 1,
+  "interrupt": null,
+  "plan": null,
+  "proposal": null,
+  "officer_summary": null,
+  "validation": [],
+  "nodes": [
+    "supervisor",
+    "safe_failure"
+  ],
+  "steps": [
+    {
+      "sequence": 1,
+      "agent_name": "supervisor",
+      "status": "Failed",
+      "input": {
+        "request_id": 42,
+        "revision": 1,
+        "replan_reason": null
+      },
+      "output": null,
+      "retries": 0,
+      "error": "policy unavailable (unavailable: ConnectError: Connection refused)",
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "get_policy",
+          "args": {},
+          "result_summary": null,
+          "succeeded": false,
+          "error": "unavailable: ConnectError: Connection refused",
+          "duration_ms": 0
+        }
+      ]
+    }
+  ],
+  "policy_snapshot": null,
+  "error": "policy unavailable (unavailable: ConnectError: Connection refused)",
+  "model": "stub",
+  "started_at": "2026-10-01T03:30:00.000Z",
+  "completed_at": "2026-10-01T03:30:00.000Z",
+  "duration_ms": 0
+}
