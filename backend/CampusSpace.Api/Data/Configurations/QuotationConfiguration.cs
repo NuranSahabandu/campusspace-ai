@@ -37,6 +37,8 @@ public class QuotationConfiguration : IEntityTypeConfiguration<Quotation>
         builder.Property(q => q.Status).IsRequired().HasMaxLength(20);
 
         builder.HasOne(q => q.Request).WithMany().HasForeignKey(q => q.RequestId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne(q => q.AgentRun).WithMany().HasForeignKey(q => q.AgentRunId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(q => q.AgentRunId);
 
         // The FK index (every quote of a request, Void ones included), and the partial unique index for live quotes.
         builder.HasIndex(q => q.RequestId);
