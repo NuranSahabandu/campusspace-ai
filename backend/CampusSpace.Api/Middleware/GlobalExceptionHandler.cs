@@ -62,6 +62,8 @@ public sealed class GlobalExceptionHandler(
                 (StatusCodes.Status409Conflict, PricingRuleConfiguration.DuplicateRuleMessage),
             UniqueViolation when postgres.ConstraintName == QuotationConfiguration.LiveQuoteIndex =>
                 (StatusCodes.Status409Conflict, QuotationConfiguration.LiveQuoteMessage),
+            UniqueViolation when postgres.ConstraintName == EquipmentLoanConfiguration.OneOpenLoanIndex =>
+                (StatusCodes.Status409Conflict, EquipmentLoanConfiguration.ItemOnLoanMessage),
             UniqueViolation => (StatusCodes.Status409Conflict, "Duplicate value"),
             // Double booking (BookingConfiguration.NoRoomOverlapConstraint, the only exclusion constraint): the approval
             // that commits second loses (§8.2).
