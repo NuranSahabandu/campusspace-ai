@@ -1,9 +1,9 @@
 import type {
   AuditLogDto,
-  BookingRequestDetailDto,
-  BookingRequestSummaryDto,
   AuthResponse,
   BlackoutDto,
+  BookingRequestDetailDto,
+  BookingRequestSummaryDto,
   BuildingDto,
   ClubDetailDto,
   ClubDto,
@@ -12,6 +12,7 @@ import type {
   EquipmentItemDto,
   EquipmentTypeDto,
   FeatureDto,
+  LoanDto,
   PagedResult,
   PolicySettingDto,
   PricingRuleDto,
@@ -468,3 +469,49 @@ export const BOOKING_REQUESTS: BookingRequestSummaryDto[] = [...BOOKING_REQUEST_
     cancelledByOfficer: r.cancelledByOfficer,
     createdAt: r.createdAt,
   }))
+
+export const makeLoan = (overrides: Partial<LoanDto> = {}): LoanDto => ({
+  id: 1,
+  bookingId: 21,
+  roomCode: 'A301',
+  itemId: 5,
+  assetTag: 'MIC-0001',
+  typeCode: 'MIC-WIRELESS',
+  checkedOutAt: '2026-09-28T03:00:00Z',
+  checkedOutByName: 'Sunil Silva',
+  dueAt: '2026-09-28T06:30:00Z',
+  checkedInAt: null,
+  checkedInByName: null,
+  returnCondition: null,
+  damageNote: null,
+  isLateReturn: false,
+  isOverdue: false,
+  hasPhoto: false,
+  ...overrides,
+})
+
+/** GET /api/loans rows: one out and overdue, one returned damaged (with a photo) and late, one returned in good order. */
+export const LOANS: LoanDto[] = [
+  makeLoan({ id: 1, assetTag: 'MIC-0001', isOverdue: true, dueAt: '2026-09-27T06:30:00Z' }),
+  makeLoan({
+    id: 2,
+    itemId: 6,
+    assetTag: 'PROJ-0002',
+    typeCode: 'PROJ-PORTABLE',
+    roomCode: 'N201',
+    checkedInAt: '2026-09-27T08:00:00Z',
+    checkedInByName: 'Sunil Silva',
+    returnCondition: 'Damaged',
+    damageNote: 'Lens <b>cracked</b>\nCase dented',
+    isLateReturn: true,
+    hasPhoto: true,
+  }),
+  makeLoan({
+    id: 3,
+    itemId: 7,
+    assetTag: 'MIC-0003',
+    checkedInAt: '2026-09-28T06:00:00Z',
+    checkedInByName: 'Sunil Silva',
+    returnCondition: 'Good',
+  }),
+]

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import ApartmentIcon from '@mui/icons-material/Apartment'
 import AssignmentIcon from '@mui/icons-material/Assignment'
+import AssignmentReturnIcon from '@mui/icons-material/AssignmentReturn'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import GroupsIcon from '@mui/icons-material/Groups'
@@ -30,6 +31,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/facilities/reference', label: 'Buildings & features', icon: <ApartmentIcon />, roles: ROUTE_ROLES['/facilities/reference'] },
   { path: '/equipment/types', label: 'Equipment types', icon: <VideocamIcon />, roles: ROUTE_ROLES['/equipment/types'] },
   { path: '/equipment/items', label: 'Equipment items', icon: <Inventory2Icon />, roles: ROUTE_ROLES['/equipment/items'] },
+  { path: '/loans', label: 'Loans', icon: <AssignmentReturnIcon />, roles: ROUTE_ROLES['/loans'] },
   { path: '/pricing', label: 'Pricing', icon: <PriceChangeIcon />, roles: ROUTE_ROLES['/pricing'] },
   { path: '/policy', label: 'Booking policy', icon: <PolicyIcon />, roles: ROUTE_ROLES['/policy'] },
   { path: '/approvals', label: 'Approvals', icon: <FactCheckIcon />, roles: ROUTE_ROLES['/approvals'] },

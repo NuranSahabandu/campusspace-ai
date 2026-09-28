@@ -28,6 +28,7 @@ const EquipmentTypesPage = lazy(() =>
 const EquipmentItemsPage = lazy(() =>
   import('./features/equipment/EquipmentItemsPage').then((m) => ({ default: m.EquipmentItemsPage })),
 )
+const LoansPage = lazy(() => import('./features/loans/LoansPage').then((m) => ({ default: m.LoansPage })))
 const PricingPage = lazy(() => import('./features/pricing/PricingPage').then((m) => ({ default: m.PricingPage })))
 const BookingRequestsPage = lazy(() =>
   import('./features/requests/BookingRequestsPage').then((m) => ({ default: m.BookingRequestsPage })),
@@ -60,6 +61,7 @@ export function AppRoutes() {
           <Route path="equipment" element={<Navigate to="/equipment/types" replace />} />
           <Route path="equipment/types" element={<GuardedPage path="/equipment/types"><EquipmentTypesPage /></GuardedPage>} />
           <Route path="equipment/items" element={<GuardedPage path="/equipment/items"><EquipmentItemsPage /></GuardedPage>} />
+          <Route path="loans" element={<GuardedPage path="/loans"><LoansPage /></GuardedPage>} />
           <Route path="pricing" element={<GuardedPage path="/pricing"><PricingPage /></GuardedPage>} />
           <Route path="policy" element={<GuardedPage path="/policy"><PolicyPage /></GuardedPage>} />
           <Route path="requests" element={<GuardedPage path="/requests"><BookingRequestsPage /></GuardedPage>} />
