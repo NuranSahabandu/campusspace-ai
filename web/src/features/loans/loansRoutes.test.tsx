@@ -1,5 +1,5 @@
 import { screen, within } from '@testing-library/react'
-import { Roles } from '../../auth/roles'
+import { NOT_STAFF_MESSAGE, Roles } from '../../auth/roles'
 import { ROUTE_ROLES } from '../../auth/routeAccess'
 import { renderApp } from '../../test/utils'
 import { loansHandlers } from './loansHandlers'
@@ -27,9 +27,20 @@ describe('Loans routes', () => {
     renderApp('/loans?overdue=true', { role: Roles.Admin })
 
     expect(await screen.findByRole('heading', { name: '403' })).toBeInTheDocument()
+    expect(screen.getByText('You do not have permission to view this page.')).toBeInTheDocument()
   })
 
-  // Lab Technicians and requesters use the mobile app: the portal's staff guard (STAFF_ROLES) already keeps them out.
+  // Lab Technicians and requesters use the mobile app; a stored session lands on the access-denied page once.
+  it.each([Roles.LabTechnician, Roles.Student])('sends a %s on /loans to the access-denied page', async (role) => {
+    renderApp('/loans?overdue=true', { role })
+
+    expect(await screen.findByRole('heading', { name: '403' })).toBeInTheDocument()
+    expect(screen.getByText(NOT_STAFF_MESSAGE)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Loans' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Loans' })).not.toBeInTheDocument()
+  })
+
   it('is for Facilities Officers only', () => {
     expect(ROUTE_ROLES['/loans']).toEqual([Roles.FacilitiesOfficer])
   })
