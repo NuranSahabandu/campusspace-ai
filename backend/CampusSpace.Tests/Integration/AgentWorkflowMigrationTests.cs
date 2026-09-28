@@ -75,6 +75,17 @@ public class AgentWorkflowMigrationTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task A_cancelled_run_is_accepted_and_does_not_block_a_new_live_run()
+    {
+        var requestId = await RequestAsync();
+
+        await ScalarAsync(InsertRun(requestId, revision: 1, status: AgentRunStatuses.Cancelled));
+        await ScalarAsync(InsertRun(requestId, revision: 2, status: AgentRunStatuses.AwaitingApproval));
+
+        (await ScalarAsync($"""SELECT count(*) FROM "AgentRuns" WHERE "RequestId" = {requestId}""")).Should().Be(2L);
+    }
+
+    [Fact]
     public async Task Step_tool_call_and_validation_checks_reject_bad_rows()
     {
         var runId = await AgentRunTestData.InsertRunAsync(Factory, await RequestAsync());
