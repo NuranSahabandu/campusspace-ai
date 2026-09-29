@@ -125,3 +125,8 @@ jobs:
 
       # Fakes and provider overrides: no network, no emulator.
       - run: flutter test
+
+      # Campus time is always +05:30: the request screens must read the same on a phone in another zone.
+      - run: flutter test test/features/requests
+        env:
+          TZ: America/New_York

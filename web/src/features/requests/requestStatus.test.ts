@@ -13,8 +13,9 @@ import {
 } from './requestStatus'
 
 describe('requestStatus', () => {
-  it('refreshes only while something is AgentProcessing (mobile RequestStatuses.refreshing)', () => {
-    expect(REFRESHING_STATUSES).toEqual(['AgentProcessing'])
+  it('refreshes only while the agents are working (the 3 s statuses of mobile RequestStatuses.refreshIntervals)', () => {
+    expect(REFRESHING_STATUSES).toEqual(['AgentProcessing', 'RevisionRequested'])
+    expect(refreshIntervalFor(['RevisionRequested'])).toBe(REFRESH_INTERVAL_MS)
     expect(refreshIntervalFor(['PendingApproval', 'AgentProcessing'])).toBe(REFRESH_INTERVAL_MS)
     expect(REFRESH_INTERVAL_MS).toBe(3000)
     expect(refreshIntervalFor(['Submitted', 'PendingApproval', 'AgentFailed', 'Cancelled'])).toBe(false)

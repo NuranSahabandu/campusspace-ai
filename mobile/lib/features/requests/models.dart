@@ -291,6 +291,7 @@ class RequestDetail {
     this.requiredFeatures = const [],
     this.equipment = const [],
     this.history = const [],
+    this.latestProposal,
     this.cancelledAt,
     this.isLateCancellation = false,
     this.cancelledByOfficer = false,
@@ -315,6 +316,9 @@ class RequestDetail {
           for (final e in json['equipment'] as List) RequestedEquipment.fromJson(e as Map<String, dynamic>),
         ],
         history: [for (final h in json['history'] as List) StatusChange.fromJson(h as Map<String, dynamic>)],
+        latestProposal: json['latestProposal'] == null
+            ? null
+            : LatestProposal.fromJson(json['latestProposal'] as Map<String, dynamic>),
         cancelledAt: _optionalInstant(json['cancelledAt']),
         isLateCancellation: json['isLateCancellation'] as bool? ?? false,
         cancelledByOfficer: json['cancelledByOfficer'] as bool? ?? false,
@@ -334,10 +338,109 @@ class RequestDetail {
   final List<RequiredFeature> requiredFeatures;
   final List<RequestedEquipment> equipment;
   final List<StatusChange> history;
+
+  /// The current proposal's summary (room and .NET quote total); null while there is none.
+  final LatestProposal? latestProposal;
   final DateTime? cancelledAt;
   final bool isLateCancellation;
   final bool cancelledByOfficer;
   final DateTime createdAt;
+
+  /// The newest history row that moved the request to [status], if any.
+  StatusChange? lastChangeTo(String status) => history.lastWhereOrNull((h) => h.toStatus == status);
+}
+
+extension<T> on List<T> {
+  T? lastWhereOrNull(bool Function(T) test) {
+    for (var i = length - 1; i >= 0; i--) {
+      if (test(this[i])) return this[i];
+    }
+    return null;
+  }
+}
+
+/// LatestProposalDto: the live (Draft or Issued) quote, its agent run and the proposed room. The requester's only view
+/// of a proposal (never the agent trace, plan or policy).
+class LatestProposal {
+  const LatestProposal({
+    required this.revisionNo,
+    this.roomCode,
+    this.roomName,
+    required this.total,
+    required this.exempt,
+    required this.quoteStatus,
+  });
+
+  factory LatestProposal.fromJson(Map<String, dynamic> json) => LatestProposal(
+        revisionNo: (json['revisionNo'] as num).toInt(),
+        roomCode: json['roomCode'] as String?,
+        roomName: json['roomName'] as String?,
+        total: _money(json['total']),
+        exempt: json['exempt'] as bool,
+        quoteStatus: json['quoteStatus'] as String,
+      );
+
+  final int revisionNo;
+  final String? roomCode;
+  final String? roomName;
+  final double total;
+
+  /// A lecturer's academic booking: every line is priced and the whole quote is discounted to 0.
+  final bool exempt;
+
+  /// Draft (waiting for the officer) or Issued (approved).
+  final String quoteStatus;
+
+  /// "A301 · Computer Lab A301", or whichever part is known.
+  String get room => [roomCode, roomName].nonNulls.join(' · ');
+}
+
+/// QuotationDto: .NET's quote (never the agent's numbers). An exempt quote keeps every line priced and shows the
+/// exemption as a discount.
+class Quotation {
+  const Quotation({
+    required this.status,
+    required this.lines,
+    required this.subtotal,
+    required this.discount,
+    this.discountReason,
+    required this.exempt,
+    required this.total,
+  });
+
+  factory Quotation.fromJson(Map<String, dynamic> json) => Quotation(
+        status: json['status'] as String?,
+        lines: [for (final l in json['lines'] as List) QuotationLine.fromJson(l as Map<String, dynamic>)],
+        subtotal: _money(json['subtotal']),
+        discount: _money(json['discount']),
+        discountReason: json['discountReason'] as String?,
+        exempt: json['exempt'] as bool,
+        total: _money(json['total']),
+      );
+
+  final String? status;
+  final List<QuotationLine> lines;
+  final double subtotal;
+  final double discount;
+  final String? discountReason;
+  final bool exempt;
+  final double total;
+}
+
+class QuotationLine {
+  const QuotationLine({required this.kind, required this.description, required this.qty, required this.lineTotal});
+
+  factory QuotationLine.fromJson(Map<String, dynamic> json) => QuotationLine(
+        kind: json['kind'] as String,
+        description: json['description'] as String,
+        qty: (json['qty'] as num).toDouble(),
+        lineTotal: _money(json['lineTotal']),
+      );
+
+  final String kind;
+  final String description;
+  final double qty;
+  final double lineTotal;
 }
 
 /// The POST /api/booking-requests body (CreateBookingRequestRequest).

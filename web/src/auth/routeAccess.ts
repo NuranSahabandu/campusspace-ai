@@ -23,7 +23,9 @@ export const ROUTE_ROLES = {
   '/policy': OFFICER,
   '/requests': OFFICER,
   '/requests/:id': OFFICER,
-  '/approvals': STAFF_ROLES,
+  // The approval endpoints are Facilities Officer only (Admins get 403), so the pages are too.
+  '/approvals': OFFICER,
+  '/approvals/:requestId': OFFICER,
   '/agent-runs': STAFF_ROLES,
   '/users': ADMIN,
   '/clubs': ADMIN,

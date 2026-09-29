@@ -1,35 +1,29 @@
-import { type ReactNode, useState } from 'react'
+import { useState } from 'react'
 import { Link as RouterLink, useLocation, useParams } from 'react-router'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CancelIcon from '@mui/icons-material/Cancel'
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  LinearProgress,
-  List,
-  ListItem,
-  ListItemText,
-  Paper,
-  Stack,
-  Typography,
-} from '@mui/material'
+import FactCheckIcon from '@mui/icons-material/FactCheck'
+import { Alert, Box, Button, Chip, LinearProgress, Stack, Typography } from '@mui/material'
 import { parseProblem } from '../../api/problem'
-import type { BookingRequestDetailDto, RequestStatusHistoryDto } from '../../api/types'
+import type { BookingRequestDetailDto, LatestProposalDto } from '../../api/types'
 import { formatCampusTimeRange, formatDateTime } from '../../ui/formatDateTime'
 import { formatLkr } from '../../ui/formatLkr'
+import { RunHistory } from '../approvals/RunHistory'
+import { useRequestRuns } from '../approvals/useApprovals'
 import type { FromListState } from './BookingRequestsPage'
 import { CancelRequestDialog } from './CancelRequestDialog'
+import { Card, Fact, RequestCards, Timeline } from './RequestCards'
 import { RequestStatusChip } from './RequestStatusChip'
-import { isCancellable, RequestStatuses, requestStatusLabel } from './requestStatus'
+import { RetryAgentButton } from './RetryAgentButton'
+import { isCancellable, RequestStatuses } from './requestStatus'
 import { useBookingRequest } from './useRequests'
 
 const parseId = (raw: string | undefined) => (raw !== undefined && /^[1-9]\d*$/.test(raw) ? Number(raw) : undefined)
 
 /**
  * One booking request for a Facilities Officer (§12, Component C). The officer can cancel it (with a reason) while its
- * status allows; approve/reject arrive in Phase 3.
+ * status allows, open the approval screen while it waits for a decision, and (re)start the agents for a failed or
+ * not-yet-started request.
  */
 export function BookingRequestDetailPage() {
   const id = parseId(useParams().id)
@@ -37,6 +31,7 @@ export function BookingRequestDetailPage() {
   // Back to the list with the filters it had, when we came from it.
   const listSearch = (location.state as Partial<FromListState> | null)?.listSearch ?? ''
   const { data: request, isPending, isError, error, refetch } = useBookingRequest(id ?? 0)
+  const runs = useRequestRuns(id ?? 0, request?.updatedAt)
   const [cancelling, setCancelling] = useState(false)
 
   const back = (
@@ -82,11 +77,24 @@ export function BookingRequestDetailPage() {
           {request.purpose}
         </Typography>
         <RequestStatusChip status={request.status} size="medium" />
-        {isCancellable(request.status) && (
-          <Button color="error" variant="outlined" startIcon={<CancelIcon />} onClick={() => setCancelling(true)} sx={{ ml: 'auto' }}>
-            Cancel request
-          </Button>
-        )}
+        <Stack direction="row" spacing={1} useFlexGap sx={{ ml: 'auto', flexWrap: 'wrap' }}>
+          {request.status === RequestStatuses.PendingApproval && (
+            <Button
+              variant="contained"
+              startIcon={<FactCheckIcon />}
+              component={RouterLink}
+              to={`/approvals/${request.id}`}
+            >
+              Review proposal
+            </Button>
+          )}
+          <RetryAgentButton request={request} runs={runs.data} />
+          {isCancellable(request.status) && (
+            <Button color="error" variant="outlined" startIcon={<CancelIcon />} onClick={() => setCancelling(true)}>
+              Cancel request
+            </Button>
+          )}
+        </Stack>
       </Stack>
 
       <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' } }}>
@@ -96,9 +104,16 @@ export function BookingRequestDetailPage() {
           <Timeline history={request.history} />
         </Card>
         <Card title="Agent proposal" wide>
-          <Typography color="text.secondary">
-            No agent proposal yet. The proposal, validation checklist and agent trace will appear here.
-          </Typography>
+          {request.latestProposal ? (
+            <LatestProposalSummary proposal={request.latestProposal} />
+          ) : (
+            <Typography color="text.secondary">
+              No proposal yet. The proposal, validation checklist and agent trace appear once the agents have planned.
+            </Typography>
+          )}
+        </Card>
+        <Card title="Agent runs" wide>
+          <RunHistory query={runs} />
         </Card>
       </Box>
 
@@ -110,6 +125,19 @@ export function BookingRequestDetailPage() {
         />
       )}
     </>
+  )
+}
+
+/** The live proposal's summary (the same as the requester sees): room, .NET quote total and revision. */
+function LatestProposalSummary({ proposal }: { proposal: LatestProposalDto }) {
+  return (
+    <Box sx={{ display: 'grid', gap: 1, gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' } }}>
+      <Fact label="Room">{proposal.roomCode ? `${proposal.roomCode} · ${proposal.roomName}` : 'Unknown room'}</Fact>
+      <Fact label={proposal.quoteStatus === 'Issued' ? 'Issued quote' : 'Draft quote'}>
+        {proposal.exempt ? 'Fee-exempt' : formatLkr(proposal.total)}
+      </Fact>
+      <Fact label="Revision">{proposal.revisionNo}</Fact>
+    </Box>
   )
 }
 
@@ -138,113 +166,5 @@ function CancellationCard({ request, cancelledAt }: { request: BookingRequestDet
         <Typography color="text.secondary">No reason given</Typography>
       )}
     </Card>
-  )
-}
-
-function Card({ title, wide = false, children }: { title: string; wide?: boolean; children: ReactNode }) {
-  return (
-    <Paper
-      component="section"
-      aria-label={title}
-      variant="outlined"
-      sx={{ p: 2, gridColumn: wide ? { md: '1 / -1' } : undefined }}
-    >
-      <Typography variant="subtitle2" component="h2" color="text.secondary" sx={{ mb: 1 }}>
-        {title}
-      </Typography>
-      {children}
-    </Paper>
-  )
-}
-
-function RequestCards({ request }: { request: BookingRequestDetailDto }) {
-  return (
-    <>
-      <Card title="Requester">
-        <Typography>{request.requester.name}</Typography>
-        <Typography variant="body2" color="text.secondary">
-          {request.requester.email}
-        </Typography>
-        <Typography sx={{ mt: 1 }}>{request.club ? request.club.name : 'Academic booking'}</Typography>
-      </Card>
-      <Card title="Booking">
-        <Stack spacing={1}>
-          <Fact label="When">{formatCampusTimeRange(request.requestedStart, request.requestedEnd)}</Fact>
-          <Fact label="Attendees">{request.attendees}</Fact>
-          <Fact label="Budget">{formatLkr(request.budgetLkr)}</Fact>
-          <Fact label="Submitted">{formatDateTime(request.createdAt)}</Fact>
-        </Stack>
-      </Card>
-      <Card title="Required features">
-        {request.requiredFeatures.length ? (
-          <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
-            {request.requiredFeatures.map((f) => (
-              <Chip key={f.code} size="small" variant="outlined" label={f.name} title={f.code} />
-            ))}
-          </Stack>
-        ) : (
-          <Typography color="text.secondary">None</Typography>
-        )}
-      </Card>
-      <Card title="Equipment">
-        {request.equipment.length ? (
-          <List dense disablePadding>
-            {request.equipment.map((e) => (
-              <ListItem key={e.typeId} disableGutters>
-                <ListItemText primary={`${e.typeCode} — ${e.typeName} × ${e.quantity}`} />
-              </ListItem>
-            ))}
-          </List>
-        ) : (
-          <Typography color="text.secondary">None</Typography>
-        )}
-      </Card>
-      <Card title="Requester notes (as written by the requester)" wide>
-        {/* Untrusted requester text: a plain React text child (escaped, never HTML or markdown), line breaks kept. */}
-        {request.notes ? (
-          <Typography data-testid="request-notes" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-            {request.notes}
-          </Typography>
-        ) : (
-          <Typography color="text.secondary">None</Typography>
-        )}
-      </Card>
-    </>
-  )
-}
-
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography>{children}</Typography>
-    </div>
-  )
-}
-
-/** Status changes oldest first. A change with no user was made by the system. */
-function Timeline({ history }: { history: RequestStatusHistoryDto[] }) {
-  return (
-    <List dense disablePadding aria-label="Status timeline">
-      {history.map((h, i) => (
-        <ListItem key={`${h.changedAt}-${i}`} disableGutters alignItems="flex-start">
-          <ListItemText
-            primary={requestStatusLabel(h.toStatus)}
-            secondary={
-              <>
-                {formatDateTime(h.changedAt)} · {h.changedById === null ? 'System' : (h.changedByName ?? 'Unknown user')}
-                {h.reason && (
-                  <Box component="span" sx={{ display: 'block', whiteSpace: 'pre-wrap' }}>
-                    {h.reason}
-                  </Box>
-                )}
-              </>
-            }
-          />
-        </ListItem>
-      ))}
-    </List>
   )
 }

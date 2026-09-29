@@ -35,10 +35,11 @@ const LABELS: Record<RequestStatus, string> = {
 }
 
 /**
- * The statuses the server moves on its own (the agent run after a 202 submit), so pages showing one re-fetch every
- * REFRESH_INTERVAL_MS until it changes. The only list of them (mirrors mobile `RequestStatuses.refreshing`).
+ * The statuses the server moves on its own (the agent run after a 202 submit, retry-agent or request-revision), so
+ * pages showing one re-fetch every REFRESH_INTERVAL_MS until it changes. The only list of them (mirrors the 3 s
+ * statuses of mobile `RequestStatuses.refreshIntervals`; the officer's queue has its own 15 s interval).
  */
-export const REFRESHING_STATUSES: readonly RequestStatus[] = [RequestStatuses.AgentProcessing]
+export const REFRESHING_STATUSES: readonly RequestStatus[] = [RequestStatuses.AgentProcessing, RequestStatuses.RevisionRequested]
 
 export const REFRESH_INTERVAL_MS = 3000
 

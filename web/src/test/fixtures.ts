@@ -342,7 +342,7 @@ export const BOOKING_REQUEST_DETAILS: BookingRequestDetailDto[] = [
     requestedEnd: '2026-10-26T06:30:00Z',
     budgetLkr: 3000,
     notes: null,
-    requester: { id: 7, name: 'Nethmi Rajapaksa', email: 'nethmi@campusspace.local' },
+    requester: { id: 7, name: 'Nethmi Rajapaksa', email: 'nethmi@campusspace.local', role: 'Student' },
     club: { id: 2, name: 'Drama Society' },
     requiredFeatures: [
       { code: 'ac', name: 'Air conditioning' },
@@ -375,7 +375,7 @@ export const BOOKING_REQUEST_DETAILS: BookingRequestDetailDto[] = [
     requestedEnd: '2026-10-26T06:30:00Z',
     budgetLkr: 0,
     notes: null,
-    requester: { id: 2, name: 'Dr. Nimal Fernando', email: 'lecturer@campusspace.local' },
+    requester: { id: 2, name: 'Dr. Nimal Fernando', email: 'lecturer@campusspace.local', role: 'Lecturer' },
     club: null,
     requiredFeatures: [
       { code: 'projector', name: 'Projector' },
@@ -408,7 +408,7 @@ export const BOOKING_REQUEST_DETAILS: BookingRequestDetailDto[] = [
     requestedEnd: '2026-10-20T11:30:00Z',
     budgetLkr: 12500.5,
     notes: 'Please keep <b>bold</b> as typed.\nWe need extension cords.',
-    requester: { id: 1, name: 'Kavindi Perera', email: 'kavindi@campusspace.local' },
+    requester: { id: 1, name: 'Kavindi Perera', email: 'kavindi@campusspace.local', role: 'Student' },
     club: { id: 1, name: 'Robotics Club' },
     requiredFeatures: [{ code: 'projector', name: 'Projector' }],
     equipment: [

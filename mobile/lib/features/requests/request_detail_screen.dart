@@ -11,8 +11,9 @@ import 'requests_providers.dart';
 import 'requests_repository.dart';
 import 'time_rules.dart';
 
-/// Request detail (plan §13, UC06): what was asked for and the status timeline, and the owner's Cancel (UC07). The
-/// proposal and quote arrive in Phase 3.
+/// Request detail (plan §13, UC05/UC06): what was asked for, where it stands (proposal, quotation, or why it stopped),
+/// the status timeline, and the owner's Cancel (UC07). It re-fetches on its own while the request is being planned
+/// (every 3 s) or waits for the Facilities Officer (every 15 s), and only while the screen is open.
 class RequestDetailScreen extends ConsumerWidget {
   const RequestDetailScreen({super.key, required this.id});
 
@@ -110,13 +111,7 @@ class _Details extends StatelessWidget {
         const SizedBox(height: 4),
         Text(request.notes ?? '—'),
         const SizedBox(height: 16),
-        const Card(
-          key: Key('request.proposalPlaceholder'),
-          child: ListTile(
-            leading: Icon(Icons.hourglass_empty),
-            title: Text(RequestDetailScreen.proposalPlaceholder),
-          ),
-        ),
+        RequestOutcomeCard(request: request),
         CancelRequestButton(request: request),
         const SizedBox(height: 16),
         Text('Status history', style: textTheme.titleMedium),
@@ -124,6 +119,174 @@ class _Details extends StatelessWidget {
         StatusTimeline(history: request.history, requesterId: request.requester.id),
       ],
     );
+  }
+}
+
+/// Where the request stands, by status: the proposal waiting for the officer, the approved booking with its quotation,
+/// or why it was rejected, closed, failed or is being revised. Every reason is the server's text, shown as plain text.
+class RequestOutcomeCard extends ConsumerWidget {
+  const RequestOutcomeCard({super.key, required this.request});
+
+  static const waiting = 'Waiting for the Facilities Officer';
+  static const feeExempt = 'Fee-exempt';
+  static const rejectedTitle = 'Rejected by Facilities';
+  static const closedTitle = 'Closed automatically';
+  static const revising = 'Facilities asked for changes; a new proposal is being prepared';
+  static const preparingAgain = 'The proposal is being prepared again';
+  static const approvedTitle = 'Approved';
+  static String proposed(LatestProposal p) =>
+      'Proposed: ${p.room}, ${p.exempt ? feeExempt : formatLkr(p.total)}';
+  static String failed(String? reason) =>
+      "We couldn't prepare a proposal: ${reason ?? 'no reason given'}. Facilities can retry.";
+
+  final RequestDetail request;
+
+  /// The newest RevisionRequested row, when no proposal has been ready since (the agents are re-planning).
+  StatusChange? get _pendingRevision {
+    final history = request.history;
+    final index = history.lastIndexWhere((h) => h.toStatus == RequestStatuses.revisionRequested);
+    if (index < 0 || history.skip(index + 1).any((h) => h.toStatus == RequestStatuses.pendingApproval)) return null;
+    return history[index];
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status = request.status;
+    final proposal = request.latestProposal;
+    return switch (status) {
+      RequestStatuses.pendingApproval when proposal != null => _OutcomeCard(
+          icon: Icons.hourglass_top,
+          title: proposed(proposal),
+          body: const Text(waiting),
+        ),
+      RequestStatuses.approved || RequestStatuses.completed => _OutcomeCard(
+          icon: Icons.check_circle_outline,
+          title: approvedTitle,
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (proposal != null) Text(proposal.room, key: const Key('outcome.room')),
+              Text(formatCampusSlot(request.requestedStart, request.requestedEnd)),
+              const SizedBox(height: 8),
+              QuotationSection(requestId: request.id),
+            ],
+          ),
+        ),
+      RequestStatuses.rejected => _rejected(),
+      RequestStatuses.agentFailed => _OutcomeCard(
+          icon: Icons.error_outline,
+          title: failed(request.lastChangeTo(RequestStatuses.agentFailed)?.reason),
+        ),
+      RequestStatuses.revisionRequested || RequestStatuses.agentProcessing when _pendingRevision != null =>
+        _revising(_pendingRevision!),
+      RequestStatuses.cancelled => const SizedBox.shrink(),
+      _ => const _OutcomeCard(icon: Icons.hourglass_empty, title: RequestDetailScreen.proposalPlaceholder),
+    };
+  }
+
+  Widget _rejected() {
+    final change = request.lastChangeTo(RequestStatuses.rejected);
+    // No actor: the system closed it at approval because the requested time is no longer valid.
+    final automatic = change != null && change.changedById == null;
+    return _OutcomeCard(
+      icon: automatic ? Icons.event_busy : Icons.block,
+      title: automatic ? closedTitle : rejectedTitle,
+      body: change?.reason == null ? null : Text(change!.reason!, key: const Key('outcome.reason')),
+    );
+  }
+
+  Widget _revising(StatusChange change) => _OutcomeCard(
+        icon: Icons.autorenew,
+        // An officer's revise has an actor; a system one is an approval that failed its final re-check.
+        title: change.changedById == null ? preparingAgain : revising,
+        body: change.reason == null ? null : Text(change.reason!, key: const Key('outcome.reason')),
+      );
+}
+
+class _OutcomeCard extends StatelessWidget {
+  const _OutcomeCard({required this.icon, required this.title, this.body});
+
+  final IconData icon;
+  final String title;
+  final Widget? body;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        key: const Key('request.outcome'),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, key: const Key('outcome.title'), style: Theme.of(context).textTheme.titleSmall),
+                    if (body case final body?) ...[const SizedBox(height: 4), body],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+/// The approved booking's quotation (UC06): its lines, the discount and its reason, and the total, all from .NET.
+class QuotationSection extends ConsumerWidget {
+  const QuotationSection({super.key, required this.requestId});
+
+  final int requestId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final textTheme = Theme.of(context).textTheme;
+    Widget row(String label, String amount, {TextStyle? style, Key? key}) => Padding(
+          key: key,
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text(label, style: style)),
+              const SizedBox(width: 8),
+              Text(amount, style: style),
+            ],
+          ),
+        );
+
+    return switch (ref.watch(requestQuotationProvider(requestId))) {
+      AsyncValue(:final value?) => Column(
+          key: const Key('request.quotation'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Quotation', style: textTheme.titleSmall),
+            for (final line in value.lines) row(line.description, formatLkr(line.lineTotal)),
+            const Divider(),
+            row('Subtotal', formatLkr(value.subtotal)),
+            if (value.discount > 0)
+              row(
+                value.discountReason == null ? 'Discount' : 'Discount (${value.discountReason})',
+                '−${formatLkr(value.discount)}',
+              ),
+            row(
+              value.exempt ? 'Total (${RequestOutcomeCard.feeExempt})' : 'Total',
+              formatLkr(value.total),
+              style: textTheme.titleSmall,
+              key: const Key('quotation.total'),
+            ),
+          ],
+        ),
+      AsyncValue(:final error?) => Row(
+          children: [
+            Expanded(child: Text('Quotation unavailable: ${Problem.from(error).title}')),
+            TextButton(onPressed: () => ref.invalidate(requestQuotationProvider(requestId)), child: const Text('Retry')),
+          ],
+        ),
+      _ => const LinearProgressIndicator(),
+    };
   }
 }
 

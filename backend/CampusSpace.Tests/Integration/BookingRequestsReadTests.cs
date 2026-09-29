@@ -196,7 +196,7 @@ public class BookingRequestsReadTests(PostgresFixture fixture)
         detail.GetProperty("cancelledAt").ValueKind.Should().Be(JsonValueKind.Null);
         detail.GetProperty("isLateCancellation").GetBoolean().Should().BeFalse();
         detail.GetProperty("cancelledByOfficer").GetBoolean().Should().BeFalse();
-        detail.GetProperty("requester").EnumerateObject().Select(p => p.Name).Should().Equal("id", "name", "email");
+        detail.GetProperty("requester").EnumerateObject().Select(p => p.Name).Should().Equal("id", "name", "email", "role");
         detail.GetProperty("requester").GetProperty("id").GetInt64().Should().Be(userId);
         detail.GetProperty("club").EnumerateObject().Select(p => p.Name).Should().Equal("id", "name");
         detail.GetProperty("requiredFeatures")[0].GetProperty("code").GetString().Should().Be("sound_system");

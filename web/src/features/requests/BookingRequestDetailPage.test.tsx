@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import type { BookingRequestDetailDto } from '../../api/types'
+import type { AgentRunSummaryDto, BookingRequestDetailDto } from '../../api/types'
 import { Roles } from '../../auth/roles'
 import { BOOKING_REQUEST_DETAILS } from '../../test/fixtures'
+import { PENDING_DETAIL, PENDING_RUNS, RETRY_NOT_RESTARTABLE } from '../approvals/approvalsFixtures'
 import { API, server } from '../../test/server'
 import { renderApp } from '../../test/utils'
 import { useToastStore } from '../../ui/toastStore'
@@ -36,9 +37,10 @@ describe('BookingRequestDetailPage', () => {
 
     expect(
       within(card('Agent proposal')).getByText(
-        'No agent proposal yet. The proposal, validation checklist and agent trace will appear here.',
+        'No proposal yet. The proposal, validation checklist and agent trace appear once the agents have planned.',
       ),
     ).toBeInTheDocument()
+    expect(await within(card('Agent runs')).findByText('No agent runs yet')).toBeInTheDocument()
   })
 
   it('shows the requester notes as plain text with the line break kept', async () => {
@@ -261,4 +263,105 @@ describe('BookingRequestDetailPage', () => {
     expect(screen.getAllByText('Waiting for approval')).toHaveLength(waiting + 1)
     expect(calls).toBe(2)
   }, 10_000)
+
+  describe('agent actions', () => {
+    const base = BOOKING_REQUEST_DETAILS[2]
+    const failedRun: AgentRunSummaryDto = {
+      ...PENDING_RUNS[0],
+      status: 'Failed',
+      failureReason: 'Agent service unreachable',
+      completedAt: null,
+    }
+
+    function serve(overrides: Partial<BookingRequestDetailDto>, runs: AgentRunSummaryDto[] = []) {
+      requestsHandlers({ runs })
+      server.use(http.get(`${API}/api/booking-requests/3`, () => HttpResponse.json({ ...base, ...overrides })))
+    }
+
+    it('links a PendingApproval request to its approval screen and shows the proposal summary', async () => {
+      serve({ latestProposal: PENDING_DETAIL.latestProposal }, PENDING_RUNS)
+      renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      expect(await screen.findByRole('link', { name: 'Review proposal' })).toHaveAttribute('href', '/approvals/3')
+      const proposal = card('Agent proposal')
+      expect(within(proposal).getByText('A301 · Computer Lab A301')).toBeInTheDocument()
+      expect(within(proposal).getByText('LKR 5,500.00')).toBeInTheDocument()
+      expect(within(proposal).getByText('Draft quote')).toBeInTheDocument()
+      expect(await within(card('Agent runs')).findByText('AwaitingApproval')).toBeInTheDocument()
+    })
+
+    it.each([
+      ['AgentFailed', [failedRun], 'Retry agent'],
+      ['Submitted', [], 'Start agent'],
+      ['Submitted', [failedRun], 'Start agent'],
+      ['Submitted', PENDING_RUNS, null],
+      ['PendingApproval', PENDING_RUNS, null],
+      ['Approved', PENDING_RUNS, null],
+    ] as const)('for %s with those runs offers %s', async (status, runs, label) => {
+      serve({ status }, [...runs])
+      renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await screen.findByRole('heading', { level: 1 })
+      // The button waits for the runs (Start agent needs to know there is no live run).
+      await waitFor(() => expect(within(card('Agent runs')).queryByLabelText('Loading agent runs')).toBeNull())
+      for (const name of ['Retry agent', 'Start agent'])
+        expect(!!screen.queryByRole('button', { name })).toBe(name === label)
+    })
+
+    it('retries a failed request: 202 shows a toast and reloads', async () => {
+      serve({ status: 'AgentFailed' }, [failedRun])
+      let posts = 0
+      server.use(
+        http.post(`${API}/api/booking-requests/3/retry-agent`, () => {
+          posts++
+          return HttpResponse.json({ ...base, status: 'AgentProcessing' }, { status: 202 })
+        }),
+      )
+      const { user } = renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await user.click(await screen.findByRole('button', { name: 'Retry agent' }))
+
+      await waitFor(() =>
+        expect(useToastStore.getState().current).toMatchObject({
+          severity: 'success',
+          message: 'Agent started: a new proposal is being prepared',
+        }),
+      )
+      expect(posts).toBe(1)
+    })
+
+    it('shows a retry-agent 409 exactly as sent', async () => {
+      serve({ status: 'AgentFailed' }, [failedRun])
+      server.use(
+        http.post(`${API}/api/booking-requests/3/retry-agent`, () =>
+          HttpResponse.json(RETRY_NOT_RESTARTABLE, { status: 409 }),
+        ),
+      )
+      const { user } = renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await user.click(await screen.findByRole('button', { name: 'Retry agent' }))
+
+      await waitFor(() =>
+        expect(useToastStore.getState().current).toMatchObject({
+          severity: 'error',
+          message: 'Only a failed or not-yet-started request can be (re)started',
+        }),
+      )
+    })
+
+    it('shows the requester-cap 409 exactly as sent', async () => {
+      serve({ status: 'AgentFailed' }, [failedRun])
+      const title = 'The requester already has 3 open requests (the limit is 3)'
+      server.use(
+        http.post(`${API}/api/booking-requests/3/retry-agent`, () =>
+          HttpResponse.json({ ...RETRY_NOT_RESTARTABLE, title }, { status: 409 }),
+        ),
+      )
+      const { user } = renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+      await user.click(await screen.findByRole('button', { name: 'Retry agent' }))
+
+      await waitFor(() => expect(useToastStore.getState().current).toMatchObject({ severity: 'error', message: title }))
+    })
+  })
 })

@@ -38,12 +38,16 @@ export function useBookingRequests(params: BookingRequestsParams, options: { ena
   )
 }
 
-export function useBookingRequest(id: number) {
+/**
+ * One request. It re-fetches while its status refreshes (refreshIntervalFor), or every `refreshMs` when the caller is
+ * waiting for something the status doesn't show (an approval in progress).
+ */
+export function useBookingRequest(id: number, { refreshMs }: { refreshMs?: number | false } = {}) {
   return useQuery({
     queryKey: bookingRequestsKeys.detail(id),
     queryFn: async ({ signal }) => (await api.get<BookingRequestDetailDto>(`/api/booking-requests/${id}`, { signal })).data,
     enabled: Number.isInteger(id) && id > 0,
-    refetchInterval: (query) => refreshIntervalFor(query.state.data ? [query.state.data.status] : []),
+    refetchInterval: (query) => refreshMs || refreshIntervalFor(query.state.data ? [query.state.data.status] : []),
   })
 }
 
