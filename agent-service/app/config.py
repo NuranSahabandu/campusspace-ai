@@ -22,7 +22,7 @@ MIN_TOOLS_KEY_LENGTH = 32
 # Phase 4 adds each worker to LLM_IMPLEMENTED as it lands (4.2 venue, 4.3 equipment, 4.4 policy).
 LLM_AGENTS = ("supervisor", "venue_matching", "equipment_allocation", "policy_cost")
 WORKER_AGENTS = LLM_AGENTS[1:]
-LLM_IMPLEMENTED = frozenset({"supervisor", "venue_matching"})
+LLM_IMPLEMENTED = frozenset({"supervisor", "venue_matching", "equipment_allocation"})
 _PENDING_TASK = {"venue_matching": "4.2", "equipment_allocation": "4.3", "policy_cost": "4.4"}
 
 # Same Flash (planning) / Flash-Lite (workers) split as the labs (Labs 06/07 and Lab 05 api/main.py
@@ -162,7 +162,8 @@ class Settings(BaseSettings):
     def model_label(self) -> str:
         """AgentRuns.Model: the model id each agent really uses, for example
         "planner=gemini-3.5-flash; workers=stub" or
-        "planner=stub; venue_matching=gemini-3.5-flash-lite, others=stub"."""
+        "planner=stub; venue_matching=gemini-3.5-flash-lite, others=stub". LLM workers that share a
+        model are joined with "+" ("venue_matching+equipment_allocation=<id>")."""
         planner = self.planner_model if self.agent_mode("supervisor") == "llm" else "stub"
         workers = {w: self.worker_model if self.agent_mode(w) == "llm" else "stub"
                    for w in WORKER_AGENTS}  # fmt: skip
@@ -170,7 +171,11 @@ class Settings(BaseSettings):
             worker_part = f"workers={next(iter(workers.values()))}"
         else:
             # Only the LLM workers by name, so the label fits the 100-char column.
-            llm = [f"{w}={m}" for w, m in workers.items() if m != "stub"]
+            by_model: dict[str, list[str]] = {}
+            for w, m in workers.items():
+                if m != "stub":
+                    by_model.setdefault(m, []).append(w)
+            llm = [f"{'+'.join(names)}={m}" for m, names in by_model.items()]
             worker_part = ", ".join(llm) + ", others=stub"
         return f"planner={planner}; {worker_part}"[:MAX_MODEL_LABEL]
 

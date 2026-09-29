@@ -9,7 +9,6 @@ chooses and explains, code owns the facts.
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -17,6 +16,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from app.schemas import VenueResult
 from app.tools import is_error, parse_json
+from app.workers.common import same_instant
 from app.workers.tool_agent import Checked, ToolAgentWorker
 
 log = logging.getLogger("agent_service.venue")
@@ -67,13 +67,6 @@ class Observed:
     search_error: str | None = None
 
 
-def _same_instant(a: Any, b: Any) -> bool:
-    try:
-        return datetime.fromisoformat(str(a)) == datetime.fromisoformat(str(b))
-    except ValueError:
-        return False
-
-
 def observe_messages(messages: list[Any], brief: Mapping[str, Any]) -> Observed:
     """Rooms from this attempt's ToolMessages only. A room counts as free only when a search for
     the brief's exact window returned it; get_room_details says nothing about free."""
@@ -88,7 +81,7 @@ def observe_messages(messages: list[Any], brief: Mapping[str, Any]) -> Observed:
             continue
         args = args_by_id.get(message.tool_call_id, {})
         if message.name == "search_available_rooms":
-            window = _same_instant(args.get("start_iso"), brief["start"]) and _same_instant(
+            window = same_instant(args.get("start_iso"), brief["start"]) and same_instant(
                 args.get("end_iso"), brief["end"]
             )
             complete = (

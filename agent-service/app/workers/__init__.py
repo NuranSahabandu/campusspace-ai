@@ -3,6 +3,8 @@
 Phase 3 workers are deterministic stubs that call the real tools. Phase 4 replaces them one at a
 time with a create_agent ReAct worker (passed to build_graph as `workers`) with the same contract:
 task string in, validated structured result out. An LLM worker falls back to its stub.
+The LLM workers share one loop (app/workers/tool_agent.py): venue_llm.py (4.2) and
+equipment_llm.py (4.3).
 """
 
 from collections.abc import Callable, Mapping
