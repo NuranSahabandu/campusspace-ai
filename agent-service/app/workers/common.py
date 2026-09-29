@@ -6,6 +6,7 @@ A task is one instruction line plus "BRIEF: {json}" with ids and values, never w
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -44,3 +45,21 @@ def observe(
     if is_error(observation):
         return None, error_text(observation).removeprefix("HTTP ")
     return parse_json(observation), None
+
+
+@dataclass
+class WorkerOutcome:
+    """What run_worker returns: the validated result, plus an LLM worker's step metadata (mode,
+    model, attempts, usage, corrections, fallback_reason). meta is None for a stub."""
+
+    result: dict[str, Any]
+    meta: dict[str, Any] | None = None
+
+
+@dataclass
+class LlmAttempt:
+    """What an LLM worker hands back to run_worker. result None means "use the stub" (fallback);
+    meta is kept either way."""
+
+    result: dict[str, Any] | None
+    meta: dict[str, Any] = field(default_factory=dict)

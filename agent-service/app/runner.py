@@ -14,6 +14,7 @@ from typing import Any
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
+from app.budget import SEGMENT_DEADLINE
 from app.graph import TERMINAL, initial_state, iso
 from app.limits import GRAPH_RECURSION_LIMIT, RUN_TIMEOUT_S
 from app.llm import add_usage
@@ -79,8 +80,10 @@ class WorkflowRunner:
     def _run(self, inputs: Any, thread_id: str) -> None:
         config = self._config(thread_id)
         deadline = self._monotonic() + self._timeout
+        # The LLM steps read the deadline to share the segment's time (app/budget.py).
+        segment = config | {"configurable": config["configurable"] | {SEGMENT_DEADLINE: deadline}}
         try:
-            for chunk in self._graph.stream(inputs, config, stream_mode="updates"):
+            for chunk in self._graph.stream(inputs, segment, stream_mode="updates"):
                 for node in chunk:
                     log.info("thread %s: %s", thread_id, node)
                 if self._monotonic() > deadline:

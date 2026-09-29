@@ -1,24 +1,30 @@
 """Worker registry and run_worker (plan §10.6).
 
-Phase 3 workers are deterministic stubs that call the real tools. Phase 4 swaps one entry of
-WORKERS at a time for a create_agent ReAct worker with the same signature: task string in,
-structured result out.
+Phase 3 workers are deterministic stubs that call the real tools. Phase 4 replaces them one at a
+time with a create_agent ReAct worker (passed to build_graph as `workers`) with the same contract:
+task string in, validated structured result out. An LLM worker falls back to its stub.
 """
 
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Protocol
 
 from langchain_core.tools import BaseTool
 from pydantic import ValidationError
 
+from app.budget import UNLIMITED, LlmBudget
 from app.schemas import RESULT_MODELS
 from app.tools import WORKER_TOOLS, current_recorder
-from app.workers.common import WorkerFailed, WorkerUnavailable
+from app.workers.common import LlmAttempt, WorkerFailed, WorkerOutcome, WorkerUnavailable
 from app.workers.equipment import equipment_allocation
 from app.workers.policy_cost import policy_cost
 from app.workers.venue import venue_matching
 
 Worker = Callable[[str, Mapping[str, BaseTool]], dict[str, Any]]
+
+
+class LlmWorker(Protocol):
+    def run(self, task: str, tools: Mapping[str, BaseTool], budget: LlmBudget) -> LlmAttempt: ...
+
 
 WORKERS: dict[str, Worker] = {
     "venue_matching": venue_matching,
@@ -26,21 +32,36 @@ WORKERS: dict[str, Worker] = {
     "policy_cost": policy_cost,
 }
 
-__all__ = ["WORKERS", "WorkerFailed", "WorkerRunner", "WorkerUnavailable"]
+__all__ = ["WORKERS", "WorkerFailed", "WorkerOutcome", "WorkerRunner", "WorkerUnavailable"]
 
 
 class WorkerRunner:
     """Holds the tool set; each worker only ever sees its own allow-listed tools."""
 
-    def __init__(self, tools: Mapping[str, BaseTool]) -> None:
+    def __init__(
+        self, tools: Mapping[str, BaseTool], llm_workers: Mapping[str, LlmWorker] | None = None
+    ) -> None:
         self._tools = tools
+        self._llm = dict(llm_workers or {})
 
-    def run_worker(self, name: str, task: str) -> dict[str, Any]:
+    def run_worker(self, name: str, task: str, *, budget: LlmBudget = UNLIMITED) -> WorkerOutcome:
         """ONE worker, ONE task string. Returns only the validated structured result (context
-        isolation: no history goes in, no tool debris comes out). Invalid output is retried once
-        (V01), then the step fails."""
-        worker = WORKERS[name]
+        isolation: no history goes in, no tool debris comes out). The budget is a time limit, not
+        context. An LLM worker's result was checked by the worker; when it falls back, the stub runs
+        here and the LLM metadata (with the fallback reason) is kept."""
         allowed = {t: self._tools[t] for t in WORKER_TOOLS[name]}
+        meta = None
+        if name in self._llm:
+            attempt = self._llm[name].run(task, allowed, budget)
+            meta = attempt.meta
+            if attempt.result is not None:
+                return WorkerOutcome(RESULT_MODELS[name].model_validate(attempt.result)
+                                     .model_dump(mode="json"), meta)  # fmt: skip
+        return WorkerOutcome(self._run_stub(name, task, allowed), meta)
+
+    def _run_stub(self, name: str, task: str, allowed: Mapping[str, BaseTool]) -> dict[str, Any]:
+        """Invalid output is retried once (V01), then the step fails."""
+        worker = WORKERS[name]
         model = RESULT_MODELS[name]
         for attempt in range(2):
             raw = worker(task, allowed)

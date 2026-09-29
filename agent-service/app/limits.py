@@ -24,9 +24,16 @@ MAX_NOTES_LENGTH = 1000  # officer revise notes
 LLM_TIMEOUT_S = 60
 LLM_MAX_RETRIES = 3
 
-# Supervisor planner: invalid structured output is retried once (plan §10.10), then the stub plan.
+# LLM steps: invalid structured output is retried once (plan §10.10), then the stub.
 MAX_PLANNER_ATTEMPTS = 2
-# Wall clock for the whole planner step. The client alone can take ~4 min (60 s × (1 + 3 retries)),
-# which would outlast RUN_TIMEOUT_S and .NET's watchdog, so the planner waits at most this long.
+MAX_WORKER_ATTEMPTS = 2
+# Wall clock per LLM step. The client alone can take ~4 min (60 s × (1 + 3 retries)), which would
+# outlast RUN_TIMEOUT_S and .NET's watchdog, so a step waits at most this long.
 PLANNER_DEADLINE_S = 60.0
-PLANNER_MIN_RETRY_S = 10.0  # don't start the retry attempt with less than this left
+WORKER_DEADLINE_S = 45.0
+# Shared per-segment LLM budget (app/budget.py): an LLM step gets
+# min(its deadline, time left in the segment - LLM_RESERVE_S), and is skipped (stub) below
+# LLM_MIN_BUDGET_S. So every LLM wait ends by RUN_TIMEOUT_S - LLM_RESERVE_S (150 s), whatever the
+# number of re-plans, and the reserve is left for the stubs, validate and their tool calls.
+LLM_RESERVE_S = 30.0
+LLM_MIN_BUDGET_S = 10.0  # also: don't start a retry attempt with less than this left

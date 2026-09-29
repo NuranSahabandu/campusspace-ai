@@ -46,11 +46,15 @@ def venue_task(**changes: Any) -> str:
     return make_task("Find rooms.", brief)
 
 
+def run_worker(tools, name: str, task: str) -> dict:
+    return WorkerRunner(tools).run_worker(name, task).result
+
+
 # ---------- venue ----------
 
 
 def test_venue_ranks_by_capacity_then_code(tools) -> None:
-    result = WorkerRunner(tools).run_worker("venue_matching", venue_task())
+    result = run_worker(tools, "venue_matching", venue_task())
 
     assert [o["code"] for o in result["options"]] == ["A301", "N201"]
     assert result["options"][0]["reason"] == (
@@ -60,8 +64,8 @@ def test_venue_ranks_by_capacity_then_code(tools) -> None:
 
 
 def test_venue_drops_excluded_and_oversized_rooms(tools) -> None:
-    result = WorkerRunner(tools).run_worker(
-        "venue_matching", venue_task(excluded_room_ids=[1], max_capacity_ratio=1.2)
+    result = run_worker(
+        tools, "venue_matching", venue_task(excluded_room_ids=[1], max_capacity_ratio=1.2)
     )
 
     # N201 seats 60 > 1.2 × 45 = 54, and A301 is excluded.
@@ -72,7 +76,7 @@ def test_venue_drops_excluded_and_oversized_rooms(tools) -> None:
 def test_venue_reports_the_exact_unmet_constraint(api: FakeCampusApi, tools) -> None:
     api.busy = {"A301": [(START, END)], "N201": [(START, END)]}
 
-    result = WorkerRunner(tools).run_worker("venue_matching", venue_task())
+    result = run_worker(tools, "venue_matching", venue_task())
 
     assert result["unmet"] == (
         "No active room with at least 45 seats and computers, projector is free "
@@ -83,7 +87,7 @@ def test_venue_reports_the_exact_unmet_constraint(api: FakeCampusApi, tools) -> 
 def test_venue_turns_a_4xx_into_unmet(tools) -> None:
     task = venue_task(start="2026-10-18T10:00:00+05:30", end="2026-10-18T12:00:00+05:30")
 
-    result = WorkerRunner(tools).run_worker("venue_matching", task)
+    result = run_worker(tools, "venue_matching", task)
 
     assert result["unmet"].endswith("Start: The campus is closed on Sundays")
 
@@ -92,7 +96,7 @@ def test_venue_raises_when_the_tool_is_down(api: FakeCampusApi, tools) -> None:
     api.down.add("rooms/available")
 
     with pytest.raises(WorkerUnavailable, match="Tool search_available_rooms unavailable"):
-        WorkerRunner(tools).run_worker("venue_matching", venue_task())
+        run_worker(tools, "venue_matching", venue_task())
 
 
 def test_worker_sees_only_its_allow_listed_tools(tools, monkeypatch) -> None:
@@ -103,7 +107,7 @@ def test_worker_sees_only_its_allow_listed_tools(tools, monkeypatch) -> None:
         return {"options": [], "unmet": "x"}
 
     monkeypatch.setitem(WORKERS, "venue_matching", spy)
-    WorkerRunner(tools).run_worker("venue_matching", venue_task())
+    run_worker(tools, "venue_matching", venue_task())
 
     assert seen == ["search_available_rooms", "get_room_details"]
 
@@ -120,8 +124,8 @@ REQUESTED = [{"code": "MIC-WIRELESS", "quantity": 2}, {"code": "PROJ-PORTABLE", 
 
 
 def test_equipment_drops_a_line_the_room_covers(tools) -> None:
-    result = WorkerRunner(tools).run_worker(
-        "equipment_allocation", equipment_task(["computers", "projector"], REQUESTED)
+    result = run_worker(
+        tools, "equipment_allocation", equipment_task(["computers", "projector"], REQUESTED)
     )
 
     assert result["lines"] == [
@@ -131,9 +135,7 @@ def test_equipment_drops_a_line_the_room_covers(tools) -> None:
 
 
 def test_equipment_keeps_the_line_portable_when_the_room_lacks_the_feature(tools) -> None:
-    result = WorkerRunner(tools).run_worker(
-        "equipment_allocation", equipment_task(["computers"], REQUESTED)
-    )
+    result = run_worker(tools, "equipment_allocation", equipment_task(["computers"], REQUESTED))
 
     assert {"type_code": "PROJ-PORTABLE", "qty": 1, "source": "portable"} in result["lines"]
 
@@ -141,9 +143,7 @@ def test_equipment_keeps_the_line_portable_when_the_room_lacks_the_feature(tools
 def test_equipment_proposes_a_directional_substitute(api: FakeCampusApi, tools) -> None:
     api.reserved = {"MIC-WIRELESS": 6}  # 7 serviceable - 6 = 1 left
 
-    result = WorkerRunner(tools).run_worker(
-        "equipment_allocation", equipment_task(["projector"], REQUESTED[:1])
-    )
+    result = run_worker(tools, "equipment_allocation", equipment_task(["projector"], REQUESTED[:1]))
 
     assert result["lines"] == [{"type_code": "MIC-WIRED", "qty": 2, "source": "substitute"}]
     assert result["substitutions"][0]["requested_code"] == "MIC-WIRELESS"
@@ -152,9 +152,7 @@ def test_equipment_proposes_a_directional_substitute(api: FakeCampusApi, tools) 
 def test_equipment_reports_unmet_without_a_substitute(api: FakeCampusApi, tools) -> None:
     api.reserved = {"MIC-WIRELESS": 6, "MIC-WIRED": 7}
 
-    result = WorkerRunner(tools).run_worker(
-        "equipment_allocation", equipment_task([], REQUESTED[:1])
-    )
+    result = run_worker(tools, "equipment_allocation", equipment_task([], REQUESTED[:1]))
 
     assert result["lines"] == []
     assert result["unmet"] == [
@@ -188,7 +186,7 @@ def policy_task(**changes: Any) -> str:
 
 
 def test_policy_cost_prices_the_demo_quote_and_summarises(api: FakeCampusApi, tools) -> None:
-    result = WorkerRunner(tools).run_worker("policy_cost", policy_task())
+    result = run_worker(tools, "policy_cost", policy_task())
 
     assert result["quote"]["total"] == "5500.00"
     assert result["officer_summary"] == (
@@ -202,9 +200,7 @@ def test_policy_cost_prices_the_demo_quote_and_summarises(api: FakeCampusApi, to
 
 
 def test_policy_cost_without_a_room(tools) -> None:
-    result = WorkerRunner(tools).run_worker(
-        "policy_cost", policy_task(room_id=None, venue_unmet="No room free")
-    )
+    result = run_worker(tools, "policy_cost", policy_task(room_id=None, venue_unmet="No room free"))
 
     assert result["quote"] is None
     assert result["officer_summary"] == "No proposal: No room free."
@@ -224,7 +220,7 @@ def test_invalid_output_is_retried_once_then_fails(tools, monkeypatch) -> None:
     monkeypatch.setitem(WORKERS, "venue_matching", injected)
 
     with recording() as rec, pytest.raises(WorkerFailed, match="V01: venue_matching output"):
-        WorkerRunner(tools).run_worker("venue_matching", venue_task())
+        run_worker(tools, "venue_matching", venue_task())
     assert calls == 2
     assert rec.retries == 1
 
@@ -234,7 +230,7 @@ def test_a_retry_that_succeeds_returns_the_valid_output(tools, monkeypatch) -> N
     monkeypatch.setitem(WORKERS, "venue_matching", lambda task, allowed: outputs.pop(0))
 
     with recording() as rec:
-        result = WorkerRunner(tools).run_worker("venue_matching", venue_task())
+        result = run_worker(tools, "venue_matching", venue_task())
 
     assert result == {"options": [], "unmet": "none"}
     assert rec.retries == 1

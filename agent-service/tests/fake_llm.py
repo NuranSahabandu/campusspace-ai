@@ -1,15 +1,22 @@
-"""A fake planner model: the same with_structured_output(Plan, include_raw=True) surface as
-ChatGoogleGenerativeAI, with canned responses. Never a real call, never a key."""
+"""Fake models, never a real call and never a key: a planner model with the same
+with_structured_output(Plan, include_raw=True) surface as ChatGoogleGenerativeAI, and a tool-calling
+chat model that runs through the real create_agent (LLM workers)."""
 
 import threading
 from collections.abc import Callable
 from typing import Any
+from uuid import uuid4
 
-from langchain_core.messages import AIMessage
-from pydantic import ValidationError
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.utils.function_calling import convert_to_openai_tool
+from pydantic import ConfigDict, Field, ValidationError
 
 from app.schemas import Plan, PlanStep
+from app.workers.common import parse_brief
 from app.workers.supervisor import INSTRUCTIONS
+from tests.fake_api import BUILDINGS, ROOMS
 
 USAGE = {"input_tokens": 900, "output_tokens": 120, "total_tokens": 1020}
 REQUEST_42_EQUIPMENT = [
@@ -93,3 +100,126 @@ class FakePlannerModel:
             except ValidationError as exc:
                 return {"raw": raw, "parsed": None, "parsing_error": exc}
         return {"raw": raw, "parsed": response, "parsing_error": None}
+
+
+# ---------- a fake tool-calling chat model for create_agent workers ----------
+
+TURN_USAGE = {"input_tokens": 400, "output_tokens": 40, "total_tokens": 440}
+Turn = AIMessage | Sleep | BaseException | Callable[[list[BaseMessage]], Any]
+
+
+def _tool_name(tool: Any) -> str:
+    return convert_to_openai_tool(tool)["function"]["name"]
+
+
+class FakeToolModel(BaseChatModel):
+    """Scripted turns through the REAL create_agent: an AIMessage (tool calls or the VenueResult
+    call), a callable(messages) -> AIMessage, Sleep (a hung call) or an exception. Records every
+    message list it received and the tools bound to it. Never a network call, never a key."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    turns: list[Any] = Field(default_factory=list)
+    usage: dict[str, int] | None = TURN_USAGE
+    calls: list[list[BaseMessage]] = Field(default_factory=list)
+    bound: list[list[str]] = Field(default_factory=list)
+    tool_choice: list[Any] = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake-tool-model"
+
+    def bind_tools(self, tools: Any, *, tool_choice: Any = None, **_: Any) -> "FakeToolModel":
+        self.bound.append([_tool_name(t) for t in tools])
+        self.tool_choice.append(tool_choice)
+        return self
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        self.calls.append(list(messages))
+        if not self.turns:
+            raise AssertionError("FakeToolModel ran out of scripted turns")
+        turn = self.turns.pop(0)
+        if isinstance(turn, Sleep):
+            turn.release.wait(turn.seconds)
+            raise TimeoutError("released after the test")
+        if isinstance(turn, BaseException):
+            raise turn
+        message = turn(messages) if callable(turn) else turn
+        message = message.model_copy(
+            update={
+                "tool_calls": [
+                    c | {"id": c.get("id") or f"call_{uuid4().hex[:8]}"} for c in message.tool_calls
+                ],  # fmt: skip
+                "usage_metadata": self.usage,
+            }
+        )
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+    def human_texts(self) -> list[str]:
+        return [str(m.content) for call in self.calls for m in call if m.type == "human"]
+
+    def all_texts(self) -> list[str]:
+        return [str(m.content) for call in self.calls for m in call]
+
+
+def brief_of(messages: list[BaseMessage]) -> dict[str, Any]:
+    task = next(str(m.content) for m in messages if m.type == "human")
+    return parse_brief(task.split("\n\nYour previous answer was rejected")[0])
+
+
+def call(name: str, **args: Any) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": None}])
+
+
+def search(**override: Any) -> Callable[[list[BaseMessage]], AIMessage]:
+    """search_available_rooms with the brief's own values, unless overridden."""
+
+    def turn(messages: list[BaseMessage]) -> AIMessage:
+        brief = brief_of(messages)
+        args = {
+            "min_capacity": brief["attendees"],
+            "features": brief["required_features"],
+            "start_iso": brief["start"],
+            "end_iso": brief["end"],
+        }
+        return call("search_available_rooms", **(args | override))
+
+    return turn
+
+
+def details(room_id: int) -> AIMessage:
+    return call("get_room_details", room_id=room_id)
+
+
+def room_option(code: str, reason: str | None = None) -> dict[str, Any]:
+    rid, code, name, _, capacity, building, features = next(r for r in ROOMS if r[1] == code)
+    return {
+        "room_id": rid,
+        "code": code,
+        "name": name,
+        "capacity": capacity,
+        "building": BUILDINGS[building]["name"],
+        "features": features,
+        "reason": reason or f"{capacity} seats for the attendees; {BUILDINGS[building]['name']}",
+    }
+
+
+def answer(*options: str | dict[str, Any], unmet: str | None = None) -> AIMessage:
+    """The VenueResult structured-output call; room codes become options from the seed data."""
+    opts = [room_option(o) if isinstance(o, str) else o for o in options]
+    return call("VenueResult", options=opts, unmet=unmet)
+
+
+def prefer_new_building(messages: list[BaseMessage]) -> AIMessage:
+    """Picks N201 when the brief's soft_preferences mention the New Building, else A301."""
+    prefs = " ".join(brief_of(messages)["soft_preferences"]).lower()
+    if "new building" in prefs:
+        return answer(room_option("N201", "60 seats, computers and projector; New Building as "
+                                          "preferred"), "A301")  # fmt: skip
+    return answer("A301", "N201")
