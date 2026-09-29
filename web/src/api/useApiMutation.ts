@@ -14,6 +14,11 @@ interface Options<TVars, TData, TForm extends FieldValues> {
   conflictField?: Path<TForm>
   /** Toast text for a 409 that has no conflictField (for example a delete of a row still in use). */
   conflictMessage?: string
+  /**
+   * Handles a 409 itself instead of a toast, with the server's message exactly as sent (Problem Details title), for
+   * example a page-level alert that stays after its dialog closes.
+   */
+  onConflict?: (message: string) => void
   onSuccess?: (data: TData, vars: TVars) => void
 }
 
@@ -34,6 +39,7 @@ export function useApiMutation<TVars = void, TData = unknown, TForm extends Fiel
   form,
   conflictField,
   conflictMessage,
+  onConflict,
   onSuccess,
 }: Options<TVars, TData, TForm>) {
   const queryClient = useQueryClient()
@@ -56,6 +62,10 @@ export function useApiMutation<TVars = void, TData = unknown, TForm extends Fiel
       }
       if (problem.status === 409 && form && conflictField) {
         form.setError(conflictField, { type: 'server', message: problem.title })
+        return
+      }
+      if (problem.status === 409 && onConflict) {
+        onConflict(problem.title)
         return
       }
       if (problem.status === 409 && conflictMessage) {

@@ -319,6 +319,8 @@ export interface RequesterDto {
   id: number
   name: string
   email: string
+  /** Student or Lecturer. */
+  role: string
 }
 
 export interface ClubRefDto {
@@ -350,7 +352,7 @@ export interface RequestStatusHistoryDto {
 
 /**
  * A booking request with everything the requester entered and its history, oldest first. notes is untrusted
- * requester text. latestProposal is always null until the agent workflow exists (Phase 3).
+ * requester text. latestProposal summarises the live quote and its run (null while there is none).
  */
 export interface BookingRequestDetailDto {
   id: number
@@ -366,12 +368,183 @@ export interface BookingRequestDetailDto {
   requiredFeatures: RequiredFeatureDto[]
   equipment: RequestedEquipmentDto[]
   history: RequestStatusHistoryDto[]
-  latestProposal: unknown
+  latestProposal: LatestProposalDto | null
   cancelledAt: string | null
   isLateCancellation: boolean
   cancelledByOfficer: boolean
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * The live (Draft or Issued) quote, its agent run and the proposed room: the same summary for owner and officer. Room
+ * code and name come from Rooms (null only if the proposal couldn't be read).
+ */
+export interface LatestProposalDto {
+  runId: string
+  revisionNo: number
+  roomId: number | null
+  roomCode: string | null
+  roomName: string | null
+  quoteId: number
+  total: number
+  exempt: boolean
+  quoteStatus: string
+}
+
+/** A quote from .NET (never the agent's numbers). Exempt quotes keep every line priced, with discount = subtotal. */
+export interface QuotationDto {
+  id: number | null
+  requestId: number | null
+  status: string | null
+  lines: QuotationLineDto[]
+  subtotal: number
+  discount: number
+  discountReason: string | null
+  exempt: boolean
+  total: number
+  currency: string
+}
+
+export interface QuotationLineDto {
+  kind: string
+  description: string
+  qty: number
+  unitPrice: number
+  lineTotal: number
+}
+
+/** GET /api/approvals/queue: one request waiting for the officer. draftTotal is null when it has no live quote. */
+export interface ApprovalQueueItemDto {
+  requestId: number
+  purpose: string
+  requesterName: string
+  requesterRole: string
+  clubName: string | null
+  start: string
+  end: string
+  attendees: number
+  proposedRoomCode: string | null
+  draftTotal: number | null
+  exempt: boolean
+  revisionNo: number | null
+  pendingSince: string
+}
+
+/** GET /api/booking-requests/{id}/agent-runs (newest first). */
+export interface AgentRunSummaryDto {
+  id: string
+  revisionNo: number
+  status: string
+  failureReason: string | null
+  startedAt: string | null
+  completedAt: string | null
+  durationMs: number | null
+  model: string | null
+  createdAt: string
+}
+
+/** Any JSON value, as stored by the agent trace. Shown only as pretty-printed text. */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+
+/**
+ * GET /api/agent-runs/{id} (Facilities Officer). validation is grouped by attempt, latest first. policyChangedKeys are
+ * the policy keys whose current value differs from the run's snapshot (computed on the server).
+ */
+export interface AgentRunDetailDto {
+  id: string
+  requestId: number
+  revisionNo: number
+  status: string
+  model: string | null
+  nodes: string[]
+  officerSummary: string | null
+  failureReason: string | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+  durationMs: number | null
+  proposal: AgentProposalDto | null
+  steps: AgentStepDto[]
+  validation: ValidationAttemptDto[]
+  decisions: ApprovalDecisionDto[]
+  policySnapshot: JsonValue | null
+  policyChangedKeys: string[]
+}
+
+export interface AgentProposalDto {
+  chosen: VenueOptionDto
+  alternatives: VenueOptionDto[]
+  venueUnmet: string | null
+  equipmentLines: ProposalEquipmentLineDto[]
+  substitutions: SubstitutionDto[]
+  equipmentUnmet: string[]
+  policyFlags: string[]
+}
+
+/** reason is null for a chosen room the agent didn't list. */
+export interface VenueOptionDto {
+  roomId: number
+  code: string
+  name: string
+  capacity: number | null
+  building: string | null
+  features: string[]
+  reason: string | null
+}
+
+/** source: portable, room_builtin (qty 0, unpriced) or substitute. */
+export interface ProposalEquipmentLineDto {
+  typeCode: string
+  qty: number
+  source: string
+}
+
+export interface SubstitutionDto {
+  requestedCode: string
+  substituteCode: string
+  qty: number
+  reason: string
+}
+
+export interface AgentStepDto {
+  sequence: number
+  agentName: string
+  status: string
+  retries: number
+  error: string | null
+  durationMs: number
+  input: JsonValue | null
+  output: JsonValue | null
+  toolCalls: AgentToolCallDto[]
+}
+
+export interface AgentToolCallDto {
+  toolName: string
+  args: JsonValue
+  resultSummary: JsonValue | null
+  succeeded: boolean
+  error: string | null
+  durationMs: number
+}
+
+export interface ValidationAttemptDto {
+  attempt: number
+  rules: { rule: string; passed: boolean; message: string | null }[]
+}
+
+/** decision: Approve, Reject or Revise. comment is untrusted officer text (plain text only). */
+export interface ApprovalDecisionDto {
+  decision: string
+  officerName: string
+  comment: string | null
+  decidedAt: string
+}
+
+/** The 202 body of approve while the agent hasn't confirmed yet. */
+export interface ApprovalInProgressDto {
+  requestId: number
+  status: 'ApprovalInProgress'
 }
 
 /**

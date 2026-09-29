@@ -37,6 +37,12 @@ const BookingRequestDetailPage = lazy(() =>
   import('./features/requests/BookingRequestDetailPage').then((m) => ({ default: m.BookingRequestDetailPage })),
 )
 const PolicyPage = lazy(() => import('./features/policy/PolicyPage').then((m) => ({ default: m.PolicyPage })))
+const ApprovalQueuePage = lazy(() =>
+  import('./features/approvals/ApprovalQueuePage').then((m) => ({ default: m.ApprovalQueuePage })),
+)
+const ApprovalDetailPage = lazy(() =>
+  import('./features/approvals/ApprovalDetailPage').then((m) => ({ default: m.ApprovalDetailPage })),
+)
 
 /** A lazy page: the role guard for its path (ROUTE_ROLES) plus a Suspense boundary for the lazy chunk. */
 function GuardedPage({ path, children }: { path: AppPath; children: ReactNode }) {
@@ -70,7 +76,8 @@ export function AppRoutes() {
             <Route path="policy" element={<GuardedPage path="/policy"><PolicyPage /></GuardedPage>} />
             <Route path="requests" element={<GuardedPage path="/requests"><BookingRequestsPage /></GuardedPage>} />
             <Route path="requests/:id" element={<GuardedPage path="/requests/:id"><BookingRequestDetailPage /></GuardedPage>} />
-            <Route path="approvals" element={<ComingSoonPage title="Approvals" owner="D" />} />
+            <Route path="approvals" element={<GuardedPage path="/approvals"><ApprovalQueuePage /></GuardedPage>} />
+            <Route path="approvals/:requestId" element={<GuardedPage path="/approvals/:requestId"><ApprovalDetailPage /></GuardedPage>} />
             <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
             <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
             <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
