@@ -46,16 +46,19 @@ public sealed class BookingWindowRules(TimeProvider clock) : IBookingWindowRules
         return new BookingWindowErrors(startError, endError);
     }
 
-    public BookingWindowErrors CheckTiming(DateTimeOffset start, string requesterRole, PolicySnapshot policy)
+    public BookingWindowErrors CheckTiming(DateTimeOffset start, string requesterRole, PolicySnapshot policy) =>
+        CheckTiming(start, requesterRole, policy, clock.GetUtcNow());
+
+    public BookingWindowErrors CheckTiming(DateTimeOffset start, string requesterRole, PolicySnapshot policy, DateTimeOffset asOf)
     {
-        var now = clock.GetUtcNow();
+        var now = asOf;
         var maxDays = requesterRole == Roles.Lecturer ? policy.MaxAdvanceDaysLecturer : policy.MaxAdvanceDaysStudent;
 
         if (start <= now)
             return new BookingWindowErrors(FutureMessage, null);
         if (start < now.AddHours(policy.MinLeadTimeHours))
             return new BookingWindowErrors($"Must start at least {policy.MinLeadTimeHours} hours from now", null);
-        if (CampusTime.DateOf(start) > CampusTime.Today(clock).AddDays(maxDays))
+        if (CampusTime.DateOf(start) > CampusTime.DateOf(now).AddDays(maxDays))
             return new BookingWindowErrors($"Can be booked at most {maxDays} days ahead", null);
         return BookingWindowErrors.None;
     }

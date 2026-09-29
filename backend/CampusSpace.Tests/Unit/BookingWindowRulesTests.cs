@@ -150,6 +150,25 @@ public class BookingWindowRulesTests
     }
 
     [Fact]
+    public void Timing_as_of_an_earlier_instant_uses_that_instant_for_lead_time_and_advance_window()
+    {
+        // Submitted Monday 10:00, checked on Wednesday 10:00 (the rules' clock): Wednesday + 30 h is inside the lead time
+        // now, but it was 78 h ahead at submission.
+        var submitted = At(Wednesday.AddDays(-2), "10:00");
+        var start = At(Wednesday, "10:00").AddHours(30);
+        Rules.CheckTiming(start, Roles.Student, Policy()).Start.Should().Be("Must start at least 48 hours from now");
+        Rules.CheckTiming(start, Roles.Student, Policy(), asOf: submitted).IsValid.Should().BeTrue();
+
+        // The policy is still the one passed in: a longer lead time fails even as of the submission.
+        Rules.CheckTiming(start, Roles.Student, Policy(leadHours: 96), asOf: submitted).Start
+            .Should().Be("Must start at least 96 hours from now");
+
+        // The advance window counts from the submission's campus date: 60 days from Monday is two days before 60 from Wednesday.
+        Rules.CheckTiming(At(Wednesday.AddDays(59), "10:00"), Roles.Student, Policy(), asOf: submitted).Start
+            .Should().Be("Can be booked at most 60 days ahead");
+    }
+
+    [Fact]
     public void Check_reports_slot_rules_before_timing_and_one_message_per_field()
     {
         // Thursday 07:00 is before opening and also inside the lead time: the opening-hours message wins, as on mobile.
