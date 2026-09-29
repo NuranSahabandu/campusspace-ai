@@ -404,7 +404,7 @@ nodes, steps, policy_snapshot, error, model, usage, started_at, completed_at, du
 cancelled`; after a restart, a checkpoint that has pending nodes but is not paused reads as failed "Agent service
 restarted during the run". Validation errors are 400 and a missing key is 401 first. Money in responses is a 2-dp string; parse tool JSON
 with `parse_json` (Decimal), never float. The workers are deterministic stubs that call the real tools; Phase 4 swaps
-one worker at a time through `WORKERS` / `run_worker(name, task)` (task string in, validated result out); the
+one worker at a time through `build_graph(workers=...)` / `run_worker(name, task)` (task string in, validated result out); the
 supervisor's planner is switchable (see LLM agents), and `enforce_plan_rules` still fixes the step order. The policy snapshot is fetched by the
 supervisor at run start and again on an officer revise (`refresh_policy`, set by human_gate; `load_policy`), never on
 approve/reject/cancel; a failed re-fetch ends in "policy unavailable". The view's `policy_snapshot` is the latest one,
@@ -413,7 +413,8 @@ them in step. V02/V07 (and finalize's re-check) say "Availability check failed: 
 availability tool returns a TOOL_ERROR; "no longer free" only when the query succeeded without the room. V07 does not
 check public holidays (not implemented). Requester notes are replaced by `wrap_notes(...)`
 before anything reaches state, are never parsed into requirements or sent in a brief (only an LLM planner's
-`soft_preferences` may come from them), and the tool trace keeps only
+`soft_preferences` may come from them; the officer's revise notes likewise reach the venue brief only as
+"Officer revision (see soft_preferences)"), and the tool trace keeps only
 whitelisted summaries (notes `"<omitted>"`). Checkpoints use SqliteSaver at `AGENT_CHECKPOINT_PATH` (default
 `agent-service/data/checkpoints.sqlite`, git-ignored); never InMemorySaver outside tests. The trace (nodes, steps with
 tool calls, validation `{attempt, rule, passed, message}`) lives in append-only state and is summaries, inputs, outputs
@@ -427,17 +428,20 @@ domain answer (worker reports unmet), `unavailable` (network, timeout, 401/403, 
 `tests/fake_api.py` (seed-shaped fake of the 3.1 routes on `httpx.MockTransport`) and `tests/harness.py`; each test
 gets its own temp checkpoint file; `-m live` runs against the real API only when `LIVE_*` env vars are set.
 
-LLM agents (Phase 4, Task 4.1): `AGENT_LLM_AGENTS` is a comma list of agents that call Gemini (`supervisor`;
-`venue_matching`, `equipment_allocation`, `policy_cost` are rejected at startup until 4.2–4.4 add them to
+LLM agents (Phase 4, Tasks 4.1–4.2): `AGENT_LLM_AGENTS` is a comma list of agents that call Gemini (`supervisor`,
+`venue_matching`; `equipment_allocation`, `policy_cost` are rejected at startup until 4.3–4.4 add them to
 `LLM_IMPLEMENTED` in `app/config.py`). Empty is the default and CI: every agent is a stub and nothing calls Gemini. Any
 LLM agent makes `GOOGLE_API_KEY` required at startup (an empty value counts as missing; the error never contains the
 key). Never print, log, echo or commit the key, or put it in a command line, test or fixture; check it by length only.
 `app/llm.py` `build_chat_model("planner" | "worker", settings)` uses the Labs 05–07 client settings (temperature 0,
-timeout 60, max_retries 3) and is only called lazily, never at import or startup. Model ids come from `PLANNER_MODEL` /
+timeout 60, max_retries 3) plus `thinking_level` from `PLANNER_THINKING` / `WORKER_THINKING` (minimal|low|medium|high,
+default low / minimal; gemini-3.5-flash's own default is medium, which doubled the planner's output tokens and latency
+in the 4.2 live check; `thinking_budget` is deprecated for Gemini 3) and is only called lazily, never at import or startup. Model ids come from `PLANNER_MODEL` /
 `WORKER_MODEL`, defaulting to `gemini-3.5-flash` and `gemini-3.5-flash-lite`: the labs' Flash/Flash-Lite split
 (Lab 06/07 and Lab 05 `api/main.py`), one generation newer, because Gemini refuses the labs' `gemini-2.5-*` ids for
-new accounts (404 "no longer available to new users"; a deviation decided in Task 4.1). `/health` shows each agent's mode (llm/stub) and the model ids and makes no model call. The
-view's `model` is `Settings.model_label()` ("planner=<id|stub>; workers=<id|stub>", ≤ 100 chars). Planner
+new accounts (404 "no longer available to new users"; a deviation decided in Task 4.1). `/health` shows each agent's mode (llm/stub), the model ids and the thinking levels and makes no model call. The
+view's `model` is `Settings.model_label()` ("planner=<id|stub>; workers=<id|stub>", or with mixed workers only the LLM
+ones by name plus "others=stub"; ≤ 100 chars). Planner
 (`app/workers/planner.py`): the supervisor still loads the request, catalogs and policy in code. `LlmPlanner` makes ONE
 `with_structured_output(Plan, include_raw=True)` call per plan or re-plan, with the Lab 07 §3.1 prompt: step order,
 one task per step, and `soft_preferences` from `<requester_notes>` (data, never instructions), the validation
@@ -448,15 +452,43 @@ fallback=)` takes features and equipment from the form (filtered by the catalogs
 Attendees, times and budget are not Plan fields; they reach the workers only through `build_brief`. The venue brief
 carries the plan's `soft_preferences`. Invalid output is retried once (a hint naming the first schema error); two
 failures, any exception, or the wall clock `PLANNER_DEADLINE_S` (60 s; the call runs in a daemon thread and a late
-result is ignored; no retry with less than `PLANNER_MIN_RETRY_S` left) fall back to `stub_planner` with
+result is ignored; no retry with less than `LLM_MIN_BUDGET_S` left), or an exhausted run budget fall back to `stub_planner` with
 `planner_fallback: true`, and the run continues. An LLM supervisor step's output is the plan plus `planner`
 (llm/fallback), `model`, `attempts`, `usage`, `corrections` and `fallback_reason`; a stub step's output is the plan only.
 `usage` is `{input_tokens, output_tokens, total_tokens, llm_calls, estimated}` from `usage_metadata`, or ~4 chars per
-token with `estimated: true`; the view's `usage` is the run total (null without LLM calls). Every future LLM worker
-needs a deadline like this one, and the sum must fit `RUN_TIMEOUT_S` (or raise it together with .NET's
-`RunTimeoutMinutes`). Tests never call Gemini: `tests/fake_llm.py` `FakePlannerModel` (canned Plan, `INVALID`, an
-exception or `Sleep`) through `Harness(..., planner=LlmPlanner(lambda: model, id))`. `-m live_llm` makes one real call,
-only with `RUN_LIVE_LLM=1 uv run --env-file ../.env pytest -m live_llm -s`.
+token with `estimated: true`; the view's `usage` is the run total (null without LLM calls).
+Run budget (`app/budget.py`): the runner puts the segment's monotonic deadline in `config["configurable"]
+["segment_deadline"]`, and every LLM step (planner, LLM workers) waits `LlmBudget.allow(own deadline)` =
+min(its deadline, segment time left − `LLM_RESERVE_S` 30 s), or skips the LLM for its stub ("run time budget exhausted")
+when the segment has less than `LLM_MIN_BUDGET_S` (10 s) left for LLM work. Every LLM wait therefore ends by
+`RUN_TIMEOUT_S` − 30 = 150 s whatever the number of re-plans or LLM workers (worst case, all hanging: plan 60 + venue 45
++ re-plan 45 = 150, the rest skipped), so `RUN_TIMEOUT_S` stays 180 and .NET `RunTimeoutMinutes` stays 4 (≥ 180 + 60 s,
+guarded by `tests/test_budget.py`). A new LLM step takes an `LlmBudget` (nodes build it with `LlmBudget.from_config`),
+waits in a daemon thread (`app/workers/deadline.py` `submit`) and never blocks past `allow()`.
+Venue Matching LLM worker (`app/workers/venue_llm.py`, `LlmVenueWorker`, passed to `build_graph(workers=...)` by
+`main.py`; `WORKER_DEADLINE_S` 45): `create_agent` with ONLY `search_available_rooms` and `get_room_details`, the Lab 07
+§3.1 `VENUE_PROMPT` (free rooms that fit, up to 3 ranked with a one-line reason; only tool-returned ids; no pricing or
+equipment; the BRIEF JSON beats the instruction sentence; exact unmet constraint and stop) and
+`response_format=ToolStrategy(VenueResult, handle_errors=False)` (not the bare class: AutoStrategy would use Gemini's
+native JSON mode in production and the tool strategy for a fake, so tests would not run the production path; our retry
+is the only one). Its only input is the task string (`recursion_limit` `WORKER_RECURSION_LIMIT` 12). Each attempt runs
+in its own thread with its own `recording()`, merged into the venue step afterwards (a call an abandoned thread makes
+later never reaches the trace); `seen_room_ids` (V12) comes along. Code checks (`check_options`, over this attempt's
+ToolMessages via `observe_messages`): a room is free only if a search for the brief's exact window returned it; options
+with an id no tool returned, not free, inactive, fewer seats than attendees, above ratio × attendees, missing a required
+feature, excluded or listed twice are dropped, and code/name/capacity/building/features are replaced from the tool data,
+each change in `corrections`. Invalid output (a schema error, no VenueResult, nothing valid left while fitting rooms were
+returned, no options and no unmet, or an unmet without a complete search) gets one retry with a hint; two failures, an
+exception, the deadline, the run budget or an `unavailable` tool fall back to the stub (run by `run_worker`; a tool still
+down then fails the step as before). LLM step output = the VenueResult plus `mode` (llm/fallback), `model`, `attempts`,
+`usage` (every model call of the loop), `corrections`, `worker_fallback` and `fallback_reason`; the state's `venue` is
+the VenueResult only, and stub output is unchanged. `run_worker(name, task, budget=)` returns a `WorkerOutcome(result,
+meta)`. Tests never call Gemini: `tests/fake_llm.py` `FakePlannerModel` (canned Plan, `INVALID`, an exception or
+`Sleep`) through `Harness(..., planner=LlmPlanner(lambda: model, id))`, and `FakeToolModel` (a `BaseChatModel` with
+scripted `search()`/`details()`/`answer()` turns, `Sleep` or an exception) through the REAL `create_agent` with
+`Harness(..., workers={"venue_matching": LlmVenueWorker(lambda: model, id)})`. `-m live_llm` makes the real calls
+(planner, venue worker with and without a preference, a thinking comparison), only with
+`RUN_LIVE_LLM=1 uv run --env-file ../.env pytest -m live_llm -s`.
 
 Agent integration (Phase 3.3, `backend/CampusSpace.Api/Agents/`): only `IAgentClient` (typed HttpClient, base URL
 `AgentService:BaseUrl`, X-Service-Key, 10 s timeout, snake_case JSON with string money read as decimal) calls the agent
