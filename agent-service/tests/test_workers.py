@@ -290,8 +290,9 @@ def test_enforce_plan_rules_orders_steps_and_follows_the_form() -> None:
         ],
     )
     form = {"required_features": ["projector"], "equipment": [{"code": "CLICKER", "quantity": 1}]}
+    catalogs = {"features": ["projector"], "equipment": ["CLICKER"]}
 
-    plan = enforce_plan_rules(llm_plan, form)
+    plan, corrections = enforce_plan_rules(llm_plan, form, catalogs)
 
     assert [s.agent for s in plan.steps] == [
         "venue_matching",
@@ -300,13 +301,16 @@ def test_enforce_plan_rules_orders_steps_and_follows_the_form() -> None:
     ]
     assert plan.required_features == ["projector"]
     assert plan.equipment[0].type_code == "CLICKER"
+    assert "feature teleporter: not on the request form, dropped" in corrections
+    assert plan.planner_fallback is False
 
 
 def test_enforce_plan_rules_skips_equipment_when_none_was_requested() -> None:
     form = {"required_features": [], "equipment": []}
-    plan = stub_planner(form, {"features": [], "equipment": []}, None)
+    catalogs = {"features": [], "equipment": []}
+    plan = stub_planner(form, catalogs, None)
 
-    assert [s.agent for s in enforce_plan_rules(plan, form).steps] == [
+    assert [s.agent for s in enforce_plan_rules(plan, form, catalogs)[0].steps] == [
         "venue_matching",
         "policy_cost",
     ]

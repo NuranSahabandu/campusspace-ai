@@ -16,6 +16,7 @@ from langgraph.types import Command
 
 from app.graph import TERMINAL, initial_state, iso
 from app.limits import GRAPH_RECURSION_LIMIT, RUN_TIMEOUT_S
+from app.llm import add_usage
 from app.schemas import WorkflowView
 
 log = logging.getLogger("agent_service.runner")
@@ -151,6 +152,7 @@ class WorkflowRunner:
             policy_snapshot=values.get("policy"),
             error=error if status in ("failed",) else None,
             model=self._model,
+            usage=run_usage(values.get("steps", [])),
             started_at=values.get("started_at"),
             completed_at=values.get("completed_at") if status in TERMINAL else None,
             duration_ms=_duration_ms(values) if status in TERMINAL else None,
@@ -163,3 +165,11 @@ def _duration_ms(values: dict[str, Any]) -> int | None:
         return None
     delta = datetime.fromisoformat(end) - datetime.fromisoformat(start)
     return max(int(delta.total_seconds() * 1000), 0)
+
+
+def run_usage(steps: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The run total of every step's "usage" (plan §10.11: tokens per run for the report)."""
+    total = None
+    for step in steps:
+        total = add_usage(total, (step.get("output") or {}).get("usage"))
+    return total

@@ -12,11 +12,13 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.checkpoint import checkpointer_ok, open_checkpointer
-from app.config import Settings, get_settings
+from app.config import LLM_AGENTS, Settings, get_settings
 from app.graph import build_graph
+from app.llm import build_chat_model
 from app.routers import workflows
 from app.runner import WorkflowRunner
 from app.tools import ToolClient, build_tools
+from app.workers.planner import LlmPlanner
 
 SERVICE_NAME = "agent-service"
 
@@ -39,10 +41,14 @@ def create_app(
         s = settings or get_settings()
         client = ToolClient(s.api_base_url, s.agent_tools_key, transport=transport)
         saver = open_checkpointer(s.checkpoint_path)
-        graph = build_graph(saver, build_tools(client), clock)
+        planner = None
+        if s.agent_mode("supervisor") == "llm":
+            # Lazy: the Gemini client is built on the first plan, never at startup.
+            planner = LlmPlanner(lambda: build_chat_model("planner", s), s.planner_model)
+        graph = build_graph(saver, build_tools(client), clock, planner)
         app.state.settings = s
         app.state.checkpointer = saver
-        app.state.runner = WorkflowRunner(graph, clock, s.agent_model_label)
+        app.state.runner = WorkflowRunner(graph, clock, s.model_label())
         try:
             yield
         finally:
@@ -66,7 +72,7 @@ def create_app(
             "service": SERVICE_NAME,
             "version": __version__,
             "python": platform.python_version(),
-            "agents": s.agent_model_label,
+            "agents": {name: s.agent_mode(name) for name in LLM_AGENTS},
             "models": {"planner": s.planner_model, "worker": s.worker_model},
             "checkpointer": "sqlite",
             "checkpointer_ok": checkpointer_ok(request.app.state.checkpointer),

@@ -69,6 +69,8 @@ def test_start_returns_202_and_the_run_pauses(client: TestClient) -> None:
     assert view["status"] == "awaiting_approval"
     assert view["nodes"] == HAPPY_NODES
     assert view["proposal"]["quote"]["total"] == "5500.00"
+    assert view["model"] == "planner=stub; workers=stub"
+    assert view["usage"] is None  # stub agents make no LLM calls
     assert len(view["validation"]) == 12 and all(v["passed"] for v in view["validation"])
     assert set(view) == {
         "thread_id",
@@ -84,6 +86,7 @@ def test_start_returns_202_and_the_run_pauses(client: TestClient) -> None:
         "policy_snapshot",
         "error",
         "model",
+        "usage",
         "started_at",
         "completed_at",
         "duration_ms",
