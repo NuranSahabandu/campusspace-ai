@@ -24,7 +24,7 @@ def test_health_returns_200_without_key(client: TestClient) -> None:
             "equipment_allocation": "stub",
             "policy_cost": "stub",
         },
-        "models": {"planner": "gemini-2.5-flash", "worker": "gemini-2.5-flash-lite"},
+        "models": {"planner": "gemini-3.5-flash", "worker": "gemini-3.5-flash-lite"},
         "checkpointer": "sqlite",
         "checkpointer_ok": True,
         "google_api_key_configured": False,
@@ -73,5 +73,5 @@ def test_health_shows_the_llm_supervisor_without_building_a_model(
         "equipment_allocation": "stub",
         "policy_cost": "stub",
     }
-    assert body["models"] == {"planner": "gemini-2.5-flash", "worker": "gemini-2.5-flash-lite"}
+    assert body["models"] == {"planner": "gemini-3.5-flash", "worker": "gemini-3.5-flash-lite"}
     assert "fake-google-key-value-123" not in json.dumps(body)

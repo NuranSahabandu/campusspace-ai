@@ -147,7 +147,7 @@ def test_llm_supervisor_with_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.llm_agents == frozenset({"supervisor"})
     assert settings.agent_mode("supervisor") == "llm"
     assert settings.agent_mode("venue_matching") == "stub"
-    assert settings.model_label() == "planner=gemini-2.5-flash; workers=stub"
+    assert settings.model_label() == "planner=gemini-3.5-flash; workers=stub"
     assert FAKE_GOOGLE_KEY not in repr(settings)
 
 
@@ -170,8 +170,8 @@ def test_model_ids_default_to_the_labs_and_can_be_overridden(
 ) -> None:
     defaults = make_settings(monkeypatch, PLANNER_MODEL="", WORKER_MODEL="")
     assert (defaults.planner_model, defaults.worker_model) == (
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
     )
 
     custom = make_settings(

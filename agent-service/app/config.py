@@ -24,9 +24,11 @@ WORKER_AGENTS = LLM_AGENTS[1:]
 LLM_IMPLEMENTED = frozenset({"supervisor"})
 _PENDING_TASK = {"venue_matching": "4.2", "equipment_allocation": "4.3", "policy_cost": "4.4"}
 
-# Labs 06/07 api/main.py CHAT_MODEL (planning) and Lab 05 api/main.py CHAT_MODEL (workers).
-DEFAULT_PLANNER_MODEL = "gemini-2.5-flash"
-DEFAULT_WORKER_MODEL = "gemini-2.5-flash-lite"
+# Same Flash (planning) / Flash-Lite (workers) split as the labs (Labs 06/07 and Lab 05 api/main.py
+# CHAT_MODEL), one generation newer: Gemini answers 404 "no longer available to new users" for the
+# labs' gemini-2.5-flash and gemini-2.5-flash-lite (checked 2026-09-29).
+DEFAULT_PLANNER_MODEL = "gemini-3.5-flash"
+DEFAULT_WORKER_MODEL = "gemini-3.5-flash-lite"
 MAX_MODEL_LABEL = 100  # AgentRuns.Model column
 
 
@@ -135,7 +137,7 @@ class Settings(BaseSettings):
 
     def model_label(self) -> str:
         """AgentRuns.Model: the model id each agent really uses, for example
-        "planner=gemini-2.5-flash; workers=stub"."""
+        "planner=gemini-3.5-flash; workers=stub"."""
         planner = self.planner_model if self.agent_mode("supervisor") == "llm" else "stub"
         workers = {w: self.worker_model if self.agent_mode(w) == "llm" else "stub"
                    for w in WORKER_AGENTS}  # fmt: skip

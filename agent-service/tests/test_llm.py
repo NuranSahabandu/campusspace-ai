@@ -17,8 +17,8 @@ def test_build_chat_model_uses_the_lab_settings(monkeypatch: pytest.MonkeyPatch)
     planner = build_chat_model("planner", settings)
     worker = build_chat_model("worker", settings)
 
-    assert planner.model == "gemini-2.5-flash"
-    assert worker.model == "gemini-2.5-flash-lite"
+    assert planner.model == "gemini-3.5-flash"
+    assert worker.model == "gemini-3.5-flash-lite"
     assert (planner.temperature, planner.timeout, planner.max_retries) == (0, 60, 3)
     assert FAKE_GOOGLE_KEY not in repr(planner)
 

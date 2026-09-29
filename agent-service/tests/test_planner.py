@@ -15,8 +15,8 @@ from tests.fake_api import END, START, FakeCampusApi
 from tests.fake_llm import INVALID, USAGE, FakePlannerModel, Sleep, plan
 from tests.harness import HAPPY_NODES, Harness, latest
 
-MODEL = "gemini-2.5-flash"
-LABEL = "planner=gemini-2.5-flash; workers=stub"
+MODEL = "gemini-3.5-flash"
+LABEL = "planner=gemini-3.5-flash; workers=stub"
 
 
 @pytest.fixture
