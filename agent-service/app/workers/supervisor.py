@@ -1,6 +1,8 @@
 """Supervisor / Request Planner (Component C): plan once, follow in code (plan §10.5).
 
-load_context() reads the policy snapshot (once per run, addendum A.2), the request and the catalogs.
+load_context() reads the policy snapshot (addendum A.2), the request and the catalogs at run start.
+An officer revise takes a fresh snapshot with load_policy() (see CLAUDE.md); approve, reject and
+cancel never re-fetch it.
 Raw requester notes are replaced by their wrapped form here, before anything reaches state.
 stub_planner() is the Phase 4 seam: an LLM planner replaces it, and enforce_plan_rules() still
 applies to whatever it returns. build_brief() writes each worker's task: ids and values only.
@@ -42,12 +44,16 @@ class SupervisorError(Exception):
     """The run cannot start: the reason is shown to the officer and the requester."""
 
 
-def load_context(tools: Mapping[str, BaseTool], request_id: int) -> dict[str, Any]:
+def load_policy(tools: Mapping[str, BaseTool]) -> dict[str, Any]:
     obs = tools["get_policy"].invoke({})
     if is_error(obs):
         # Addendum A.2: no fallback to defaults, which would be hard-coded policy.
         raise SupervisorError(f"policy unavailable ({error_text(obs)})")
-    policy = json.loads(obs)  # no money inside; the ratio is compared as Decimal(str(x))
+    return json.loads(obs)  # no money inside; the ratio is compared as Decimal(str(x))
+
+
+def load_context(tools: Mapping[str, BaseTool], request_id: int) -> dict[str, Any]:
+    policy = load_policy(tools)
 
     obs = tools["get_request_context"].invoke({"request_id": request_id})
     if is_unavailable(obs):

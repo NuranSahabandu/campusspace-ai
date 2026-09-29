@@ -19,6 +19,14 @@ public interface IBookingWindowRules
     /// </summary>
     BookingWindowErrors CheckTiming(DateTimeOffset start, string requesterRole, PolicySnapshot policy);
 
+    /// <summary>
+    /// V06 as it stood at <paramref name="asOf"/> instead of now. The approval re-check passes the request's submission time,
+    /// with the CURRENT policy: a requester who submitted on time doesn't fail because the officer was slow, but a policy
+    /// change still applies (addendum A.1/A.3 as interpreted in CLAUDE.md). The approval checks "start is still in the
+    /// future" against the current clock itself.
+    /// </summary>
+    BookingWindowErrors CheckTiming(DateTimeOffset start, string requesterRole, PolicySnapshot policy, DateTimeOffset asOf);
+
     /// <summary>V05 then V06, keeping the first message per field (so lead time is reported last, as on mobile).</summary>
     BookingWindowErrors Check(DateTimeOffset start, DateTimeOffset end, string requesterRole, PolicySnapshot policy);
 }

@@ -8,8 +8,8 @@ using Microsoft.Extensions.Options;
 namespace CampusSpace.Api.Agents;
 
 /// <summary>
-/// Tracks agent runs in the background (§7.1 rule 6): every AgentService:PollSeconds it processes the Queued and
-/// Running runs, oldest first, each in its own scope, so one bad run is logged and never stops the others. Off when
+/// Tracks agent runs in the background (§7.1 rule 6): every AgentService:PollSeconds it processes the Queued, Running
+/// and Resuming runs, oldest first, each in its own scope, so one bad run is logged and never stops the others. Off when
 /// AgentService:PollerEnabled is false (Testing); tests call <see cref="PollOnceAsync"/> directly.
 /// </summary>
 public sealed class AgentRunPoller(
@@ -58,7 +58,8 @@ public sealed class AgentRunPoller(
         await using (var scope = scopes.CreateAsyncScope())
         {
             ids = await scope.ServiceProvider.GetRequiredService<AppDbContext>().AgentRuns.AsNoTracking()
-                .Where(r => r.Status == AgentRunStatuses.Queued || r.Status == AgentRunStatuses.Running)
+                .Where(r => r.Status == AgentRunStatuses.Queued || r.Status == AgentRunStatuses.Running
+                    || r.Status == AgentRunStatuses.Resuming)
                 .OrderBy(r => r.CreatedAt).ThenBy(r => r.Id)
                 .Select(r => r.Id)
                 .Take(BatchSize)

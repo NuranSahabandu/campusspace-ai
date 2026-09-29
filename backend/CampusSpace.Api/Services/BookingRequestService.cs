@@ -35,6 +35,7 @@ public sealed class BookingRequestService(
     public const string BookingStartedMessage = "The booking has already started";
     public const string EquipmentOnLoanMessage = "Equipment is still on loan; check it in first";
     public const string BookingNotCancellableMessage = "The booking is no longer cancellable";
+    public const string ApprovalInProgressMessage = "Approval in progress";
     public const string NotRestartableMessage = "Only a failed or not-yet-started request can be (re)started";
 
     /// <summary>The 409 message for a status the state machine can't move to Cancelled.</summary>
@@ -234,10 +235,11 @@ public sealed class BookingRequestService(
         {
             // The paused run ends with the request. Its row is locked after the request row (the order every writer
             // uses); the Draft quote is voided below with the others.
-            var run = await db.AgentRuns
-                .FromSql($"""SELECT * FROM "AgentRuns" WHERE "RequestId" = {id} AND "Status" = {AgentRunStatuses.AwaitingApproval} FOR UPDATE""")
-                .SingleOrDefaultAsync(ct);
-            if (run is not null)
+            var run = await RowLocks.LiveAgentRunAsync(db, id, ct);
+            // An approval has been decided and is being finished (booking, quote): it can't be undone halfway.
+            if (run?.Status == AgentRunStatuses.Resuming)
+                throw new ConflictException(ApprovalInProgressMessage);
+            if (run is { Status: AgentRunStatuses.AwaitingApproval })
             {
                 run.Status = AgentRunStatuses.Cancelled;
                 run.CompletedAt = run.StartedAt is { } started && now < started ? started : now;

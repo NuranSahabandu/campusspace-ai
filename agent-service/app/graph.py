@@ -39,6 +39,7 @@ from app.workers.supervisor import (
     build_brief,
     enforce_plan_rules,
     load_context,
+    load_policy,
     stub_planner,
 )
 
@@ -68,7 +69,8 @@ class State(TypedDict, total=False):
     error: str | None
     task_: str  # the brief for the next worker (Lab 07 task_)
     # Additions
-    policy: dict | None  # snapshot taken once at run start (addendum A.2)
+    policy: dict | None  # snapshot taken at run start (addendum A.2) and again on a revise
+    refresh_policy: bool  # set by a revise: the supervisor re-fetches the snapshot
     catalogs: dict | None
     revision: int  # RevisionNo: 1, then +1 per officer revise
     excluded_room_ids: list[int]
@@ -100,6 +102,7 @@ def initial_state(request_id: int, started_at: datetime) -> dict[str, Any]:
         "replan_needed": False,
         "replan_reason": None,
         "delegations": 0,
+        "refresh_policy": False,
         "revision": 1,
         "excluded_room_ids": [],
         "validation_attempt": 0,
@@ -168,6 +171,9 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
                 try:
                     if state.get("request") is None:
                         loaded = load_context(tools, state["request_id"])
+                    elif state.get("refresh_policy"):
+                        # A revise is judged against the policy in force now.
+                        loaded = {"policy": load_policy(tools)}
                     request = loaded.get("request") or state["request"]
                     catalogs = loaded.get("catalogs") or state["catalogs"]
                     plan = enforce_plan_rules(
@@ -194,6 +200,7 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
                 "requirements": {k: v for k, v in plan_dump.items() if k != "steps"},
                 "step_index": 0,
                 "replan_needed": False,
+                "refresh_policy": False,
                 "venue": None,
                 "equipment": None,
                 "quote": None,
@@ -339,6 +346,7 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
             update |= {
                 "revision_notes": notes,
                 "replan_needed": True,
+                "refresh_policy": True,
                 "replan_reason": f"Officer revision: {notes}",
                 "revision": state.get("revision", 1) + 1,
                 # A revision is a new proposal with a fresh budget (decision 1 in the plan).

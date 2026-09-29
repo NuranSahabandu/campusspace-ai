@@ -20,4 +20,13 @@ public static class RowLocks
         db.AgentRuns
             .FromSql($"""SELECT * FROM "AgentRuns" WHERE "Id" = {runId} FOR UPDATE""")
             .SingleOrDefaultAsync(ct);
+
+    /// <summary>The request's live run (AgentRunStatuses.Active; at most one, IX_AgentRuns_RequestId_Live), locked.</summary>
+    public static Task<AgentRun?> LiveAgentRunAsync(AppDbContext db, long requestId, CancellationToken ct)
+    {
+        var active = AgentRunStatuses.Active.ToArray();
+        return db.AgentRuns
+            .FromSql($"""SELECT * FROM "AgentRuns" WHERE "RequestId" = {requestId} AND "Status" = ANY({active}) FOR UPDATE""")
+            .SingleOrDefaultAsync(ct);
+    }
 }
