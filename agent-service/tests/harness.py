@@ -1,7 +1,8 @@
 """Builds the real graph (SqliteSaver on a temp file) over the fake .NET API, with a fixed clock."""
 
 import json
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -40,17 +41,19 @@ class Harness:
         monotonic: Callable[[], float] | None = None,
         planner: Any = None,
         model_label: str = "stub",
+        workers: Mapping[str, Any] | None = None,
     ) -> None:
         self.api = api or FakeCampusApi()
         self.client = ToolClient(
             "http://api.test", SecretStr(TEST_TOOLS_KEY), transport=self.api.transport()
         )
         self.saver = open_checkpointer(db)
-        self.graph = build_graph(self.saver, build_tools(self.client), lambda: now, planner)
-        kwargs: dict[str, Any] = {"run_timeout_s": run_timeout_s}
-        if monotonic:
-            kwargs["monotonic"] = monotonic
-        self.runner = WorkflowRunner(self.graph, lambda: now, model_label, **kwargs)
+        monotonic = monotonic or time.monotonic  # one clock for the runner and the LLM budget
+        self.graph = build_graph(self.saver, build_tools(self.client), lambda: now, planner,
+                                 workers, monotonic)  # fmt: skip
+        self.runner = WorkflowRunner(
+            self.graph, lambda: now, model_label, run_timeout_s=run_timeout_s, monotonic=monotonic
+        )
 
     def start(self, request_id: int = 42) -> str:
         thread_id = str(uuid4())

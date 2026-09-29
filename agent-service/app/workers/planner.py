@@ -2,8 +2,9 @@
 
 The supervisor node loads the data in code (request context, catalogs, policy) and hands it to a
 planner. LlmPlanner makes ONE with_structured_output(Plan) call per plan or re-plan ("least
-autonomy"); invalid output is retried once, and two failures, an exception or the wall-clock
-deadline fall back to stub_planner with planner_fallback: true (plan §10.5, §10.10). Whatever a
+autonomy"); invalid output is retried once, and two failures, an exception, the wall-clock
+deadline or an exhausted run budget (app/budget.py) fall back to stub_planner with
+planner_fallback: true (plan §10.5, §10.10). Whatever a
 planner returns, enforce_plan_rules() then fixes the shape and the form-authoritative facts.
 """
 
@@ -12,24 +13,25 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Mapping
-from concurrent.futures import Future, wait
+from concurrent.futures import wait
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pydantic import ValidationError
 
+from app.budget import BUDGET_EXHAUSTED, UNLIMITED, LlmBudget
 from app.guardrails import wrap_officer_notes
-from app.limits import MAX_PLANNER_ATTEMPTS, PLANNER_DEADLINE_S, PLANNER_MIN_RETRY_S
+from app.limits import LLM_MIN_BUDGET_S, MAX_PLANNER_ATTEMPTS, PLANNER_DEADLINE_S
 from app.llm import add_usage, usage_from
 from app.schemas import Plan
 from app.tools import current_recorder
+from app.workers.deadline import describe_error, submit
 from app.workers.supervisor import INSTRUCTIONS, ORDER, stub_planner
 
 log = logging.getLogger("agent_service.planner")
 
 PlannerMode = Literal["stub", "llm", "fallback"]
 OFFICER_REVISION = "Officer revision: "
-MAX_REASON_CHARS = 200
 
 # Lab 07 §3.1: what it does, what it must not do, what to do when it cannot proceed.
 PLANNER_PROMPT = """You are the SUPERVISOR / REQUEST PLANNER for CampusSpace campus room bookings.
@@ -98,7 +100,7 @@ class StubPlanner:
 
     mode: PlannerMode = "stub"
 
-    def plan(self, inp: PlannerInput) -> PlanOutcome:
+    def plan(self, inp: PlannerInput, budget: LlmBudget = UNLIMITED) -> PlanOutcome:
         return PlanOutcome(stub_planner(inp.request, inp.catalogs, inp.replan_reason), "stub")
 
 
@@ -140,34 +142,13 @@ def build_planner_message(inp: PlannerInput) -> str:
     return "\n\n".join(parts)
 
 
-def _submit(fn: Callable[[], Any]) -> Future:
-    """Run fn in a daemon thread. A call that outlives the deadline is abandoned: its result is
-    never read, and a daemon thread never blocks shutdown."""
-    future: Future = Future()
-
-    def run() -> None:
-        if not future.set_running_or_notify_cancel():
-            return
-        try:
-            future.set_result(fn())
-        except BaseException as exc:  # noqa: BLE001 - handed to the waiting caller
-            future.set_exception(exc)
-
-    threading.Thread(target=run, name="planner-llm", daemon=True).start()
-    return future
-
-
-def _describe_error(exc: BaseException) -> str:
-    return f"{type(exc).__name__}: {str(exc)[:MAX_REASON_CHARS]}".rstrip(": ")
-
-
 def _describe_parse(error: Any) -> str:
     if isinstance(error, ValidationError):
         first = error.errors()[0]
         return f"{'.'.join(str(p) for p in first['loc'])}: {first['msg']}"
     if error is None:
         return "no structured output"
-    return _describe_error(error) if isinstance(error, BaseException) else str(error)[:200]
+    return describe_error(error) if isinstance(error, BaseException) else str(error)[:200]
 
 
 def _text_of(message: Any) -> str:
@@ -186,7 +167,7 @@ class LlmPlanner:
         model_id: str,
         *,
         deadline_s: float = PLANNER_DEADLINE_S,
-        min_retry_s: float = PLANNER_MIN_RETRY_S,
+        min_retry_s: float = LLM_MIN_BUDGET_S,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._factory = model_factory
@@ -203,7 +184,7 @@ class LlmPlanner:
                 self._runnable = self._factory().with_structured_output(Plan, include_raw=True)
             return self._runnable
 
-    def plan(self, inp: PlannerInput) -> PlanOutcome:
+    def plan(self, inp: PlannerInput, budget: LlmBudget = UNLIMITED) -> PlanOutcome:
         started = self._monotonic()
         messages: list[tuple[str, str]] = [
             ("system", PLANNER_PROMPT),
@@ -224,14 +205,17 @@ class LlmPlanner:
                 reason,
             )
 
+        limit = budget.allow(self._deadline_s)
+        if limit is None:
+            return fallback(BUDGET_EXHAUSTED)
         try:
             runnable = self._structured()
         except Exception as exc:  # noqa: BLE001 - a broken client must not stop the run
-            return fallback(f"Planner LLM error: {_describe_error(exc)}")
+            return fallback(f"Planner LLM error: {describe_error(exc)}")
 
         problem = "no structured output"
         for attempt in range(MAX_PLANNER_ATTEMPTS):
-            remaining = self._deadline_s - (self._monotonic() - started)
+            remaining = limit - (self._monotonic() - started)
             if attempt > 0:
                 if remaining < self._min_retry_s:
                     return fallback(f"Planner output invalid; no time left to retry ({problem})")
@@ -240,16 +224,14 @@ class LlmPlanner:
                     recorder.retries += 1
             attempts += 1
             sent = list(messages)
-            future = _submit(lambda sent=sent: runnable.invoke(sent))
-            # wait() instead of result(timeout=): a TimeoutError raised BY the call (3.11:
-            # concurrent.futures.TimeoutError is the builtin) must not read as the deadline.
+            future = submit(lambda sent=sent: runnable.invoke(sent), "planner-llm")
             wait([future], timeout=max(remaining, 0.0))
             if not future.done():
-                return fallback(f"Planner LLM timed out after {self._deadline_s:g} s")
+                return fallback(f"Planner LLM timed out after {limit:g} s")
             try:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - timeouts, 429s after retries, API errors
-                return fallback(f"Planner LLM error: {_describe_error(exc)}")
+                return fallback(f"Planner LLM error: {describe_error(exc)}")
 
             raw, parsed, error = (
                 result.get("raw"),

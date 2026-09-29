@@ -15,12 +15,14 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, TypedDict
 
 from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 
+from app.budget import LlmBudget
 from app.limits import MAX_DELEGATIONS, MAX_REPLANS
 from app.schemas import RuleResult, StepTrace
 from app.tools import ToolRecorder, recording
@@ -159,14 +161,18 @@ def build_graph(
     tools: Mapping[str, BaseTool],
     clock: Clock,
     planner: Any = None,
+    workers: Mapping[str, Any] | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ):
-    """planner: StubPlanner (default) or LlmPlanner (AGENT_LLM_AGENTS includes supervisor)."""
-    runner = WorkerRunner(tools)
+    """planner: StubPlanner (default) or LlmPlanner (AGENT_LLM_AGENTS includes supervisor).
+    workers: LLM workers that replace stubs by name (for example LlmVenueWorker). monotonic must be
+    the runner's clock, because the LLM budget compares it with the segment deadline."""
+    runner = WorkerRunner(tools, workers)
     planner = planner or StubPlanner()
 
     # ---------- supervisor (hub) ----------
 
-    def supervisor(state: State) -> dict[str, Any]:
+    def supervisor(state: State, config: RunnableConfig) -> dict[str, Any]:
         update: dict[str, Any] = {"nodes": ["supervisor"]}
         if state.get("error"):
             return update
@@ -184,7 +190,10 @@ def build_graph(
                         loaded = {"policy": load_policy(tools)}
                     request = loaded.get("request") or state["request"]
                     catalogs = loaded.get("catalogs") or state["catalogs"]
-                    outcome = planner.plan(PlannerInput.from_state(state, request, catalogs))
+                    outcome = planner.plan(
+                        PlannerInput.from_state(state, request, catalogs),
+                        LlmBudget.from_config(config, monotonic),
+                    )
                     plan, corrections = enforce_plan_rules(
                         outcome.plan, request, catalogs, fallback=outcome.mode == "fallback"
                     )
@@ -250,19 +259,24 @@ def build_graph(
     # ---------- workers (spokes) ----------
 
     def make_worker_node(name: str, state_key: str):
-        def node(state: State) -> dict[str, Any]:
+        def node(state: State, config: RunnableConfig) -> dict[str, Any]:
             task = state["task_"]  # the brief, never the message history
             started = time.perf_counter()
-            output, error = None, None
+            result, output, error = None, None, None
             with recording() as rec:
                 try:
-                    output = runner.run_worker(name, task)
+                    outcome = runner.run_worker(
+                        name, task, budget=LlmBudget.from_config(config, monotonic)
+                    )
+                    result = outcome.result
+                    # Stub output stays exactly the result; an LLM worker adds mode, usage, ...
+                    output = result | outcome.meta if outcome.meta else result
                 except (WorkerUnavailable, WorkerFailed) as exc:
                     error = str(exc)
             step = _step(state, name, started, rec, input={"task": task}, output=output,
                          error=error)  # fmt: skip
             update: dict[str, Any] = {
-                state_key: output,
+                state_key: result,
                 "step_index": advance_step(state["step_index"]),
                 "delegations": state["delegations"] + 1,
                 "steps": [step],
