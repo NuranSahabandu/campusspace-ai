@@ -395,7 +395,7 @@ public sealed class BookingRequestService(
         var row = await db.BookingRequests.AsNoTracking().Where(r => r.Id == id).Select(r => new
         {
             r.Id, r.Purpose, r.Status, r.Attendees, r.RequestedStart, r.RequestedEnd, r.BudgetLkr, r.Notes,
-            Requester = new RequesterDto(r.RequesterId, r.Requester.FullName, r.Requester.Email),
+            Requester = new RequesterDto(r.RequesterId, r.Requester.FullName, r.Requester.Email, r.Requester.Role),
             Club = r.Club != null ? new ClubRefDto(r.Club.Id, r.Club.Name) : null,
             r.RequiredFeatures,
             Equipment = r.EquipmentLines.OrderBy(l => l.Type.Code)

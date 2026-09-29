@@ -41,7 +41,8 @@ public record BookingRequestSummaryDto(
     decimal BudgetLkr, string? ClubName, string RequesterName, string RequesterEmail,
     DateTime? CancelledAt, bool IsLateCancellation, bool CancelledByOfficer, DateTime CreatedAt);
 
-public record RequesterDto(long Id, string Name, string Email);
+/// <summary>Role is Student or Lecturer (the officer's approval screen shows it; pricing depends on it).</summary>
+public record RequesterDto(long Id, string Name, string Email, string Role);
 
 public record ClubRefDto(long Id, string Name);
 

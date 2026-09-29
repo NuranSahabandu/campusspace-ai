@@ -254,7 +254,9 @@ public class ApprovalReadEndpointsTests(PostgresFixture fixture)
 
         (await GetJsonAsync(officer, $"{Url}/{processing}")).GetProperty("latestProposal").ValueKind.Should().Be(JsonValueKind.Null);
 
-        var latest = (await GetJsonAsync(officer, $"{Url}/{requestId}")).GetProperty("latestProposal");
+        var detail = await GetJsonAsync(officer, $"{Url}/{requestId}");
+        detail.GetProperty("requester").GetProperty("role").GetString().Should().Be(Roles.Student);
+        var latest = detail.GetProperty("latestProposal");
         var a301 = await env.QueryAsync(db => db.Rooms.Where(r => r.Code == "A301").Select(r => new { r.Id, r.Name }).SingleAsync());
         latest.GetProperty("runId").GetGuid().Should().Be(runId);
         latest.GetProperty("revisionNo").GetInt32().Should().Be(1);
