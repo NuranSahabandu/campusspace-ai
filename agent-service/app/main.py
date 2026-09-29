@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.checkpoint import checkpointer_ok, open_checkpointer
-from app.config import Settings, get_settings
+from app.config import LLM_AGENTS, Settings, get_settings
 from app.graph import build_graph
 from app.routers import workflows
 from app.runner import WorkflowRunner
@@ -42,7 +42,7 @@ def create_app(
         graph = build_graph(saver, build_tools(client), clock)
         app.state.settings = s
         app.state.checkpointer = saver
-        app.state.runner = WorkflowRunner(graph, clock, s.agent_model_label)
+        app.state.runner = WorkflowRunner(graph, clock, s.model_label())
         try:
             yield
         finally:
@@ -66,7 +66,7 @@ def create_app(
             "service": SERVICE_NAME,
             "version": __version__,
             "python": platform.python_version(),
-            "agents": s.agent_model_label,
+            "agents": {name: s.agent_mode(name) for name in LLM_AGENTS},
             "models": {"planner": s.planner_model, "worker": s.worker_model},
             "checkpointer": "sqlite",
             "checkpointer_ok": checkpointer_ok(request.app.state.checkpointer),

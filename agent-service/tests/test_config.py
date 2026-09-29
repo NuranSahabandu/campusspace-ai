@@ -105,3 +105,92 @@ def test_empty_checkpoint_path_means_the_default(monkeypatch: pytest.MonkeyPatch
     assert make_settings(monkeypatch, AGENT_CHECKPOINT_PATH="").checkpoint_path == (
         DEFAULT_CHECKPOINT_PATH
     )
+
+
+# ---------- AGENT_LLM_AGENTS and the Gemini key ----------
+
+FAKE_GOOGLE_KEY = "fake-google-key-" + "g" * 24
+
+
+def test_no_llm_agents_needs_no_google_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(monkeypatch, AGENT_LLM_AGENTS="")
+
+    assert settings.llm_agents == frozenset()
+    assert settings.google_api_key is None
+    assert settings.agent_mode("supervisor") == "stub"
+    assert settings.model_label() == "planner=stub; workers=stub"
+
+
+def test_empty_google_key_counts_as_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert make_settings(monkeypatch, GOOGLE_API_KEY="  ").google_api_key is None
+
+
+def test_llm_supervisor_without_a_key_fails_startup(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError, match="GOOGLE_API_KEY is required") as exc:
+        make_settings(monkeypatch, AGENT_LLM_AGENTS="supervisor")
+    assert "supervisor" in str(exc.value)
+
+
+def test_llm_errors_never_echo_the_google_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError) as exc:
+        make_settings(
+            monkeypatch, AGENT_LLM_AGENTS="supervisor,nope", GOOGLE_API_KEY=FAKE_GOOGLE_KEY
+        )
+    assert FAKE_GOOGLE_KEY not in str(exc.value)
+
+
+def test_llm_supervisor_with_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(
+        monkeypatch, AGENT_LLM_AGENTS=" Supervisor , ", GOOGLE_API_KEY=FAKE_GOOGLE_KEY
+    )
+
+    assert settings.llm_agents == frozenset({"supervisor"})
+    assert settings.agent_mode("supervisor") == "llm"
+    assert settings.agent_mode("venue_matching") == "stub"
+    assert settings.model_label() == "planner=gemini-2.5-flash; workers=stub"
+    assert FAKE_GOOGLE_KEY not in repr(settings)
+
+
+def test_unknown_llm_agent_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError, match="unknown agent\\(s\\) planner; allowed: supervisor"):
+        make_settings(monkeypatch, AGENT_LLM_AGENTS="planner", GOOGLE_API_KEY=FAKE_GOOGLE_KEY)
+
+
+def test_worker_without_an_llm_implementation_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValidationError, match="venue_matching has no LLM implementation yet"):
+        make_settings(
+            monkeypatch, AGENT_LLM_AGENTS="venue_matching", GOOGLE_API_KEY=FAKE_GOOGLE_KEY
+        )
+
+
+def test_model_ids_default_to_the_labs_and_can_be_overridden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults = make_settings(monkeypatch, PLANNER_MODEL="", WORKER_MODEL="")
+    assert (defaults.planner_model, defaults.worker_model) == (
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    )
+
+    custom = make_settings(
+        monkeypatch,
+        PLANNER_MODEL="gemini-x",
+        WORKER_MODEL="gemini-y",
+        AGENT_LLM_AGENTS="supervisor",
+        GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
+    )
+    assert (custom.planner_model, custom.worker_model) == ("gemini-x", "gemini-y")
+    assert custom.model_label() == "planner=gemini-x; workers=stub"
+
+
+def test_model_label_fits_the_dotnet_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(
+        monkeypatch,
+        PLANNER_MODEL="p" * 120,
+        AGENT_LLM_AGENTS="supervisor",
+        GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
+    )
+
+    assert len(settings.model_label()) == 100

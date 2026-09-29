@@ -17,7 +17,12 @@ def test_health_returns_200_without_key(client: TestClient) -> None:
         "service": "agent-service",
         "version": __version__,
         "python": platform.python_version(),
-        "agents": "stub",
+        "agents": {
+            "supervisor": "stub",
+            "venue_matching": "stub",
+            "equipment_allocation": "stub",
+            "policy_cost": "stub",
+        },
         "models": {"planner": "gemini-2.5-flash", "worker": "gemini-2.5-flash-lite"},
         "checkpointer": "sqlite",
         "checkpointer_ok": True,
@@ -45,3 +50,4 @@ def test_startup_creates_the_checkpoint_file(monkeypatch: pytest.MonkeyPatch, tm
     with TestClient(create_app(settings)) as c:
         assert c.get("/health").json()["checkpointer_ok"] is True
     assert path.exists()
+

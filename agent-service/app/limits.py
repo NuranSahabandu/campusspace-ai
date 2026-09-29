@@ -19,3 +19,14 @@ TOOL_TIMEOUT_S = 10.0
 RUN_TIMEOUT_S = 180.0  # per run segment (start, or one resume); the officer's wait does not count
 
 MAX_NOTES_LENGTH = 1000  # officer revise notes
+
+# LLM client (Labs 05–07 get_llm(): temperature 0, timeout 60, max_retries 3 for free-tier 429s).
+LLM_TIMEOUT_S = 60
+LLM_MAX_RETRIES = 3
+
+# Supervisor planner: invalid structured output is retried once (plan §10.10), then the stub plan.
+MAX_PLANNER_ATTEMPTS = 2
+# Wall clock for the whole planner step. The client alone can take ~4 min (60 s × (1 + 3 retries)),
+# which would outlast RUN_TIMEOUT_S and .NET's watchdog, so the planner waits at most this long.
+PLANNER_DEADLINE_S = 60.0
+PLANNER_MIN_RETRY_S = 10.0  # don't start the retry attempt with less than this left
