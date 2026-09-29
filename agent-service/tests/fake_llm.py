@@ -223,3 +223,48 @@ def prefer_new_building(messages: list[BaseMessage]) -> AIMessage:
         return answer(room_option("N201", "60 seats, computers and projector; New Building as "
                                           "preferred"), "A301")  # fmt: skip
     return answer("A301", "N201")
+
+
+# ---------- equipment worker turns ----------
+
+
+def check_stock(*codes: str, **override: Any) -> Callable[[list[BaseMessage]], AIMessage]:
+    """check_equipment_availability for these codes (default: every requested code) and the
+    brief's window, unless overridden."""
+
+    def turn(messages: list[BaseMessage]) -> AIMessage:
+        brief = brief_of(messages)
+        args = {
+            "codes": list(codes) or [line["code"] for line in brief["lines"]],
+            "start_iso": brief["start"],
+            "end_iso": brief["end"],
+        }
+        return call("check_equipment_availability", **(args | override))
+
+    return turn
+
+
+def substitutes(code: str) -> AIMessage:
+    return call("get_substitutes", code=code)
+
+
+def allocation(
+    *lines: tuple[str, int, str],
+    substitutions: list[dict[str, Any]] | None = None,
+    unmet: list[str] | None = None,
+) -> AIMessage:
+    """The EquipmentResult structured-output call; lines are (type_code, qty, source)."""
+    return call(
+        "EquipmentResult",
+        lines=[{"type_code": c, "qty": q, "source": s} for c, q, s in lines],
+        substitutions=substitutions or [],
+        unmet=unmet or [],
+    )
+
+
+DEMO_ALLOCATION = (("MIC-WIRELESS", 2, "portable"), ("PROJ-PORTABLE", 0, "room_builtin"))
+
+
+def mic_substitute(reason: str = "only 1 MIC-WIRELESS available; 8 MIC-WIRED available") -> dict:
+    return {"requested_code": "MIC-WIRELESS", "substitute_code": "MIC-WIRED", "qty": 2,
+            "reason": reason}  # fmt: skip

@@ -59,7 +59,7 @@ def test_health_shows_the_llm_supervisor_without_building_a_model(
 ) -> None:
     settings = make_settings(
         monkeypatch,
-        AGENT_LLM_AGENTS="supervisor,venue_matching",
+        AGENT_LLM_AGENTS="supervisor,venue_matching,equipment_allocation",
         GOOGLE_API_KEY="fake-google-key-value-123",
     )
 
@@ -73,7 +73,7 @@ def test_health_shows_the_llm_supervisor_without_building_a_model(
     assert body["agents"] == {
         "supervisor": "llm",
         "venue_matching": "llm",
-        "equipment_allocation": "stub",
+        "equipment_allocation": "llm",
         "policy_cost": "stub",
     }
     assert body["models"] == {"planner": "gemini-3.5-flash", "worker": "gemini-3.5-flash-lite"}

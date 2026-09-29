@@ -7,6 +7,7 @@ A task is one instruction line plus "BRIEF: {json}" with ids and values, never w
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -31,6 +32,14 @@ def make_task(instruction: str, brief: Mapping[str, Any]) -> str:
 
 def parse_brief(task: str) -> dict[str, Any]:
     return json.loads(task.split(BRIEF_MARKER, 1)[1], parse_float=Decimal)
+
+
+def same_instant(a: Any, b: Any) -> bool:
+    """Two ISO instants are the same moment ("Z" and "+05:30" forms compare equal)."""
+    try:
+        return datetime.fromisoformat(str(a)) == datetime.fromisoformat(str(b))
+    except ValueError:
+        return False
 
 
 def observe(

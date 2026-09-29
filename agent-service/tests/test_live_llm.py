@@ -1,5 +1,5 @@
-"""Optional: real Gemini calls (planner, venue worker, thinking comparison). Skipped unless
-both are in the environment:
+"""Optional: real Gemini calls (planner, venue and equipment workers, thinking comparison).
+Skipped unless both are in the environment:
 
     RUN_LIVE_LLM=1 uv run --env-file ../.env pytest -m live_llm -s
 
@@ -16,8 +16,9 @@ from pydantic import SecretStr
 from app.budget import UNLIMITED
 from app.config import DEFAULT_PLANNER_MODEL, DEFAULT_WORKER_MODEL
 from app.llm import build_chat_model
-from app.schemas import Plan, VenueResult
+from app.schemas import EquipmentResult, Plan, VenueResult
 from app.tools import ToolClient, build_tools, recording
+from app.workers.equipment_llm import LlmEquipmentWorker
 from app.workers.planner import LlmPlanner, PlannerInput
 from app.workers.supervisor import INSTRUCTIONS, build_brief, enforce_plan_rules, load_context
 from app.workers.venue_llm import LlmVenueWorker
@@ -119,6 +120,62 @@ def test_real_venue_worker_on_the_demo_request(
     VenueResult.model_validate(result)
     assert result["options"][0]["code"] in expected
     assert rec.calls and rec.calls[0].tool_name == "search_available_rooms"
+
+
+def equipment_task(api: FakeCampusApi) -> str:
+    """The equipment brief for request 42 in A301 (computers, projector), as the graph builds it."""
+    _, ctx = venue_task(api, [])
+    a301 = api.room("A301")
+    chosen = {
+        "room_id": a301["id"],
+        "code": "A301",
+        "features": [f["code"] for f in a301["features"]],
+    }
+    step = {"agent": "equipment_allocation", "task": INSTRUCTIONS["equipment_allocation"]}
+    return build_brief(step, ctx | {"venue": {"options": [chosen], "unmet": None}})
+
+
+@pytest.mark.parametrize("short", [False, True], ids=["demo", "mics-short"])
+def test_real_equipment_worker_on_the_demo_lines(
+    monkeypatch: pytest.MonkeyPatch, short: bool
+) -> None:
+    settings = make_settings(
+        monkeypatch,
+        AGENT_LLM_AGENTS="equipment_allocation",
+        GOOGLE_API_KEY=_KEY,
+        WORKER_MODEL=_WORKER,
+    )
+    api = FakeCampusApi()
+    if short:
+        api.reserved = {"MIC-WIRELESS": 6}  # 1 of 7 left; MIC-WIRED has 8
+    task = equipment_task(api)
+    client = ToolClient("http://api.test", SecretStr(TEST_TOOLS_KEY), transport=api.transport())
+    worker = LlmEquipmentWorker(lambda: build_chat_model("worker", settings), settings.worker_model)
+    try:
+        started = time.perf_counter()
+        with recording() as rec:
+            attempt = worker.run(task, build_tools(client), UNLIMITED)
+        latency = time.perf_counter() - started
+    finally:
+        client.close()
+
+    meta, result = attempt.meta, attempt.result
+    print(
+        f"\nshort={short} model={meta['model']} thinking={settings.worker_thinking} "
+        f"mode={meta['mode']} attempts={meta['attempts']} latency={latency:.2f}s\n"
+        f"usage={meta['usage']}\ncorrections={meta['corrections']}\n"
+        f"tools={[c.tool_name for c in rec.calls]}\nresult={result}"
+    )
+    assert meta["mode"] == "llm", meta.get("fallback_reason")
+    EquipmentResult.model_validate(result)
+    assert {"type_code": "PROJ-PORTABLE", "qty": 0, "source": "room_builtin"} in result["lines"]
+    if not short:
+        assert {"type_code": "MIC-WIRELESS", "qty": 2, "source": "portable"} in result["lines"]
+    else:
+        wired = {"type_code": "MIC-WIRED", "qty": 2, "source": "substitute"}
+        assert wired in result["lines"] or any(
+            u.startswith("MIC-WIRELESS") for u in result["unmet"]
+        )
 
 
 def test_planner_thinking_low_uses_fewer_output_tokens_than_medium(

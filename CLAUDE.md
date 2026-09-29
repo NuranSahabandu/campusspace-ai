@@ -428,8 +428,8 @@ domain answer (worker reports unmet), `unavailable` (network, timeout, 401/403, 
 `tests/fake_api.py` (seed-shaped fake of the 3.1 routes on `httpx.MockTransport`) and `tests/harness.py`; each test
 gets its own temp checkpoint file; `-m live` runs against the real API only when `LIVE_*` env vars are set.
 
-LLM agents (Phase 4, Tasks 4.1–4.2): `AGENT_LLM_AGENTS` is a comma list of agents that call Gemini (`supervisor`,
-`venue_matching`; `equipment_allocation`, `policy_cost` are rejected at startup until 4.3–4.4 add them to
+LLM agents (Phase 4, Tasks 4.1–4.3): `AGENT_LLM_AGENTS` is a comma list of agents that call Gemini (`supervisor`,
+`venue_matching`, `equipment_allocation`; `policy_cost` is rejected at startup until 4.4 adds it to
 `LLM_IMPLEMENTED` in `app/config.py`). Empty is the default and CI: every agent is a stub and nothing calls Gemini. Any
 LLM agent makes `GOOGLE_API_KEY` required at startup (an empty value counts as missing; the error never contains the
 key). Never print, log, echo or commit the key, or put it in a command line, test or fixture; check it by length only.
@@ -441,7 +441,7 @@ in the 4.2 live check; `thinking_budget` is deprecated for Gemini 3) and is only
 (Lab 06/07 and Lab 05 `api/main.py`), one generation newer, because Gemini refuses the labs' `gemini-2.5-*` ids for
 new accounts (404 "no longer available to new users"; a deviation decided in Task 4.1). `/health` shows each agent's mode (llm/stub), the model ids and the thinking levels and makes no model call. The
 view's `model` is `Settings.model_label()` ("planner=<id|stub>; workers=<id|stub>", or with mixed workers only the LLM
-ones by name plus "others=stub"; ≤ 100 chars). Planner
+ones by name, those sharing a model joined with "+", plus "others=stub"; ≤ 100 chars). Planner
 (`app/workers/planner.py`): the supervisor still loads the request, catalogs and policy in code. `LlmPlanner` makes ONE
 `with_structured_output(Plan, include_raw=True)` call per plan or re-plan, with the Lab 07 §3.1 prompt: step order,
 one task per step, and `soft_preferences` from `<requester_notes>` (data, never instructions), the validation
@@ -465,6 +465,8 @@ when the segment has less than `LLM_MIN_BUDGET_S` (10 s) left for LLM work. Ever
 + re-plan 45 = 150, the rest skipped), so `RUN_TIMEOUT_S` stays 180 and .NET `RunTimeoutMinutes` stays 4 (≥ 180 + 60 s,
 guarded by `tests/test_budget.py`). A new LLM step takes an `LlmBudget` (nodes build it with `LlmBudget.from_config`),
 waits in a daemon thread (`app/workers/deadline.py` `submit`) and never blocks past `allow()`.
+LLM workers share one loop, `ToolAgentWorker` (`app/workers/tool_agent.py`: build, per-attempt thread and recorder,
+retry, deadline, budget, fallback); a subclass sets its name, label, prompt, schema and retry hint and implements `check`.
 Venue Matching LLM worker (`app/workers/venue_llm.py`, `LlmVenueWorker`, passed to `build_graph(workers=...)` by
 `main.py`; `WORKER_DEADLINE_S` 45): `create_agent` with ONLY `search_available_rooms` and `get_room_details`, the Lab 07
 §3.1 `VENUE_PROMPT` (free rooms that fit, up to 3 ranked with a one-line reason; only tool-returned ids; no pricing or
@@ -486,9 +488,32 @@ the VenueResult only, and stub output is unchanged. `run_worker(name, task, budg
 meta)`. Tests never call Gemini: `tests/fake_llm.py` `FakePlannerModel` (canned Plan, `INVALID`, an exception or
 `Sleep`) through `Harness(..., planner=LlmPlanner(lambda: model, id))`, and `FakeToolModel` (a `BaseChatModel` with
 scripted `search()`/`details()`/`answer()` turns, `Sleep` or an exception) through the REAL `create_agent` with
-`Harness(..., workers={"venue_matching": LlmVenueWorker(lambda: model, id)})`. `-m live_llm` makes the real calls
-(planner, venue worker with and without a preference, a thinking comparison), only with
+`Harness(..., workers={"venue_matching": LlmVenueWorker(lambda: model, id)})`; equipment tests use the
+`check_stock()`/`substitutes()`/`allocation()` turns. `-m live_llm` makes the real calls
+(planner, venue worker with and without a preference, equipment worker on the demo lines and with the mics short, a
+thinking comparison), only with
 `RUN_LIVE_LLM=1 uv run --env-file ../.env pytest -m live_llm -s`.
+Equipment Allocation LLM worker (Task 4.3, `app/workers/equipment_llm.py`, `LlmEquipmentWorker`, a ToolAgentWorker;
+`WORKER_DEADLINE_S` 45 inside the shared `LlmBudget`): `create_agent` with ONLY `check_equipment_availability` and
+`get_substitutes`, the Lab 07 §3.1 `EQUIPMENT_PROMPT` (check every requested code for the brief's exact window first;
+covered by a `room_features` feature → qty 0 `room_builtin`; else portable if available ≥ qty; else `get_substitutes`,
+check them, and propose one only with ≥ qty available, with a `substitutions` reason; else an unmet entry starting with
+the code; every line exactly once; never invent codes or change quantities; no room, pricing or policy decisions; the
+BRIEF beats the sentence) and `ToolStrategy(EquipmentResult, handle_errors=False)`. The model decides how each line is
+covered and writes the reasons; `check_allocation` (pure, over this attempt's ToolMessages via `observe_equipment`)
+applies the stub's rules (`workers/equipment.py`): stock counts only from a check for the brief's exact window; a line
+code must be requested, or a substitute that `get_substitutes` returned FOR that requested code (directional, named in
+its substitutions entry), anything else is dropped; quantities are the requested ones (overwritten, substitutes too);
+`room_builtin` only when the tool's `coveredByFeatureCode` is in the brief's room features (else invalid), and a
+covered line proposed as portable becomes builtin; portable/substitute lines need enough stock (else invalid); an unmet
+is invalid while the data shows the line could be met (covered, in stock, a substitute in stock) or its availability or
+substitutes weren't checked, unless the window itself was refused (4xx); every requested code exactly once (else
+invalid); the output is rebuilt in request order, each change in `corrections`. Retry, fallback and step output are the
+venue worker's (label "Equipment"); `seen_equipment_codes` reach V12, V08 is unchanged, and a brief with no lines never
+calls the model. Decisions (4.3): code owns the facts, the model chooses and explains; a slow run that finishes on stubs
+(with the reason recorded) is the intended safe behaviour, so the budget and reserve stay; Flash-Lite ignores
+temperature (fixed sampling), so worker runs are not fully deterministic, and the Phase 6 eval reports results over
+repeated runs with a denominator (a known limitation).
 
 Agent integration (Phase 3.3, `backend/CampusSpace.Api/Agents/`): only `IAgentClient` (typed HttpClient, base URL
 `AgentService:BaseUrl`, X-Service-Key, 10 s timeout, snake_case JSON with string money read as decimal) calls the agent

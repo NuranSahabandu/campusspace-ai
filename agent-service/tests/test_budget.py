@@ -96,10 +96,19 @@ def test_worst_case_planner_and_venue_all_hanging_fit_the_run_timeout() -> None:
 
 
 def test_worst_case_holds_with_every_worker_on_an_llm() -> None:
-    # Tasks 4.3/4.4 add two more LLM workers; the bound does not depend on how many there are.
+    # Task 4.4 adds a third LLM worker; the bound does not depend on how many there are.
     elapsed, _ = simulate([PLANNER_DEADLINE_S] + [WORKER_DEADLINE_S] * 3)
 
     assert elapsed <= RUN_TIMEOUT_S - LLM_RESERVE_S
+
+
+def test_worst_case_with_the_planner_venue_and_equipment_llms_all_hanging() -> None:
+    elapsed, allowed = simulate([PLANNER_DEADLINE_S, WORKER_DEADLINE_S, WORKER_DEADLINE_S])
+
+    # 60 (plan) + 45 (venue) + 45 (equipment) = 150 = RUN_TIMEOUT_S - reserve; every LLM step of
+    # the two re-plans is skipped (stubs), so the run still ends inside RUN_TIMEOUT_S.
+    assert allowed == [60.0, 45.0, 45.0, None, None, None, None, None, None]
+    assert elapsed == RUN_TIMEOUT_S - LLM_RESERVE_S
 
 
 def dotnet_run_timeout_minutes() -> list[int]:

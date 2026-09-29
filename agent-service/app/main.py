@@ -18,6 +18,7 @@ from app.llm import build_chat_model
 from app.routers import workflows
 from app.runner import WorkflowRunner
 from app.tools import ToolClient, build_tools
+from app.workers.equipment_llm import LlmEquipmentWorker
 from app.workers.planner import LlmPlanner
 from app.workers.venue_llm import LlmVenueWorker
 
@@ -47,10 +48,12 @@ def create_app(
             # Lazy: the Gemini client is built on the first plan, never at startup.
             planner = LlmPlanner(lambda: build_chat_model("planner", s), s.planner_model)
         workers = {}
-        if s.agent_mode("venue_matching") == "llm":
-            workers["venue_matching"] = LlmVenueWorker(
-                lambda: build_chat_model("worker", s), s.worker_model
-            )
+        for name, worker_class in (
+            ("venue_matching", LlmVenueWorker),
+            ("equipment_allocation", LlmEquipmentWorker),
+        ):
+            if s.agent_mode(name) == "llm":  # lazy: each builds its client on first use
+                workers[name] = worker_class(lambda: build_chat_model("worker", s), s.worker_model)
         graph = build_graph(saver, build_tools(client), clock, planner, workers)
         app.state.settings = s
         app.state.checkpointer = saver

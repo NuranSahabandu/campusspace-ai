@@ -160,11 +160,11 @@ def test_worker_without_an_llm_implementation_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with pytest.raises(
-        ValidationError, match=r"equipment_allocation has no LLM implementation yet \(Task 4.3\)"
+        ValidationError, match=r"policy_cost has no LLM implementation yet \(Task 4.4\)"
     ):
         make_settings(
             monkeypatch,
-            AGENT_LLM_AGENTS="venue_matching,equipment_allocation",
+            AGENT_LLM_AGENTS="venue_matching,equipment_allocation,policy_cost",
             GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
         )
 
@@ -179,6 +179,25 @@ def test_llm_venue_matching_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.model_label() == (
         "planner=gemini-3.5-flash; venue_matching=gemini-3.5-flash-lite, others=stub"
     )
+
+
+def test_llm_equipment_allocation_is_accepted_and_the_label_fits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(
+        monkeypatch,
+        AGENT_LLM_AGENTS="supervisor,venue_matching,equipment_allocation",
+        GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
+    )
+
+    assert settings.agent_mode("equipment_allocation") == "llm"
+    assert settings.agent_mode("policy_cost") == "stub"
+    label = settings.model_label()
+    assert label == (
+        "planner=gemini-3.5-flash; "
+        "venue_matching+equipment_allocation=gemini-3.5-flash-lite, others=stub"
+    )
+    assert len(label) <= 100
 
 
 def test_thinking_levels_default_low_and_can_be_overridden(
