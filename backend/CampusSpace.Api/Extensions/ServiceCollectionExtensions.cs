@@ -70,6 +70,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAgentToolService, AgentToolService>();
         services.AddScoped<IApprovalFinalizer, ApprovalFinalizer>();
         services.AddScoped<IApprovalService, ApprovalService>();
+        services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
+        services.AddScoped<IAgentRunReadService, AgentRunReadService>();
         return services;
     }
 
