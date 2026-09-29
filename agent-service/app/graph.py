@@ -38,6 +38,7 @@ from app.validation import (
 from app.workers import WorkerFailed, WorkerRunner, WorkerUnavailable
 from app.workers.planner import PlannerInput, StubPlanner
 from app.workers.supervisor import (
+    OFFICER_REVISION,
     SupervisorError,
     build_brief,
     enforce_plan_rules,
@@ -381,7 +382,7 @@ def build_graph(
                 "revision_notes": notes,
                 "replan_needed": True,
                 "refresh_policy": True,
-                "replan_reason": f"Officer revision: {notes}",
+                "replan_reason": f"{OFFICER_REVISION}{notes}",
                 "revision": state.get("revision", 1) + 1,
                 # A revision is a new proposal with a fresh budget (decision 1 in the plan).
                 "delegations": 0,

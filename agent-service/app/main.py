@@ -19,6 +19,7 @@ from app.routers import workflows
 from app.runner import WorkflowRunner
 from app.tools import ToolClient, build_tools
 from app.workers.planner import LlmPlanner
+from app.workers.venue_llm import LlmVenueWorker
 
 SERVICE_NAME = "agent-service"
 
@@ -45,7 +46,12 @@ def create_app(
         if s.agent_mode("supervisor") == "llm":
             # Lazy: the Gemini client is built on the first plan, never at startup.
             planner = LlmPlanner(lambda: build_chat_model("planner", s), s.planner_model)
-        graph = build_graph(saver, build_tools(client), clock, planner)
+        workers = {}
+        if s.agent_mode("venue_matching") == "llm":
+            workers["venue_matching"] = LlmVenueWorker(
+                lambda: build_chat_model("worker", s), s.worker_model
+            )
+        graph = build_graph(saver, build_tools(client), clock, planner, workers)
         app.state.settings = s
         app.state.checkpointer = saver
         app.state.runner = WorkflowRunner(graph, clock, s.model_label())

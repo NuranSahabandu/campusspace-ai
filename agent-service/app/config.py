@@ -22,7 +22,7 @@ MIN_TOOLS_KEY_LENGTH = 32
 # Phase 4 adds each worker to LLM_IMPLEMENTED as it lands (4.2 venue, 4.3 equipment, 4.4 policy).
 LLM_AGENTS = ("supervisor", "venue_matching", "equipment_allocation", "policy_cost")
 WORKER_AGENTS = LLM_AGENTS[1:]
-LLM_IMPLEMENTED = frozenset({"supervisor"})
+LLM_IMPLEMENTED = frozenset({"supervisor", "venue_matching"})
 _PENDING_TASK = {"venue_matching": "4.2", "equipment_allocation": "4.3", "policy_cost": "4.4"}
 
 # Same Flash (planning) / Flash-Lite (workers) split as the labs (Labs 06/07 and Lab 05 api/main.py

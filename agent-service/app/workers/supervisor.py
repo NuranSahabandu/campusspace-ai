@@ -6,7 +6,8 @@ cancel never re-fetch it.
 Raw requester notes are replaced by their wrapped form here, before anything reaches state.
 stub_planner() is the stub planner and the LLM planner's fallback (app/workers/planner.py);
 enforce_plan_rules() applies to whatever a planner returns. build_brief() writes each worker's task:
-ids and values only, and the venue brief carries the plan's soft_preferences.
+ids and values only, and the venue brief carries the plan's soft_preferences. No worker ever gets
+the requester's notes or the officer's raw revise notes.
 """
 
 import json
@@ -32,6 +33,7 @@ INSTRUCTIONS = {
 }
 ORDER = ["venue_matching", "equipment_allocation", "policy_cost"]
 MAX_TASK_CHARS = 500
+OFFICER_REVISION = "Officer revision: "  # human_gate's replan_reason prefix for a revise
 MAX_SOFT_PREFERENCES = 5
 MAX_PREFERENCE_CHARS = 200
 POLICY_FACTS = (
@@ -210,6 +212,10 @@ def build_brief(step: Mapping[str, Any], state: Mapping[str, Any]) -> str:
     chosen = (venue.get("options") or [None])[0]
 
     if agent == "venue_matching":
+        reason = state.get("replan_reason")
+        if reason and reason.startswith(OFFICER_REVISION):
+            # Officer notes reach workers only as the planner's soft_preferences, never raw.
+            reason = "Officer revision (see soft_preferences)"
         brief = {
             **window,
             "attendees": request["attendees"],
@@ -217,7 +223,7 @@ def build_brief(step: Mapping[str, Any], state: Mapping[str, Any]) -> str:
             "excluded_room_ids": state.get("excluded_room_ids", []),
             "max_capacity_ratio": policy["max_capacity_ratio"],
             "soft_preferences": (state.get("requirements") or {}).get("soft_preferences", []),
-            "replan_reason": state.get("replan_reason"),
+            "replan_reason": reason,
         }
     elif agent == "equipment_allocation":
         brief = {

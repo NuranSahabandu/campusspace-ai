@@ -159,10 +159,26 @@ def test_unknown_llm_agent_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_worker_without_an_llm_implementation_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    with pytest.raises(ValidationError, match="venue_matching has no LLM implementation yet"):
+    with pytest.raises(
+        ValidationError, match=r"equipment_allocation has no LLM implementation yet \(Task 4.3\)"
+    ):
         make_settings(
-            monkeypatch, AGENT_LLM_AGENTS="venue_matching", GOOGLE_API_KEY=FAKE_GOOGLE_KEY
+            monkeypatch,
+            AGENT_LLM_AGENTS="venue_matching,equipment_allocation",
+            GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
         )
+
+
+def test_llm_venue_matching_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(
+        monkeypatch, AGENT_LLM_AGENTS="venue_matching,supervisor", GOOGLE_API_KEY=FAKE_GOOGLE_KEY
+    )
+
+    assert settings.llm_agents == frozenset({"supervisor", "venue_matching"})
+    assert settings.agent_mode("venue_matching") == "llm"
+    assert settings.model_label() == (
+        "planner=gemini-3.5-flash; venue_matching=gemini-3.5-flash-lite, others=stub"
+    )
 
 
 def test_thinking_levels_default_low_and_can_be_overridden(

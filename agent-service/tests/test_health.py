@@ -58,7 +58,9 @@ def test_health_shows_the_llm_supervisor_without_building_a_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = make_settings(
-        monkeypatch, AGENT_LLM_AGENTS="supervisor", GOOGLE_API_KEY="fake-google-key-value-123"
+        monkeypatch,
+        AGENT_LLM_AGENTS="supervisor,venue_matching",
+        GOOGLE_API_KEY="fake-google-key-value-123",
     )
 
     def no_model(*_: object) -> None:
@@ -70,7 +72,7 @@ def test_health_shows_the_llm_supervisor_without_building_a_model(
 
     assert body["agents"] == {
         "supervisor": "llm",
-        "venue_matching": "stub",
+        "venue_matching": "llm",
         "equipment_allocation": "stub",
         "policy_cost": "stub",
     }

@@ -26,12 +26,11 @@ from app.llm import add_usage, usage_from
 from app.schemas import Plan
 from app.tools import current_recorder
 from app.workers.deadline import describe_error, submit
-from app.workers.supervisor import INSTRUCTIONS, ORDER, stub_planner
+from app.workers.supervisor import INSTRUCTIONS, OFFICER_REVISION, ORDER, stub_planner
 
 log = logging.getLogger("agent_service.planner")
 
 PlannerMode = Literal["stub", "llm", "fallback"]
-OFFICER_REVISION = "Officer revision: "
 
 # Lab 07 §3.1: what it does, what it must not do, what to do when it cannot proceed.
 PLANNER_PROMPT = """You are the SUPERVISOR / REQUEST PLANNER for CampusSpace campus room bookings.
