@@ -1,54 +1,23 @@
 """Venue Matching LLM worker (Component A; plan §10.4, §10.6, Lab 05/07 create_agent).
 
-A create_agent ReAct loop with ONLY search_available_rooms and get_room_details, a structured
-VenueResult answer, and the task string as its only input (context isolation). Code then checks
-the answer against what THIS worker's tools returned: the model chooses and explains, code owns the
-facts. Invalid output is retried once; two failures, an exception, the deadline, an exhausted run
-budget or an unavailable tool fall back to the stub venue worker (run_worker runs it), and the run
-continues.
-
-response_format is ToolStrategy(VenueResult, handle_errors=False) rather than the bare class:
-AutoStrategy would pick Gemini's native JSON mode in production but the tool strategy for a fake
-model, so the tests would not run the production path. handle_errors=False makes our V01 retry
-(which includes the code checks) the only retry.
+A ToolAgentWorker (app/workers/tool_agent.py: the shared loop, retry, deadline, budget and
+fallback) with ONLY search_available_rooms and get_room_details and a structured VenueResult
+answer. check_options() checks the answer against what THIS attempt's tools returned: the model
+chooses and explains, code owns the facts.
 """
 
-import json
 import logging
-import threading
-import time
-from collections.abc import Callable, Mapping
-from concurrent.futures import wait
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from langchain.agents import create_agent
-from langchain.agents.structured_output import StructuredOutputValidationError, ToolStrategy
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain_core.tools import BaseTool
-from pydantic import ValidationError
+from langchain_core.messages import AIMessage, ToolMessage
 
-from app.budget import BUDGET_EXHAUSTED, LlmBudget
-from app.limits import (
-    LLM_MIN_BUDGET_S,
-    MAX_WORKER_ATTEMPTS,
-    WORKER_DEADLINE_S,
-    WORKER_RECURSION_LIMIT,
-)
-from app.llm import add_usage, usage_from
 from app.schemas import VenueResult
-from app.tools import (
-    WORKER_TOOLS,
-    ToolRecorder,
-    current_recorder,
-    is_error,
-    parse_json,
-    recording,
-)
-from app.workers.common import LlmAttempt, parse_brief
-from app.workers.deadline import describe_error, submit
+from app.tools import is_error, parse_json
+from app.workers.tool_agent import Checked, ToolAgentWorker
 
 log = logging.getLogger("agent_service.venue")
 
@@ -155,13 +124,6 @@ def observe_messages(messages: list[Any], brief: Mapping[str, Any]) -> Observed:
 # ---------- code checks ----------
 
 
-@dataclass
-class Checked:
-    result: dict[str, Any] | None
-    corrections: list[str]
-    problem: str | None = None
-
-
 def _facts(room: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "room_id": room["id"],
@@ -248,162 +210,13 @@ def check_options(
 # ---------- the worker ----------
 
 
-@dataclass
-class _Run:
-    """Filled by the agent thread as it goes, so a timed-out attempt still shows its partial
-    messages, tool calls and usage."""
-
-    state: dict[str, Any] | None = None
-    recorder: ToolRecorder | None = None
-
-
-def _merge(src: ToolRecorder | None, dst: ToolRecorder | None) -> None:
-    """Copy an attempt's tool calls and seen ids into the step's recorder (a snapshot: calls an
-    abandoned thread makes later never reach the step)."""
-    if src is None or dst is None:
-        return
-    dst.calls.extend(list(src.calls))
-    dst.seen_room_ids.extend(i for i in list(src.seen_room_ids) if i not in dst.seen_room_ids)
-
-
-def _usage(messages: list[Any]) -> dict[str, Any] | None:
-    """Every model call in the loop: one AIMessage each."""
-    total, chars = None, len(VENUE_PROMPT)
-    for message in messages:
-        text = (
-            message.content
-            if isinstance(message.content, str)
-            else json.dumps(message.content, default=str)
-        )
-        if isinstance(message, AIMessage):
-            out = len(text) + len(json.dumps(message.tool_calls, default=str))
-            total = add_usage(total, usage_from(message, chars, out))
-        chars += len(text)
-    return total
-
-
-def _schema_problem(exc: StructuredOutputValidationError) -> str:
-    """The first schema error (the source is a ValueError raised from the ValidationError)."""
-    error = exc.source if isinstance(exc.source, ValidationError) else exc.source.__cause__
-    if isinstance(error, ValidationError):
-        first = error.errors()[0]
-        return f"VenueResult {'.'.join(str(p) for p in first['loc'])}: {first['msg']}"
-    return f"VenueResult invalid: {describe_error(exc.source)}"
-
-
-class LlmVenueWorker:
-    """One create_agent loop per attempt; the model and agent are built lazily on first use."""
-
+class LlmVenueWorker(ToolAgentWorker):
     name = "venue_matching"
+    label = "Venue"
+    prompt = VENUE_PROMPT
+    schema = VenueResult
+    retry_hint = RETRY_HINT
+    log = log
 
-    def __init__(
-        self,
-        model_factory: Callable[[], Any],
-        model_id: str,
-        *,
-        deadline_s: float = WORKER_DEADLINE_S,
-        min_retry_s: float = LLM_MIN_BUDGET_S,
-        monotonic: Callable[[], float] = time.monotonic,
-    ) -> None:
-        self._factory = model_factory
-        self.model_id = model_id
-        self._deadline_s = deadline_s
-        self._min_retry_s = min_retry_s
-        self._monotonic = monotonic
-        self._agent: Any = None
-        self._lock = threading.Lock()
-
-    def _build(self, tools: Mapping[str, BaseTool]) -> Any:
-        with self._lock:
-            if self._agent is None:
-                self._agent = create_agent(
-                    self._factory(),
-                    tools=[tools[name] for name in WORKER_TOOLS[self.name]],  # ONLY these two
-                    system_prompt=VENUE_PROMPT,
-                    response_format=ToolStrategy(VenueResult, handle_errors=False),
-                    name=self.name,
-                )
-            return self._agent
-
-    @staticmethod
-    def _invoke(agent: Any, message: str, run: _Run) -> Any:
-        # A fresh thread has no recorder: bind one here. ToolNode's executor copies this context,
-        # so the @tool functions record into it.
-        with recording() as recorder:
-            run.recorder = recorder
-            for state in agent.stream(
-                {"messages": [HumanMessage(content=message)]},
-                {"recursion_limit": WORKER_RECURSION_LIMIT},
-                stream_mode="values",
-            ):
-                run.state = state
-        return (run.state or {}).get("structured_response")
-
-    def run(self, task: str, tools: Mapping[str, BaseTool], budget: LlmBudget) -> LlmAttempt:
-        started = self._monotonic()
-        step = current_recorder()
-        meta: dict[str, Any] = {
-            "mode": "llm",
-            "model": self.model_id,
-            "attempts": 0,
-            "usage": None,
-            "corrections": [],
-            "worker_fallback": False,
-        }
-
-        def fallback(reason: str) -> LlmAttempt:
-            log.warning("venue worker fell back after %d attempt(s): %s", meta["attempts"], reason)
-            meta.update(mode="fallback", worker_fallback=True, fallback_reason=reason)
-            return LlmAttempt(None, meta)
-
-        limit = budget.allow(self._deadline_s)
-        if limit is None:
-            return fallback(BUDGET_EXHAUSTED)
-        try:
-            agent = self._build(tools)
-        except Exception as exc:  # noqa: BLE001 - a broken client must not stop the run
-            return fallback(f"Venue LLM error: {describe_error(exc)}")
-        brief = parse_brief(task)
-
-        problem = "no VenueResult was returned"
-        for attempt in range(MAX_WORKER_ATTEMPTS):
-            remaining = limit - (self._monotonic() - started)
-            if attempt > 0:
-                if remaining < self._min_retry_s:
-                    return fallback(f"Venue output invalid; no time left to retry ({problem})")
-                if step is not None:
-                    step.retries += 1
-            meta["attempts"] += 1
-            message = task if attempt == 0 else task + RETRY_HINT.format(problem=problem)
-            run = _Run()
-            future = submit(lambda m=message, r=run: self._invoke(agent, m, r), "venue-llm")
-            wait([future], timeout=max(remaining, 0.0))
-            messages = list((run.state or {}).get("messages") or [])
-            _merge(run.recorder, step)
-            if not future.done():
-                meta["usage"] = add_usage(meta["usage"], _usage(messages))
-                return fallback(f"Venue LLM timed out after {limit:g} s")
-            try:
-                answer = future.result()
-            except StructuredOutputValidationError as exc:
-                meta["usage"] = add_usage(meta["usage"], _usage(messages + [exc.ai_message]))
-                problem = _schema_problem(exc)
-                continue
-            except Exception as exc:  # noqa: BLE001 - API errors, recursion limit, 429s
-                meta["usage"] = add_usage(meta["usage"], _usage(messages))
-                return fallback(f"Venue LLM error: {describe_error(exc)}")
-            meta["usage"] = add_usage(meta["usage"], _usage(messages))
-            unavailable = run.recorder.unavailable_errors() if run.recorder else []
-            if unavailable:
-                return fallback(unavailable[0])
-            if answer is None:
-                problem = "no VenueResult was returned"
-                continue
-            checked = check_options(answer, brief, observe_messages(messages, brief))
-            meta["corrections"] += checked.corrections
-            if checked.problem is None:
-                log.info("venue: llm result after %d attempt(s), usage %s", meta["attempts"],
-                         meta["usage"])  # fmt: skip
-                return LlmAttempt(checked.result, meta)
-            problem = checked.problem
-        return fallback(f"Venue output invalid twice: {problem}")
+    def check(self, answer: Any, brief: Mapping[str, Any], messages: list[Any]) -> Checked:
+        return check_options(answer, brief, observe_messages(messages, brief))
