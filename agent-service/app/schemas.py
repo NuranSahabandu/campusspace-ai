@@ -314,6 +314,7 @@ class WorkflowView(BaseModel):
     policy_snapshot: dict[str, Any] | None
     error: str | None
     model: str
+    usage: dict[str, Any] | None = None  # LLM tokens for the whole run; None when no LLM was called
     started_at: str | None
     completed_at: str | None
     duration_ms: int | None

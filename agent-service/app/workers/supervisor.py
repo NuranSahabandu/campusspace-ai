@@ -4,8 +4,9 @@ load_context() reads the policy snapshot (addendum A.2), the request and the cat
 An officer revise takes a fresh snapshot with load_policy() (see CLAUDE.md); approve, reject and
 cancel never re-fetch it.
 Raw requester notes are replaced by their wrapped form here, before anything reaches state.
-stub_planner() is the Phase 4 seam: an LLM planner replaces it, and enforce_plan_rules() still
-applies to whatever it returns. build_brief() writes each worker's task: ids and values only.
+stub_planner() is the stub planner and the LLM planner's fallback (app/workers/planner.py);
+enforce_plan_rules() applies to whatever a planner returns. build_brief() writes each worker's task:
+ids and values only, and the venue brief carries the plan's soft_preferences.
 """
 
 import json
@@ -16,7 +17,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from app.guardrails import wrap_notes
+from app.guardrails import strip_tags, wrap_notes
 from app.schemas import EquipmentRequest, Plan, PlanStep
 from app.tools import error_text, is_error, is_unavailable, parse_json
 from app.workers.common import make_task
@@ -30,6 +31,9 @@ INSTRUCTIONS = {
     "facts, and write a short officer summary.",
 }
 ORDER = ["venue_matching", "equipment_allocation", "policy_cost"]
+MAX_TASK_CHARS = 500
+MAX_SOFT_PREFERENCES = 5
+MAX_PREFERENCE_CHARS = 200
 POLICY_FACTS = (
     "max_duration_hours",
     "max_capacity_ratio",
@@ -118,24 +122,83 @@ def stub_planner(
     )
 
 
-def enforce_plan_rules(plan: Plan, request: Mapping[str, Any]) -> Plan:
+def enforce_plan_rules(
+    plan: Plan,
+    request: Mapping[str, Any],
+    catalogs: Mapping[str, Any],
+    *,
+    fallback: bool = False,
+) -> tuple[Plan, list[str]]:
     """Code, not the planner, decides the shape: venue first, equipment only when the form asked for
-    equipment, policy_cost last, each exactly once. Features and equipment come from the form."""
+    equipment, policy_cost last, each exactly once. Features and equipment come from the form,
+    filtered by the catalogs. Returns the plan and every correction made to the planner's output."""
+    corrections: list[str] = []
+    known_features, known_equipment = set(catalogs["features"]), set(catalogs["equipment"])
+
+    form_features = list(request["required_features"])
+    for code in form_features:
+        if code not in known_features:
+            corrections.append(f"feature {code}: not in the feature catalog, dropped")
+        elif code not in plan.required_features:
+            corrections.append(f"feature {code}: on the request form, restored")
+    for code in plan.required_features:
+        if code not in form_features:
+            corrections.append(f"feature {code}: not on the request form, dropped")
+
+    form_lines = {e["code"]: e["quantity"] for e in request["equipment"]}
+    planned = {e.type_code: e.quantity for e in plan.equipment}
+    for code, qty in form_lines.items():
+        if code not in known_equipment:
+            corrections.append(f"equipment {code}: not in the equipment catalog, dropped")
+        elif code not in planned:
+            corrections.append(f"equipment {code}: on the request form, restored")
+        elif planned[code] != qty:
+            corrections.append(f"equipment {code}: quantity {planned[code]} replaced by {qty}")
+    for code in planned:
+        if code not in form_lines:
+            corrections.append(f"equipment {code}: not on the request form, dropped")
+
     wanted = ["venue_matching"]
     if request["equipment"]:
         wanted.append("equipment_allocation")
     wanted.append("policy_cost")
-    tasks = {s.agent: s.task for s in plan.steps}
-    return plan.model_copy(
+    got = [s.agent for s in plan.steps]
+    if got != wanted:
+        corrections.append(f"steps {got} replaced by {wanted}")
+    tasks: dict[str, str] = {}
+    for s in plan.steps:
+        tasks.setdefault(s.agent, s.task.strip())
+    steps = []
+    for agent in wanted:
+        task = tasks.get(agent, "")
+        if not 0 < len(task) <= MAX_TASK_CHARS:
+            if agent in tasks:
+                corrections.append(f"task for {agent}: empty or too long, default used")
+            task = INSTRUCTIONS[agent]
+        steps.append(PlanStep(agent=agent, task=task))
+
+    preferences: list[str] = []
+    for raw in plan.soft_preferences:
+        text = " ".join(strip_tags(raw).split())[:MAX_PREFERENCE_CHARS]
+        if text and text not in preferences:
+            preferences.append(text)
+    if len(preferences) > MAX_SOFT_PREFERENCES:
+        corrections.append(f"soft_preferences: kept the first {MAX_SOFT_PREFERENCES}")
+
+    enforced = plan.model_copy(
         update={
-            "required_features": list(request["required_features"]),
+            "required_features": [f for f in form_features if f in known_features],
             "equipment": [
-                EquipmentRequest(type_code=e["code"], quantity=e["quantity"])
-                for e in request["equipment"]
+                EquipmentRequest(type_code=code, quantity=qty)
+                for code, qty in form_lines.items()
+                if code in known_equipment
             ],
-            "steps": [PlanStep(agent=a, task=tasks.get(a) or INSTRUCTIONS[a]) for a in wanted],
+            "soft_preferences": preferences[:MAX_SOFT_PREFERENCES],
+            "steps": steps,
+            "planner_fallback": fallback,  # set by code, never by the model
         }
     )
+    return enforced, corrections
 
 
 def build_brief(step: Mapping[str, Any], state: Mapping[str, Any]) -> str:
@@ -153,7 +216,7 @@ def build_brief(step: Mapping[str, Any], state: Mapping[str, Any]) -> str:
             "required_features": request["required_features"],
             "excluded_room_ids": state.get("excluded_room_ids", []),
             "max_capacity_ratio": policy["max_capacity_ratio"],
-            "soft_preferences": [],
+            "soft_preferences": (state.get("requirements") or {}).get("soft_preferences", []),
             "replan_reason": state.get("replan_reason"),
         }
     elif agent == "equipment_allocation":

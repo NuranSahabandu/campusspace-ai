@@ -38,17 +38,19 @@ class Harness:
         now: datetime = NOW,
         run_timeout_s: float = 180.0,
         monotonic: Callable[[], float] | None = None,
+        planner: Any = None,
+        model_label: str = "stub",
     ) -> None:
         self.api = api or FakeCampusApi()
         self.client = ToolClient(
             "http://api.test", SecretStr(TEST_TOOLS_KEY), transport=self.api.transport()
         )
         self.saver = open_checkpointer(db)
-        self.graph = build_graph(self.saver, build_tools(self.client), lambda: now)
+        self.graph = build_graph(self.saver, build_tools(self.client), lambda: now, planner)
         kwargs: dict[str, Any] = {"run_timeout_s": run_timeout_s}
         if monotonic:
             kwargs["monotonic"] = monotonic
-        self.runner = WorkflowRunner(self.graph, lambda: now, "stub", **kwargs)
+        self.runner = WorkflowRunner(self.graph, lambda: now, model_label, **kwargs)
 
     def start(self, request_id: int = 42) -> str:
         thread_id = str(uuid4())

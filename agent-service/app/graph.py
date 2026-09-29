@@ -34,13 +34,13 @@ from app.validation import (
     validate_proposal,
 )
 from app.workers import WorkerFailed, WorkerRunner, WorkerUnavailable
+from app.workers.planner import PlannerInput, StubPlanner
 from app.workers.supervisor import (
     SupervisorError,
     build_brief,
     enforce_plan_rules,
     load_context,
     load_policy,
-    stub_planner,
 )
 
 Clock = Callable[[], datetime]
@@ -154,8 +154,15 @@ def _chosen(state: Mapping[str, Any]) -> dict[str, Any] | None:
     return options[0] if options else None
 
 
-def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool], clock: Clock):
+def build_graph(
+    checkpointer: BaseCheckpointSaver,
+    tools: Mapping[str, BaseTool],
+    clock: Clock,
+    planner: Any = None,
+):
+    """planner: StubPlanner (default) or LlmPlanner (AGENT_LLM_AGENTS includes supervisor)."""
     runner = WorkerRunner(tools)
+    planner = planner or StubPlanner()
 
     # ---------- supervisor (hub) ----------
 
@@ -167,6 +174,7 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
         if state.get("request") is None or state.get("replan_needed") or not state.get("plan"):
             started = time.perf_counter()
             loaded: dict[str, Any] = {}
+            outcome, corrections = None, []
             with recording() as rec:
                 try:
                     if state.get("request") is None:
@@ -176,8 +184,9 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
                         loaded = {"policy": load_policy(tools)}
                     request = loaded.get("request") or state["request"]
                     catalogs = loaded.get("catalogs") or state["catalogs"]
-                    plan = enforce_plan_rules(
-                        stub_planner(request, catalogs, state.get("replan_reason")), request
+                    outcome = planner.plan(PlannerInput.from_state(state, request, catalogs))
+                    plan, corrections = enforce_plan_rules(
+                        outcome.plan, request, catalogs, fallback=outcome.mode == "fallback"
                     )
                     error = None
                 except SupervisorError as exc:
@@ -192,7 +201,18 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
                              error=error)  # fmt: skip
                 return update | {"error": error, "steps": [step]}
             plan_dump = plan.model_dump(mode="json")
-            step = _step(state, "supervisor", started, rec, input=step_input, output=plan_dump)
+            step_output = plan_dump
+            if outcome.mode != "stub":  # stub output stays exactly the plan (Phase 3 shape)
+                step_output = plan_dump | {
+                    "planner": outcome.mode,
+                    "model": outcome.model,
+                    "attempts": outcome.attempts,
+                    "usage": outcome.usage,
+                    "corrections": corrections,
+                }
+                if outcome.fallback_reason:
+                    step_output["fallback_reason"] = outcome.fallback_reason
+            step = _step(state, "supervisor", started, rec, input=step_input, output=step_output)
             update |= loaded | _seen(rec)
             update |= {
                 "plan": plan_dump["steps"],
