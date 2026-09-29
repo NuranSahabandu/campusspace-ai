@@ -207,7 +207,7 @@ public sealed class AgentRunSync(
     {
         if (approve)
         {
-            // Not a time failure of the booking: the proposal may still be good, so a new one is prepared.
+            // The finaliser classifies it: a time that is no longer valid closes the request, otherwise a new proposal.
             await finalizer.FailApprovalAsync(runId, ApprovalNotConfirmedMessage, view, ct);
             return;
         }

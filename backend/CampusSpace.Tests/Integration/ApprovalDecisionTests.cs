@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
@@ -152,16 +153,82 @@ public class ApprovalDecisionTests(PostgresFixture fixture)
     {
         await using var env = await AgentPollerEnv.CreateAsync(fixture);
         var (requestId, runId) = await env.ToPendingApprovalAsync();
-        var start = new DateTimeOffset(DateTime.SpecifyKind((await env.RequestAsync(requestId)).RequestedStart, DateTimeKind.Utc));
-        var day = CampusTime.DateOf(start).DayOfWeek;
-        var hours = JsonNode.Parse(await env.QueryAsync(db => db.PolicySettings
-            .Where(p => p.Key == PolicyKeys.OpeningHours).Select(p => p.Value).SingleAsync()))!.AsObject();
-        hours[day.ToString()[..3].ToLowerInvariant()] = null;
-        await env.SetPolicyAsync(PolicyKeys.OpeningHours, hours.ToJsonString());
+        var day = await CloseWeekdayAsync(env, requestId);
 
         var response = await env.DecideAsync(requestId, "approve");
 
         await ShouldBeClosedForTimeAsync(env, response, requestId, runId, $"The campus is closed on {day}s");
+    }
+
+    [Fact]
+    public async Task A_failed_agent_finalize_after_the_weekday_was_closed_closes_the_request_with_the_time_message()
+    {
+        // Found in 3.5: the agent's V02 re-query hits CheckSlot and fails finalize; a re-plan would fail V05 and strand the
+        // request in AgentFailed. .NET's time check decides first.
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        var (requestId, runId) = await env.ToPendingApprovalAsync();
+        var day = await CloseWeekdayAsync(env, requestId);
+        var failed = AgentFixtures.View(AgentFixtures.FinalizeFailed);
+        env.AgentReturns(failed);
+
+        var response = await env.DecideAsync(requestId, "approve");
+
+        await ShouldBeClosedForTimeAsync(env, response, requestId, runId, $"The campus is closed on {day}s", runReason: failed.Error);
+    }
+
+    [Fact]
+    public async Task When_the_poller_closes_the_request_first_the_approve_call_answers_the_same_time_message()
+    {
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        var (requestId, runId) = await env.ToPendingApprovalAsync();
+        var day = await CloseWeekdayAsync(env, requestId);
+        var failed = FakeAgentClient.Ok(AgentFixtures.View(AgentFixtures.FinalizeFailed));
+        var pollerRan = false;
+        env.Agent.Get = async (_, _) =>
+        {
+            // The approve call's first read: the poller sees the same failure and finishes it first.
+            if (!pollerRan)
+            {
+                pollerRan = true;
+                await env.Poller.PollOnceAsync();
+            }
+            return failed;
+        };
+
+        var response = await env.DecideAsync(requestId, "approve");
+
+        await ShouldBeClosedForTimeAsync(env, response, requestId, runId, $"The campus is closed on {day}s",
+            runReason: failed.Value!.Error);
+    }
+
+    [Fact]
+    public async Task An_advance_window_shrunk_to_the_distance_at_submission_still_approves()
+    {
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        var (requestId, _) = await env.ToPendingApprovalAsync();
+        var days = await DaysAheadAtSubmissionAsync(env, requestId);
+        await env.SetPolicyAsync(PolicyKeys.MaxAdvanceDaysStudent, days.ToString(CultureInfo.InvariantCulture));
+        env.Clock.Advance(TimeSpan.FromDays(7));
+
+        var response = await env.DecideAsync(requestId, "approve");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await env.RequestAsync(requestId)).Status.Should().Be(RequestStatuses.Approved);
+    }
+
+    [Fact]
+    public async Task An_advance_window_shrunk_below_the_distance_at_submission_closes_the_request()
+    {
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        var (requestId, runId) = await env.ToPendingApprovalAsync();
+        var days = await DaysAheadAtSubmissionAsync(env, requestId) - 1;
+        await env.SetPolicyAsync(PolicyKeys.MaxAdvanceDaysStudent, days.ToString(CultureInfo.InvariantCulture));
+        // A week later the start is inside the window as of now, but not as of submission, which is what counts.
+        env.Clock.Advance(TimeSpan.FromDays(7));
+
+        var response = await env.DecideAsync(requestId, "approve");
+
+        await ShouldBeClosedForTimeAsync(env, response, requestId, runId, $"Can be booked at most {days} days ahead (as of submission)");
     }
 
     [Fact]
@@ -415,8 +482,10 @@ public class ApprovalDecisionTests(PostgresFixture fixture)
     // ---------- helpers ----------
 
     /// <summary>The time can't be fixed by a re-plan: run Failed, request Rejected by the system, Draft Void, no new run.</summary>
+    /// <param name="reason">.NET's time message.</param>
+    /// <param name="runReason">The run's FailureReason: the original failure (for example the agent's), else <paramref name="reason"/>.</param>
     internal static async Task ShouldBeClosedForTimeAsync(
-        AgentPollerEnv env, HttpResponseMessage? response, long requestId, Guid runId, string reason)
+        AgentPollerEnv env, HttpResponseMessage? response, long requestId, Guid runId, string reason, string? runReason = null)
     {
         if (response is not null)
             (await response.ShouldBeProblemAsync(409)).GetProperty("title").GetString()
@@ -427,7 +496,7 @@ public class ApprovalDecisionTests(PostgresFixture fixture)
         (last.FromStatus, last.ToStatus, last.ChangedById, last.Reason).Should().Be(
             (RequestStatuses.PendingApproval, RequestStatuses.Rejected, (long?)null, ApprovalFinalizer.TimeClosedReason(reason)));
         var run = await env.RunAsync(runId);
-        (run.Status, run.FailureReason).Should().Be((AgentRunStatuses.Failed, reason));
+        (run.Status, run.FailureReason).Should().Be((AgentRunStatuses.Failed, runReason ?? reason));
         run.PolicySnapshotJson.Should().NotBeNullOrEmpty();
         (await env.QueryAsync(db => db.AgentRuns.CountAsync(r => r.RequestId == requestId))).Should().Be(1, "no new run");
         (await QuoteStatusesAsync(env, requestId)).Should().Equal(QuotationStatuses.Void);
@@ -455,6 +524,25 @@ public class ApprovalDecisionTests(PostgresFixture fixture)
         env.Agent.Calls.Should().Contain(("start", next.Id, null));
         (await QuoteStatusesAsync(env, requestId)).Should().Equal(QuotationStatuses.Void);
         (await env.QueryAsync(db => db.Bookings.AnyAsync(b => b.RequestId == requestId))).Should().BeFalse();
+    }
+
+    /// <summary>Sets the request's campus weekday to closed in opening_hours; returns the weekday.</summary>
+    internal static async Task<DayOfWeek> CloseWeekdayAsync(AgentPollerEnv env, long requestId)
+    {
+        var day = CampusTime.DateOf(Utc((await env.RequestAsync(requestId)).RequestedStart)).DayOfWeek;
+        var hours = JsonNode.Parse(await env.QueryAsync(db => db.PolicySettings
+            .Where(p => p.Key == PolicyKeys.OpeningHours).Select(p => p.Value).SingleAsync()))!.AsObject();
+        hours[day.ToString()[..3].ToLowerInvariant()] = null;
+        await env.SetPolicyAsync(PolicyKeys.OpeningHours, hours.ToJsonString());
+        return day;
+    }
+
+    /// <summary>Campus days from the Submitted history row to the start (what the advance window is measured over).</summary>
+    private static async Task<int> DaysAheadAtSubmissionAsync(AgentPollerEnv env, long requestId)
+    {
+        var request = await env.RequestAsync(requestId);
+        var submitted = request.StatusHistory.Where(h => h.ToStatus == RequestStatuses.Submitted).Min(h => h.ChangedAt);
+        return CampusTime.DateOf(Utc(request.RequestedStart)).DayNumber - CampusTime.DateOf(Utc(submitted)).DayNumber;
     }
 
     private static Task<List<string>> QuoteStatusesAsync(AgentPollerEnv env, long requestId) =>
