@@ -74,6 +74,7 @@ def create_app(
             "python": platform.python_version(),
             "agents": {name: s.agent_mode(name) for name in LLM_AGENTS},
             "models": {"planner": s.planner_model, "worker": s.worker_model},
+            "thinking": {"planner": s.planner_thinking, "worker": s.worker_thinking},
             "checkpointer": "sqlite",
             "checkpointer_ok": checkpointer_ok(request.app.state.checkpointer),
             "google_api_key_configured": s.google_api_key is not None,

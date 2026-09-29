@@ -25,6 +25,7 @@ def test_health_returns_200_without_key(client: TestClient) -> None:
             "policy_cost": "stub",
         },
         "models": {"planner": "gemini-3.5-flash", "worker": "gemini-3.5-flash-lite"},
+        "thinking": {"planner": "low", "worker": "minimal"},
         "checkpointer": "sqlite",
         "checkpointer_ok": True,
         "google_api_key_configured": False,

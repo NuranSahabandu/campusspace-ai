@@ -5,6 +5,7 @@ Variable names match the .NET API's (AgentService__ServiceKey etc.), so one .env
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,6 +30,12 @@ _PENDING_TASK = {"venue_matching": "4.2", "equipment_allocation": "4.3", "policy
 # labs' gemini-2.5-flash and gemini-2.5-flash-lite (checked 2026-09-29).
 DEFAULT_PLANNER_MODEL = "gemini-3.5-flash"
 DEFAULT_WORKER_MODEL = "gemini-3.5-flash-lite"
+# Gemini 3 thinking levels (langchain-google-genai `thinking_level`; the 3.5 profiles list all 4).
+# Low defaults: the planner fills one small schema, the workers pick from tool results.
+# gemini-3.5-flash's own default is "medium"; -lite's is already "minimal".
+ThinkingLevel = Literal["minimal", "low", "medium", "high"]
+DEFAULT_PLANNER_THINKING = "low"
+DEFAULT_WORKER_THINKING = "minimal"
 MAX_MODEL_LABEL = 100  # AgentRuns.Model column
 
 
@@ -50,6 +57,12 @@ class Settings(BaseSettings):
     agent_llm_agents: str = Field(default="", validation_alias="AGENT_LLM_AGENTS")
     planner_model: str = Field(default=DEFAULT_PLANNER_MODEL, validation_alias="PLANNER_MODEL")
     worker_model: str = Field(default=DEFAULT_WORKER_MODEL, validation_alias="WORKER_MODEL")
+    planner_thinking: ThinkingLevel = Field(
+        default=DEFAULT_PLANNER_THINKING, validation_alias="PLANNER_THINKING"
+    )
+    worker_thinking: ThinkingLevel = Field(
+        default=DEFAULT_WORKER_THINKING, validation_alias="WORKER_THINKING"
+    )
 
     @field_validator("checkpoint_path", mode="before")
     @classmethod
@@ -63,6 +76,17 @@ class Settings(BaseSettings):
         if value not in (None, ""):
             return value
         return {"planner_model": DEFAULT_PLANNER_MODEL}.get(info.field_name, DEFAULT_WORKER_MODEL)
+
+    @field_validator("planner_thinking", "worker_thinking", mode="before")
+    @classmethod
+    def _empty_thinking_means_default(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+        if value not in (None, ""):
+            return value
+        return {"planner_thinking": DEFAULT_PLANNER_THINKING}.get(
+            info.field_name, DEFAULT_WORKER_THINKING
+        )
 
     @field_validator("google_api_key", mode="before")
     @classmethod
@@ -137,14 +161,17 @@ class Settings(BaseSettings):
 
     def model_label(self) -> str:
         """AgentRuns.Model: the model id each agent really uses, for example
-        "planner=gemini-3.5-flash; workers=stub"."""
+        "planner=gemini-3.5-flash; workers=stub" or
+        "planner=stub; venue_matching=gemini-3.5-flash-lite, others=stub"."""
         planner = self.planner_model if self.agent_mode("supervisor") == "llm" else "stub"
         workers = {w: self.worker_model if self.agent_mode(w) == "llm" else "stub"
                    for w in WORKER_AGENTS}  # fmt: skip
         if len(set(workers.values())) == 1:
             worker_part = f"workers={next(iter(workers.values()))}"
         else:
-            worker_part = ", ".join(f"{w}={m}" for w, m in workers.items())
+            # Only the LLM workers by name, so the label fits the 100-char column.
+            llm = [f"{w}={m}" for w, m in workers.items() if m != "stub"]
+            worker_part = ", ".join(llm) + ", others=stub"
         return f"planner={planner}; {worker_part}"[:MAX_MODEL_LABEL]
 
 

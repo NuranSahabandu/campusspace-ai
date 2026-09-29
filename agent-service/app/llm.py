@@ -20,12 +20,15 @@ def build_chat_model(role: Role, settings: Settings) -> Any:
 
     if settings.google_api_key is None:
         raise RuntimeError("GOOGLE_API_KEY is not configured")
+    planner = role == "planner"
     return ChatGoogleGenerativeAI(
-        model=settings.planner_model if role == "planner" else settings.worker_model,
+        model=settings.planner_model if planner else settings.worker_model,
         google_api_key=settings.google_api_key,
         temperature=0,
         timeout=LLM_TIMEOUT_S,
         max_retries=LLM_MAX_RETRIES,  # the free tier is metered per minute; back off and retry
+        # Gemini 3 thinking cap (thinking_budget is deprecated for 3.x); thoughts are not returned.
+        thinking_level=settings.planner_thinking if planner else settings.worker_thinking,
     )
 
 

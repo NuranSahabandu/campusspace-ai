@@ -165,6 +165,21 @@ def test_worker_without_an_llm_implementation_is_rejected(
         )
 
 
+def test_thinking_levels_default_low_and_can_be_overridden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    defaults = make_settings(monkeypatch, PLANNER_THINKING="", WORKER_THINKING="")
+    assert (defaults.planner_thinking, defaults.worker_thinking) == ("low", "minimal")
+
+    custom = make_settings(monkeypatch, PLANNER_THINKING=" Medium ", WORKER_THINKING="low")
+    assert (custom.planner_thinking, custom.worker_thinking) == ("medium", "low")
+
+
+def test_an_unknown_thinking_level_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError, match="minimal', 'low', 'medium' or 'high'"):
+        make_settings(monkeypatch, WORKER_THINKING="none")
+
+
 def test_model_ids_default_to_the_labs_and_can_be_overridden(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
