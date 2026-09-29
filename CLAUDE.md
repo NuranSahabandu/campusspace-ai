@@ -319,8 +319,8 @@ Cancellation (`POST /api/booking-requests/{id}/cancel`): the owner (reason optio
 required). Free until `free_cancellation_hours` before the start; an owner's later cancellation of an Approved request
 sets `IsLateCancellation`. Late cancellations are flagged, not charged. Officer cancellations set `CancelledByOfficer`
 and are never late, and pre-approval cancellations are never late. Cancellable statuses come only from the state
-machine table. Cancel locks the request row (`SELECT … FOR UPDATE`) first, and Phase 3 approve/reject must take the same
-lock. An Approved cancel sets the booking to Cancelled (releases room and equipment), voids the live quote
+machine table. Cancel locks the request row (`SELECT … FOR UPDATE`) first, as approve, reject and request-revision
+do. An Approved cancel sets the booking to Cancelled (releases room and equipment), voids the live quote
 (`QuotationService.VoidLiveAsync`, static because QuotationService already depends on IBookingRequestService), and moves
 the request, all in one transaction. Tests insert an owned Approved booking with `BookingTestData.InsertApprovedBookingAsync`.
 
@@ -330,8 +330,8 @@ mobile `time_rules.dart`, so keep them in step. Double booking is prevented by t
 (`no_room_overlap`, active statuses only); code checks are for friendly errors, the constraint is the guarantee.
 `BookingStatuses.Active` is the only list of statuses that hold a room. Build every `tstzrange` with
 `CampusTime.UtcRange(start, end)` and compute overlaps in SQL with `TimeRange.Overlaps(range)` (`&&`), never in memory.
-The room schedule labels bookings only "Booked" (never the requester or purpose). No endpoint creates bookings until
-the Phase 3 approval; tests insert them with `BookingTestData.InsertBookingAsync`. Tests about "now" (lead time,
+The room schedule labels bookings only "Booked" (never the requester or purpose). Only the approval (IApprovalFinalizer)
+creates bookings; other tests insert them with `BookingTestData.InsertBookingAsync`. Tests about "now" (lead time,
 advance window) use `fixture.CreateIsolatedFactoryAsync(new FixedTimeProvider(...))` instead of changing the policy.
 
 Equipment reservations and blackout clashes: Equipment is held by EquipmentReservations of Active bookings; availability =
@@ -404,10 +404,10 @@ cancelled`; after a restart, a checkpoint that has pending nodes but is not paus
 restarted during the run". Validation errors are 400 and a missing key is 401 first. Money in responses is a 2-dp string; parse tool JSON
 with `parse_json` (Decimal), never float. The agents are deterministic stubs that call the real tools; Phase 4 swaps
 one worker at a time through `WORKERS` / `run_worker(name, task)` (task string in, validated result out) and the
-supervisor's `stub_planner`, and `enforce_plan_rules` still fixes the step order. The policy snapshot is fetched once
-per run by the supervisor (never re-fetched on resume; a revise will re-fetch it, decided in 3.3 and implemented in 3.4)
-and the validate node (plain code, V01–V12 in
-`app/validation.py`) reads every number from it, never a literal; V05/V06 mirror `BookingWindowRules` messages, so keep
+supervisor's `stub_planner`, and `enforce_plan_rules` still fixes the step order. The policy snapshot is fetched by the
+supervisor at run start and again on an officer revise (`refresh_policy`, set by human_gate; `load_policy`), never on
+approve/reject/cancel; a failed re-fetch ends in "policy unavailable". The view's `policy_snapshot` is the latest one,
+and the validate node (plain code, V01–V12 in `app/validation.py`) reads every number from it, never a literal; V05/V06 mirror `BookingWindowRules` messages, so keep
 them in step. V07 does not check public holidays (not implemented). Requester notes are replaced by `wrap_notes(...)`
 before anything reaches state, are never parsed into requirements or sent in a brief, and the tool trace keeps only
 whitelisted summaries (notes `"<omitted>"`). Checkpoints use SqliteSaver at `AGENT_CHECKPOINT_PATH` (default
@@ -431,8 +431,8 @@ is logged at Error ("check AgentService:ServiceKey"). Never log the key, a body 
 the request change and a Queued run first, then start it best-effort through `IAgentRunStarter.TryStartAsync`, capped at
 `AgentService:InlineStartTimeoutSeconds` (3) so a hung agent service never slows the 202; a run left Queued is the safety
 net the poller starts. `AgentRunPoller` (BackgroundService, every `AgentService:PollSeconds`, off when
-`AgentService:PollerEnabled` is false, as in Testing) processes Queued and Running runs, each in its own scope
-(`IAgentRunSync`); AwaitingApproval and Resuming belong to the officer's decision (3.4). Mapping for a Running run:
+`AgentService:PollerEnabled` is false, as in Testing) processes Queued, Running and Resuming runs, each in its own scope
+(`IAgentRunSync`); AwaitingApproval runs wait for the officer (Resuming: see Officer decisions). Mapping for a Running run:
 running → copy new trace rows; awaiting_approval → copy the trace, run AwaitingApproval with Plan/Proposal/
 PolicySnapshotJson, OfficerSummary, Model, Nodes, DurationMs, a Draft quote, request → PendingApproval; failed →
 run Failed with the agent's error, request → AgentFailed with it in the history; completed/rejected/cancelled → Failed
@@ -448,11 +448,13 @@ booking/item rows; after locking, re-check the run and request statuses and skip
 copy is idempotent: steps are inserted only for a Sequence not stored yet (with their tool calls), rules only for a new
 (Attempt, RuleCode); names are cut to their column limits (AgentName/ToolName 50, Model 100, FailureReason 1000,
 history reason 500). One AgentRuns row per LangGraph thread (Id = thread_id); RevisionNo is .NET's counter per request:
-a new run (submit, retry-agent) gets max(RevisionNo) + 1 and 3.4 bumps it the same way on revise, while the Python
+a new run (submit, retry-agent, a failed approval) gets max(RevisionNo) + 1, and a revise sets the SAME row's RevisionNo
+to max(RevisionNo) + 1 (the same thread continues), while the Python
 `revision` is informational only (this settles addendum Open question 6 for us). `POST
 /api/booking-requests/{id}/retry-agent` (Facilities Officer) restarts an AgentFailed request, or a Submitted request
 with no live run (seeded or legacy data), re-checking the requester's cap (409 "The requester already has …"); anything
-else is 409 "Only a failed or not-yet-started request can be (re)started". Cancelling a PendingApproval request marks
+else is 409 "Only a failed or not-yet-started request can be (re)started". Cancelling a PendingApproval request whose run is Resuming (an approval
+being finished) is 409 "Approval in progress"; otherwise cancel marks
 its AwaitingApproval run Cancelled in the cancel transaction (the Draft is voided with the other live quotes), then sends
 resume "cancel" best-effort; .NET never resumes a Cancelled thread. Tests: the factory registers `FakeAgentClient`
 (`factory.AgentClient`, default: starts accepted, runs read as running) and sets `AgentService:ServiceKey`; change its
@@ -462,6 +464,53 @@ generated with the agent-service harness (see `Fixtures/README.md`; regenerate a
 request AgentProcessing, which can't be cancelled: use `AgentRunTestData.ToPendingApprovalAsync` or `ToAgentFailedAsync`,
 and `BookingRequestTestData.InsertSubmittedAsync` for a request with no run. Isolated factories clear their Npgsql pool
 on dispose, so many of them don't exhaust the container's connections.
+
+Officer decisions (Phase 3.4, `ApprovalService`, `ApprovalFinalizer`): `POST /api/booking-requests/{id}/approve
+{comment?}`, `/reject {reason}` and `/request-revision {notes}` are FacilitiesOfficer only (reason and notes required,
+≤ 1000, blank is a 400; the full text is in `ApprovalDecisions.Comment`, history reasons are cut to 500). Unknown → 404;
+not PendingApproval → 409 "Only a request pending approval can be decided (it is …)"; live run not AwaitingApproval
+(a decision is being finished) → 409 "This proposal is already being decided". Lock order: request row, then
+`RowLocks.LiveAgentRunAsync`. Every decision inserts its ApprovalDecisions row in the first transaction, before any
+agent call; the saved decision is what approve and the poller act on, and a re-sent resume always uses it. Approve: tx1
+decision + run → Resuming; resume "approve" (not accepted → 202 at once); then GET every `ApprovalPollMilliseconds` (500)
+for up to `ApprovalWaitSeconds` (10), real time, not TimeProvider: completed → the finaliser → 200 with the Approved
+detail; a failure → 409 with its message; still running → 202 `{requestId, status: "ApprovalInProgress"}` + Location,
+and the poller finishes it. Reject (one tx): decision, run → Rejected + CompletedAt, live quotes voided, request →
+Rejected (officer, reason), then best-effort resume "reject" → 200. Revise (one tx): decision, live quotes voided, the
+same run → Resuming with RevisionNo = max + 1, request PendingApproval → RevisionRequested → AgentProcessing (officer,
+notes on both rows), then resume "revise" with the notes → 202. `IApprovalFinalizer.FinalizeApprovedAsync(runId, view)`
+is shared by approve and the poller and idempotent (it clears the change tracker, locks request then run, and acts only
+while the run is Resuming, its latest decision is Approve and the request is PendingApproval). In one READ COMMITTED
+tx it re-checks, then inserts the Booking (Confirmed, the request's range), `ReserveAsync`, `IssueForApprovalAsync` (the
+Draft is issued when it equals the recomputed quote; otherwise it is voided and a new Issued quote added, with "Quote
+recalculated at approval: Draft X, issued Y" in the history), request → Approved with the deciding officer as the actor,
+run → Completed with the finalize trace. Approval re-check (our reading of addendum A.1/A.3, not a deviation): V05
+`CheckSlot` and V06 `CheckTiming` with the CURRENT policy, but V06's lead time and advance window as of submission
+(`CheckTiming(..., asOf)`, the Submitted history row's ChangedAt, else CreatedAt), plus "start is still in the future"
+now; a requester who submitted on time mustn't fail because the officer was slow, but a policy change still applies.
+Then the room is active, has no overlapping blackout (V07) or active booking (V02, friendly; `no_room_overlap` 23P01 is
+the guarantee), and still has the feature covering each room_builtin line (addendum B, V08*); `ReserveAsync` is V08.
+Failure kinds (our answer to addendum Open question 7, `ApprovalFailureKind`, classified only in the finaliser): Time
+(V05, V06, start in the past) → run Failed, live quote voided, request PendingApproval → Rejected by the system (actor
+null, "The requested time is no longer valid: …"), no new run, best-effort resume "cancel"; 409 "The requested time is
+no longer valid: …. The request was closed; the requester can submit a new time." Proposal (everything else: room
+busy/23P01, blackout, inactive room, equipment short, builtin feature removed, agent finalize failed, unexpected agent
+status, "Agent did not confirm the approval in time") → `FailApprovalAsync`: run Failed, quote voided, request →
+RevisionRequested (saved, which frees the live-run index) → a new run (RevisionNo next) → AgentProcessing in one tx, then
+a best-effort start; 409 "The proposal is no longer valid: …. A new proposal is being prepared." Poller, Resuming (GET
+first; the watchdog counts `RunTimeoutMinutes` from the decision's DecidedAt): awaiting_approval with no validation
+attempt newer than stored → the resume was lost: re-send the saved decision (once per tick; timed out → fail); revise +
+newer attempt → the 3.3 awaiting path (trace, new Draft, PolicySnapshotJson overwritten, AgentProcessing →
+PendingApproval); running → copy the trace (timed out → fail); approve + completed → finaliser (even when timed out);
+failed → approve: new proposal, revise: run Failed + AgentFailed; any other status or 404 → warning, then the same
+failure for its decision; timed out → approve: new proposal "Agent did not confirm the approval in time", revise: "Agent
+run timed out" + AgentFailed. Orphans: a live run whose request doesn't match (Queued/Running need AgentProcessing;
+Resuming needs AgentProcessing for a revise or PendingApproval for an approve; no decision is an orphan) → run Failed
+"Orphaned run (request is …)", the request untouched, best-effort resume "cancel" for Running/Resuming. A Failed run keeps
+the view's Plan/Proposal/PolicySnapshotJson. Tests: `AgentPollerEnv.ToPendingApprovalAsync` (then the agent reads as the
+completed fixture), `OfficerAsync`, `DecideAsync(id, action, body)`, `SetPolicyAsync`; the factory sets
+`ApprovalWaitSeconds` 1 and `ApprovalPollMilliseconds` 50; the 3.4 fixtures are `agent-completed-*`,
+`agent-revised-student` and `agent-finalize-failed`.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
