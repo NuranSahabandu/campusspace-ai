@@ -9,6 +9,10 @@ public static class AgentFixtures
     public const string AwaitingStudent = "agent-awaiting-approval-student";
     public const string AwaitingLecturer = "agent-awaiting-approval-lecturer";
     public const string Failed = "agent-failed";
+    public const string CompletedStudent = "agent-completed-student";
+    public const string CompletedLecturer = "agent-completed-lecturer";
+    public const string RevisedStudent = "agent-revised-student";
+    public const string FinalizeFailed = "agent-finalize-failed";
 
     public static string Json(string name) => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name + ".json"));
 

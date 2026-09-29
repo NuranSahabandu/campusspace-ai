@@ -1,0 +1,768 @@
+{
+  "thread_id": "1d8c217d-3e72-4987-b3e3-f424d605d87f",
+  "status": "completed",
+  "revision": 1,
+  "interrupt": null,
+  "plan": {
+    "required_features": [
+      "projector",
+      "sound_system"
+    ],
+    "equipment": [
+      {
+        "type_code": "MIC-WIRELESS",
+        "quantity": 2
+      }
+    ],
+    "soft_preferences": [],
+    "steps": [
+      {
+        "agent": "venue_matching",
+        "task": "Find up to 3 FREE rooms that fit the attendees and have every required feature; rank them with a one-line reason each. Skip excluded rooms."
+      },
+      {
+        "agent": "equipment_allocation",
+        "task": "For the chosen room, drop lines its features cover (room_builtin), check availability of the rest, and propose a substitute when a line is short."
+      },
+      {
+        "agent": "policy_cost",
+        "task": "Price the chosen room and priced lines with calculate_quote, list the policy facts, and write a short officer summary."
+      }
+    ],
+    "planner_fallback": false
+  },
+  "proposal": {
+    "revision": 1,
+    "room_id": 3,
+    "room_code": "A101",
+    "room_name": "Lecture Hall A101",
+    "venue": {
+      "options": [
+        {
+          "room_id": 3,
+          "code": "A101",
+          "name": "Lecture Hall A101",
+          "capacity": 120,
+          "building": "Main Building",
+          "features": [
+            "ac",
+            "projector",
+            "sound_system",
+            "whiteboard"
+          ],
+          "reason": "120 seats for 120 attendees; has projector, sound_system; Main Building"
+        },
+        {
+          "room_id": 7,
+          "code": "N101",
+          "name": "Lecture Hall N101",
+          "capacity": 150,
+          "building": "New Building",
+          "features": [
+            "ac",
+            "projector",
+            "sound_system",
+            "whiteboard"
+          ],
+          "reason": "150 seats for 120 attendees; has projector, sound_system; New Building"
+        },
+        {
+          "room_id": 5,
+          "code": "MB-AUD",
+          "name": "Main Auditorium",
+          "capacity": 300,
+          "building": "Main Building",
+          "features": [
+            "ac",
+            "projector",
+            "sound_system"
+          ],
+          "reason": "300 seats for 120 attendees; has projector, sound_system; Main Building"
+        }
+      ],
+      "unmet": null
+    },
+    "equipment": {
+      "lines": [
+        {
+          "type_code": "MIC-WIRELESS",
+          "qty": 2,
+          "source": "portable"
+        }
+      ],
+      "substitutions": [],
+      "unmet": []
+    },
+    "quote": {
+      "lines": [
+        {
+          "kind": "Room",
+          "description": "Lecture hall A101, 3 h @ LKR 0",
+          "qty": "3.00",
+          "unit_price": "0.00",
+          "line_total": "0.00"
+        },
+        {
+          "kind": "Equipment",
+          "description": "Wireless microphone x2 @ LKR 500",
+          "qty": "2.00",
+          "unit_price": "500.00",
+          "line_total": "1000.00"
+        }
+      ],
+      "subtotal": "1000.00",
+      "discount": "1000.00",
+      "discount_reason": "Lecturer exemption (academic use)",
+      "exempt": true,
+      "total": "0.00",
+      "currency": "LKR"
+    },
+    "policy_flags": [
+      "Within budget: LKR 0.00 vs LKR 0.00",
+      "Exempt: Lecturer exemption (academic use)",
+      "Duration 3 h (at most 8 h)"
+    ],
+    "officer_summary": "A101 fits 120 attendees (120 seats) with projector, sound_system. Equipment: 2 \u00d7 MIC-WIRELESS. Total LKR 0.00 (budget LKR 0.00): within budget.",
+    "finalized_at": "2026-10-01T03:30:00.000Z"
+  },
+  "officer_summary": "A101 fits 120 attendees (120 seats) with projector, sound_system. Equipment: 2 \u00d7 MIC-WIRELESS. Total LKR 0.00 (budget LKR 0.00): within budget.",
+  "validation": [
+    {
+      "attempt": 1,
+      "rule": "V01",
+      "passed": true,
+      "message": "4 outputs match their schemas (extra fields forbidden)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V02",
+      "passed": true,
+      "message": "Room A101 exists and is still free for the window"
+    },
+    {
+      "attempt": 1,
+      "rule": "V03",
+      "passed": true,
+      "message": "120 seats for 120 attendees (at most 360)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V04",
+      "passed": true,
+      "message": "Room A101 has projector, sound_system"
+    },
+    {
+      "attempt": 1,
+      "rule": "V05",
+      "passed": true,
+      "message": "Fri 14:00\u201317:00 is within 08:00\u201320:00, 3 h \u2264 8 h, on 30-minute boundaries"
+    },
+    {
+      "attempt": 1,
+      "rule": "V06",
+      "passed": true,
+      "message": "Starts \u2265 48 h from now and within 90 days (Lecturer)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V07",
+      "passed": true,
+      "message": "No blackout or booking overlaps room A101; public holidays are not checked (not implemented)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V08",
+      "passed": true,
+      "message": "2 \u00d7 MIC-WIRELESS available (7)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V09",
+      "passed": true,
+      "message": "Total LKR 0.00 equals the .NET recomputation"
+    },
+    {
+      "attempt": 1,
+      "rule": "V10",
+      "passed": true,
+      "message": "LKR 0.00 \u2264 budget LKR 0.00"
+    },
+    {
+      "attempt": 1,
+      "rule": "V11",
+      "passed": true,
+      "message": "Lecturer; 1 other open requests < 3"
+    },
+    {
+      "attempt": 1,
+      "rule": "V12",
+      "passed": true,
+      "message": "3 room ids and 1 equipment codes came from tool results"
+    }
+  ],
+  "nodes": [
+    "supervisor",
+    "venue_matching",
+    "supervisor",
+    "equipment_allocation",
+    "supervisor",
+    "policy_cost",
+    "supervisor",
+    "validate",
+    "human_gate",
+    "finalize"
+  ],
+  "steps": [
+    {
+      "sequence": 1,
+      "agent_name": "supervisor",
+      "status": "Succeeded",
+      "input": {
+        "request_id": 43,
+        "revision": 1,
+        "replan_reason": null
+      },
+      "output": {
+        "required_features": [
+          "projector",
+          "sound_system"
+        ],
+        "equipment": [
+          {
+            "type_code": "MIC-WIRELESS",
+            "quantity": 2
+          }
+        ],
+        "soft_preferences": [],
+        "steps": [
+          {
+            "agent": "venue_matching",
+            "task": "Find up to 3 FREE rooms that fit the attendees and have every required feature; rank them with a one-line reason each. Skip excluded rooms."
+          },
+          {
+            "agent": "equipment_allocation",
+            "task": "For the chosen room, drop lines its features cover (room_builtin), check availability of the rest, and propose a substitute when a line is short."
+          },
+          {
+            "agent": "policy_cost",
+            "task": "Price the chosen room and priced lines with calculate_quote, list the policy facts, and write a short officer summary."
+          }
+        ],
+        "planner_fallback": false
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "get_policy",
+          "args": {},
+          "result_summary": {
+            "keys": [
+              "checkout_window_minutes",
+              "free_cancellation_hours",
+              "max_advance_days_lecturer",
+              "max_advance_days_student",
+              "max_capacity_ratio",
+              "max_duration_hours",
+              "max_open_requests",
+              "min_lead_time_hours",
+              "opening_hours",
+              "slot_granularity_minutes"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "get_request_context",
+          "args": {
+            "request_id": 43
+          },
+          "result_summary": {
+            "requestId": 43,
+            "status": "AgentProcessing",
+            "requesterRole": "Lecturer",
+            "attendees": 120,
+            "requestedStart": "2026-10-16T08:30:00Z",
+            "requestedEnd": "2026-10-16T11:30:00Z",
+            "equipmentLines": 1,
+            "hasClub": false,
+            "openRequestCount": 1,
+            "maxOpenRequests": 3,
+            "notes": null
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "list_feature_catalog",
+          "args": {},
+          "result_summary": {
+            "count": 6
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "list_equipment_catalog",
+          "args": {},
+          "result_summary": {
+            "count": 5
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 2,
+      "agent_name": "venue_matching",
+      "status": "Succeeded",
+      "input": {
+        "task": "Find up to 3 FREE rooms that fit the attendees and have every required feature; rank them with a one-line reason each. Skip excluded rooms.\nBRIEF: {\"attendees\": 120, \"end\": \"2026-10-16T11:30:00Z\", \"excluded_room_ids\": [], \"max_capacity_ratio\": 3, \"replan_reason\": null, \"required_features\": [\"projector\", \"sound_system\"], \"soft_preferences\": [], \"start\": \"2026-10-16T08:30:00Z\"}"
+      },
+      "output": {
+        "options": [
+          {
+            "room_id": 3,
+            "code": "A101",
+            "name": "Lecture Hall A101",
+            "capacity": 120,
+            "building": "Main Building",
+            "features": [
+              "ac",
+              "projector",
+              "sound_system",
+              "whiteboard"
+            ],
+            "reason": "120 seats for 120 attendees; has projector, sound_system; Main Building"
+          },
+          {
+            "room_id": 7,
+            "code": "N101",
+            "name": "Lecture Hall N101",
+            "capacity": 150,
+            "building": "New Building",
+            "features": [
+              "ac",
+              "projector",
+              "sound_system",
+              "whiteboard"
+            ],
+            "reason": "150 seats for 120 attendees; has projector, sound_system; New Building"
+          },
+          {
+            "room_id": 5,
+            "code": "MB-AUD",
+            "name": "Main Auditorium",
+            "capacity": 300,
+            "building": "Main Building",
+            "features": [
+              "ac",
+              "projector",
+              "sound_system"
+            ],
+            "reason": "300 seats for 120 attendees; has projector, sound_system; Main Building"
+          }
+        ],
+        "unmet": null
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "search_available_rooms",
+          "args": {
+            "min_capacity": 120,
+            "features": [
+              "projector",
+              "sound_system"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "max_capacity": null,
+            "building_id": null,
+            "page_size": 100
+          },
+          "result_summary": {
+            "total": 3,
+            "rooms": [
+              "3:A101",
+              "7:N101",
+              "5:MB-AUD"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 3,
+      "agent_name": "equipment_allocation",
+      "status": "Succeeded",
+      "input": {
+        "task": "For the chosen room, drop lines its features cover (room_builtin), check availability of the rest, and propose a substitute when a line is short.\nBRIEF: {\"end\": \"2026-10-16T11:30:00Z\", \"lines\": [{\"code\": \"MIC-WIRELESS\", \"quantity\": 2}], \"room_features\": [\"ac\", \"projector\", \"sound_system\", \"whiteboard\"], \"room_id\": 3, \"start\": \"2026-10-16T08:30:00Z\"}"
+      },
+      "output": {
+        "lines": [
+          {
+            "type_code": "MIC-WIRELESS",
+            "qty": 2,
+            "source": "portable"
+          }
+        ],
+        "substitutions": [],
+        "unmet": []
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "check_equipment_availability",
+          "args": {
+            "codes": [
+              "MIC-WIRELESS"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z"
+          },
+          "result_summary": {
+            "available": {
+              "MIC-WIRELESS": 7
+            }
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 4,
+      "agent_name": "policy_cost",
+      "status": "Succeeded",
+      "input": {
+        "task": "Price the chosen room and priced lines with calculate_quote, list the policy facts, and write a short officer summary.\nBRIEF: {\"attendees\": 120, \"budget_lkr\": \"0.00\", \"builtin\": [], \"duration_hours\": \"3.00\", \"end\": \"2026-10-16T11:30:00Z\", \"equipment_unmet\": [], \"policy\": {\"max_advance_days_lecturer\": 90, \"max_advance_days_student\": 60, \"max_capacity_ratio\": 3, \"max_duration_hours\": 8, \"max_open_requests\": 3, \"min_lead_time_hours\": 48}, \"priced_lines\": [{\"code\": \"MIC-WIRELESS\", \"quantity\": 2}], \"requester_role\": \"Lecturer\", \"required_features\": [\"projector\", \"sound_system\"], \"room_capacity\": 120, \"room_code\": \"A101\", \"room_id\": 3, \"start\": \"2026-10-16T08:30:00Z\", \"substitutions\": [], \"venue_unmet\": null}"
+      },
+      "output": {
+        "quote": {
+          "lines": [
+            {
+              "kind": "Room",
+              "description": "Lecture hall A101, 3 h @ LKR 0",
+              "qty": "3.00",
+              "unit_price": "0.00",
+              "line_total": "0.00"
+            },
+            {
+              "kind": "Equipment",
+              "description": "Wireless microphone x2 @ LKR 500",
+              "qty": "2.00",
+              "unit_price": "500.00",
+              "line_total": "1000.00"
+            }
+          ],
+          "subtotal": "1000.00",
+          "discount": "1000.00",
+          "discount_reason": "Lecturer exemption (academic use)",
+          "exempt": true,
+          "total": "0.00",
+          "currency": "LKR"
+        },
+        "policy_flags": [
+          "Within budget: LKR 0.00 vs LKR 0.00",
+          "Exempt: Lecturer exemption (academic use)",
+          "Duration 3 h (at most 8 h)"
+        ],
+        "officer_summary": "A101 fits 120 attendees (120 seats) with projector, sound_system. Equipment: 2 \u00d7 MIC-WIRELESS. Total LKR 0.00 (budget LKR 0.00): within budget.",
+        "unmet": null
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "calculate_quote",
+          "args": {
+            "room_id": 3,
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "requester_role": "Lecturer",
+            "equipment": [
+              {
+                "code": "MIC-WIRELESS",
+                "quantity": 2
+              }
+            ]
+          },
+          "result_summary": {
+            "total": "0.00",
+            "lines": 2,
+            "exempt": true
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 5,
+      "agent_name": "validate",
+      "status": "Succeeded",
+      "input": {
+        "attempt": 1,
+        "room_id": 3
+      },
+      "output": {
+        "outcome": "pass",
+        "failed": []
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 1,
+      "tool_calls": [
+        {
+          "tool_name": "get_room_details",
+          "args": {
+            "room_id": 3
+          },
+          "result_summary": {
+            "id": 3,
+            "code": "A101",
+            "capacity": 120,
+            "isActive": true,
+            "features": [
+              "ac",
+              "projector",
+              "sound_system",
+              "whiteboard"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "search_available_rooms",
+          "args": {
+            "min_capacity": 120,
+            "features": [],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "max_capacity": 120,
+            "building_id": 1,
+            "page_size": 100
+          },
+          "result_summary": {
+            "total": 1,
+            "rooms": [
+              "3:A101"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "check_equipment_availability",
+          "args": {
+            "codes": [
+              "MIC-WIRELESS"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z"
+          },
+          "result_summary": {
+            "available": {
+              "MIC-WIRELESS": 7
+            }
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "calculate_quote",
+          "args": {
+            "room_id": 3,
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "requester_role": "Lecturer",
+            "equipment": [
+              {
+                "code": "MIC-WIRELESS",
+                "quantity": 2
+              }
+            ]
+          },
+          "result_summary": {
+            "total": "0.00",
+            "lines": 2,
+            "exempt": true
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "get_request_context",
+          "args": {
+            "request_id": 43
+          },
+          "result_summary": {
+            "requestId": 43,
+            "status": "AgentProcessing",
+            "requesterRole": "Lecturer",
+            "attendees": 120,
+            "requestedStart": "2026-10-16T08:30:00Z",
+            "requestedEnd": "2026-10-16T11:30:00Z",
+            "equipmentLines": 1,
+            "hasClub": false,
+            "openRequestCount": 1,
+            "maxOpenRequests": 3,
+            "notes": null
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 6,
+      "agent_name": "finalize",
+      "status": "Succeeded",
+      "input": {
+        "room_id": 3
+      },
+      "output": {
+        "V02": {
+          "passed": true,
+          "message": "Room A101 exists and is still free for the window"
+        },
+        "V08": {
+          "passed": true,
+          "message": "2 \u00d7 MIC-WIRELESS available (7)"
+        }
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "get_room_details",
+          "args": {
+            "room_id": 3
+          },
+          "result_summary": {
+            "id": 3,
+            "code": "A101",
+            "capacity": 120,
+            "isActive": true,
+            "features": [
+              "ac",
+              "projector",
+              "sound_system",
+              "whiteboard"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "search_available_rooms",
+          "args": {
+            "min_capacity": 120,
+            "features": [],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "max_capacity": 120,
+            "building_id": 1,
+            "page_size": 100
+          },
+          "result_summary": {
+            "total": 1,
+            "rooms": [
+              "3:A101"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "check_equipment_availability",
+          "args": {
+            "codes": [
+              "MIC-WIRELESS"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z"
+          },
+          "result_summary": {
+            "available": {
+              "MIC-WIRELESS": 7
+            }
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    }
+  ],
+  "policy_snapshot": {
+    "opening_hours": {
+      "mon": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "tue": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "wed": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "thu": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "fri": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "sat": {
+        "open": "08:00",
+        "close": "16:00"
+      },
+      "sun": null
+    },
+    "min_lead_time_hours": 48,
+    "max_advance_days_student": 60,
+    "max_advance_days_lecturer": 90,
+    "max_duration_hours": 8,
+    "max_capacity_ratio": 3,
+    "slot_granularity_minutes": 30,
+    "free_cancellation_hours": 24,
+    "max_open_requests": 3,
+    "checkout_window_minutes": 30
+  },
+  "error": null,
+  "model": "stub",
+  "started_at": "2026-10-01T03:30:00.000Z",
+  "completed_at": "2026-10-01T03:30:00.000Z",
+  "duration_ms": 0
+}

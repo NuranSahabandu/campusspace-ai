@@ -169,6 +169,50 @@ def test_revise_gives_a_new_room_in_the_same_thread(h: Harness) -> None:
     assert view.interrupt["revision"] == 2
 
 
+def test_revise_re_fetches_the_policy_and_validates_against_it(
+    h: Harness, api: FakeCampusApi
+) -> None:
+    tid = h.start()
+    first = h.view(tid)
+    assert first.policy_snapshot["max_capacity_ratio"] == 3
+    policy_calls = len(api.calls_to("policy"))
+
+    api.policy["max_capacity_ratio"] = 4
+    view = h.resume(tid, "revise", "Somewhere else, please.")
+
+    assert view.status == "awaiting_approval"
+    assert len(api.calls_to("policy")) == policy_calls + 1
+    assert view.policy_snapshot["max_capacity_ratio"] == 4
+    v03 = {v["attempt"]: v["message"] for v in view.validation if v["rule"] == "V03"}
+    assert "at most 135" in v03[1]  # 3 × 45, the first snapshot
+    assert "at most 180" in v03[2]  # 4 × 45, the fresh one
+    supervisor = [s for s in view.steps if s["agent_name"] == "supervisor"]
+    assert [c["tool_name"] for c in supervisor[-1]["tool_calls"]] == ["get_policy"]
+
+
+def test_revise_with_the_policy_route_down_fails_safely(h: Harness, api: FakeCampusApi) -> None:
+    tid = h.start()
+    api.down = {"policy"}
+
+    view = h.resume(tid, "revise", "Somewhere else, please.")
+
+    assert view.status == "failed"
+    assert view.error.startswith("policy unavailable")
+    assert view.nodes[-1] == "safe_failure"
+
+
+def test_approve_does_not_re_fetch_the_policy(h: Harness, api: FakeCampusApi) -> None:
+    tid = h.start()
+    policy_calls = len(api.calls_to("policy"))
+    api.policy["max_capacity_ratio"] = 4
+
+    view = h.resume(tid, "approve")
+
+    assert view.status == "completed"
+    assert len(api.calls_to("policy")) == policy_calls
+    assert view.policy_snapshot["max_capacity_ratio"] == 3
+
+
 def test_revise_twice_keeps_every_trace_number_unique(h: Harness, api: FakeCampusApi) -> None:
     api.requests[42] = projector_only()
     tid = h.start()
