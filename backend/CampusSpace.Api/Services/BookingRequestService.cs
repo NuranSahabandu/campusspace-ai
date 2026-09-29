@@ -1,3 +1,4 @@
+using CampusSpace.Api.Agents;
 using CampusSpace.Api.Auth;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Dtos.AgentTools;
@@ -6,7 +7,9 @@ using CampusSpace.Api.Dtos.Requests;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace CampusSpace.Api.Services;
 
@@ -16,7 +19,11 @@ public sealed class BookingRequestService(
     IPolicySettingsService policy,
     IRequestStateMachine stateMachine,
     IBookingWindowRules windowRules,
-    TimeProvider clock) : IBookingRequestService
+    IAgentRunStarter runStarter,
+    IAgentClient agent,
+    IOptions<AgentServiceOptions> agentOptions,
+    TimeProvider clock,
+    ILogger<BookingRequestService> logger) : IBookingRequestService
 {
     public const string NotRepresentativeMessage = "You must be the registered representative of an active club";
     public const string LecturerClubMessage = "Lecturer bookings are academic and can't name a club";
@@ -28,6 +35,7 @@ public sealed class BookingRequestService(
     public const string BookingStartedMessage = "The booking has already started";
     public const string EquipmentOnLoanMessage = "Equipment is still on loan; check it in first";
     public const string BookingNotCancellableMessage = "The booking is no longer cancellable";
+    public const string NotRestartableMessage = "Only a failed or not-yet-started request can be (re)started";
 
     /// <summary>The 409 message for a status the state machine can't move to Cancelled.</summary>
     public static string NotCancellableMessage(string status) => status switch
@@ -100,12 +108,21 @@ public sealed class BookingRequestService(
         };
         stateMachine.Start(entity, requesterId);
         db.BookingRequests.Add(entity);
+        // §11 step 2: AgentRun #1 (Queued) and Submitted → AgentProcessing commit with the request, so a request never
+        // sits in AgentProcessing without a run. The start below is best-effort: a Queued run is the safety net the
+        // poller retries (and the watchdog fails after AgentService:StartTimeoutMinutes).
+        stateMachine.Transition(entity, RequestStatuses.AgentProcessing, requesterId);
+        var run = await runStarter.AddRunAsync(entity, ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        // Phase 3: create AgentRun #1, move to AgentProcessing, start the workflow and return 202 instead of 201.
+        await StartInlineAsync(run.Id, entity.Id, ct);
         return (await LoadDetailAsync(entity.Id, ct))!;
     }
+
+    /// <summary>Starts a committed run without holding up the 202: a slow agent service leaves it Queued.</summary>
+    private Task StartInlineAsync(Guid runId, long requestId, CancellationToken ct) =>
+        runStarter.TryStartAsync(runId, requestId, TimeSpan.FromSeconds(agentOptions.Value.InlineStartTimeoutSeconds), ct);
 
     public Task<PagedResult<BookingRequestSummaryDto>> ListAsync(BookingRequestsQuery query, CancellationToken ct = default)
     {
@@ -190,6 +207,7 @@ public sealed class BookingRequestService(
 
         var now = clock.GetUtcNow().UtcDateTime;
         var late = false;
+        Guid? cancelledRunId = null;
         if (entity.Status == RequestStatuses.Approved)
         {
             var booking = await db.Bookings
@@ -214,7 +232,17 @@ public sealed class BookingRequestService(
         }
         else if (entity.Status == RequestStatuses.PendingApproval)
         {
-            // TODO(Phase 3): end the paused workflow run (the interrupted LangGraph thread) of this request.
+            // The paused run ends with the request. Its row is locked after the request row (the order every writer
+            // uses); the Draft quote is voided below with the others.
+            var run = await db.AgentRuns
+                .FromSql($"""SELECT * FROM "AgentRuns" WHERE "RequestId" = {id} AND "Status" = {AgentRunStatuses.AwaitingApproval} FOR UPDATE""")
+                .SingleOrDefaultAsync(ct);
+            if (run is not null)
+            {
+                run.Status = AgentRunStatuses.Cancelled;
+                run.CompletedAt = run.StartedAt is { } started && now < started ? started : now;
+                cancelledRunId = run.Id;
+            }
         }
 
         await QuotationService.VoidLiveAsync(db, id, ct);
@@ -225,18 +253,65 @@ public sealed class BookingRequestService(
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
+        if (cancelledRunId is { } runId)
+            await EndPausedRunAsync(runId, ct);
+        return await LoadDetailAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Tells the agent service to end the interrupted thread (resume "cancel"). Best-effort: the .NET run is already
+    /// Cancelled, and .NET never resumes that thread, so a failure is only logged.
+    /// </summary>
+    private async Task EndPausedRunAsync(Guid runId, CancellationToken ct)
+    {
+        var result = await agent.ResumeAsync(runId, AgentDecisions.Cancel, notes: null, ct);
+        if (!result.IsOk)
+            logger.LogWarning("Agent run {RunId} is Cancelled, but the agent service did not accept the cancel ({Outcome}: {Detail})",
+                runId, result.Outcome, result.Detail);
+    }
+
+    public async Task<BookingRequestDetailDto?> RetryAgentAsync(long id, CancellationToken ct = default)
+    {
+        var officerId = CallerId;
+        var requesterId = await db.BookingRequests.Where(r => r.Id == id).Select(r => (long?)r.RequesterId).SingleOrDefaultAsync(ct);
+        if (requesterId is not { } ownerId)
+            return null;
+
+        Guid runId;
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            // The submit lock first (it guards the cap), then the request row: the order every writer uses.
+            await AdvisoryLocks.LockAsync(db.Database, AdvisoryLocks.RequesterOpenRequests, ownerId, ct);
+            var entity = (await LockForUpdateAsync(id, ct))!;
+            var restartable = entity.Status == RequestStatuses.AgentFailed
+                || (entity.Status == RequestStatuses.Submitted
+                    && !await db.AgentRuns.AnyAsync(r => r.RequestId == id && AgentRunStatuses.Active.Contains(r.Status), ct));
+            if (!restartable)
+                throw new ConflictException(NotRestartableMessage);
+
+            // The request becomes AgentProcessing, which is open: it must fit beside the requester's other open requests.
+            var open = await CountOpenAsync(ownerId, ct, exceptRequestId: id);
+            var max = (await policy.GetAsync(ct)).MaxOpenRequests;
+            if (open >= max)
+                throw new ConflictException(RequesterCapMessage(open, max));
+
+            var run = await runStarter.AddRunAsync(entity, ct);
+            stateMachine.Transition(entity, RequestStatuses.AgentProcessing, officerId);
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            runId = run.Id;
+        }
+
+        await StartInlineAsync(runId, id, ct);
         return await LoadDetailAsync(id, ct);
     }
 
     /// <summary>
     /// Loads the request tracked and row-locked (SELECT … FOR UPDATE) in the caller's transaction, so operations that
-    /// change one request's status serialise and each sees the status the previous one committed. Cancel takes it
-    /// first; the Phase 3 approve and reject must take it first too.
+    /// change one request's status serialise and each sees the status the previous one committed. Cancel, retry-agent
+    /// and the agent run poller take it first (see RowLocks for the full order); the Phase 3 approve and reject must too.
     /// </summary>
-    private Task<BookingRequest?> LockForUpdateAsync(long id, CancellationToken ct) =>
-        db.BookingRequests
-            .FromSql($"""SELECT * FROM "BookingRequests" WHERE "Id" = {id} FOR UPDATE""")
-            .SingleOrDefaultAsync(ct);
+    private Task<BookingRequest?> LockForUpdateAsync(long id, CancellationToken ct) => RowLocks.RequestAsync(db, id, ct);
 
     public async Task<EligibilityDto> GetEligibilityAsync(CancellationToken ct = default)
     {
@@ -260,6 +335,10 @@ public sealed class BookingRequestService(
 
     private static string CapMessage(int open, int max) =>
         $"You already have {open} open requests (the limit is {max})";
+
+    /// <summary>The cap message for the officer who retries someone else's request.</summary>
+    public static string RequesterCapMessage(int open, int max) =>
+        $"The requester already has {open} open requests (the limit is {max})";
 
     private static DateTime CampusDayStartUtc(DateOnly date) => CampusTime.StartOf(date).UtcDateTime;
 

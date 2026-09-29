@@ -64,7 +64,8 @@ class RequestsRepository {
     return RequestDetail.fromJson(response.data!);
   }
 
-  /// Saves the request as Submitted and returns it (201).
+  /// Saves the request and starts planning it: 202 Accepted with the request, now AgentProcessing. The agent run goes
+  /// on in the background (the request moves to PendingApproval or AgentFailed).
   Future<RequestDetail> create(NewRequestBody body) async {
     final response = await _dio.post<Map<String, dynamic>>('/api/booking-requests', data: body.toJson());
     return RequestDetail.fromJson(response.data!);

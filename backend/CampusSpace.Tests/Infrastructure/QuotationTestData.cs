@@ -19,7 +19,7 @@ public static class QuotationTestData
     {
         var (client, userId, clubId) = await BookingRequestTestData.StudentRepAsync(factory);
         var response = await client.PostAsJsonAsync(BookingRequestTestData.Url, BookingRequestTestData.Body(clubId));
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
         return (client, userId, (await response.ReadJsonAsync()).GetProperty("id").GetInt64());
     }
 

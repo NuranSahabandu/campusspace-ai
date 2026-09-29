@@ -60,7 +60,7 @@ public class EquipmentTypesEndpointsTests(PostgresFixture fixture)
         var (student, _, clubId) = await BookingRequestTestData.StudentRepAsync(fixture.Factory);
         (await student.PostAsJsonAsync(BookingRequestTestData.Url,
                 BookingRequestTestData.Body(clubId, equipment: [BookingRequestTestData.Line(type.Id, 2)])))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
         var (officer, _) = await OfficerAsync();
 
         var response = await officer.DeleteAsync($"/api/equipment-types/{type.Id}");

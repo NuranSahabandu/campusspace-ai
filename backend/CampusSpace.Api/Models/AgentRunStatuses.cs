@@ -2,7 +2,7 @@ namespace CampusSpace.Api.Models;
 
 /// <summary>
 /// The only list of agent run statuses (§8.1 Agent workflow state, plus Resuming for the time between an officer's
-/// decision and the graph picking it up). Used by the AgentRuns CHECK and its one-live-run partial index.
+/// decision and the graph picking it up, and Cancelled for a paused run ended by cancelling its request). Used by the AgentRuns CHECK and its one-live-run partial index.
 /// </summary>
 public static class AgentRunStatuses
 {
@@ -13,12 +13,13 @@ public static class AgentRunStatuses
     public const string Completed = "Completed";
     public const string Rejected = "Rejected";
     public const string Failed = "Failed";
+    public const string Cancelled = "Cancelled";
 
     public static readonly IReadOnlyList<string> All =
-        [Queued, Running, AwaitingApproval, Resuming, Completed, Rejected, Failed];
+        [Queued, Running, AwaitingApproval, Resuming, Completed, Rejected, Failed, Cancelled];
 
     /// <summary>No transition leaves these. A request may have any number of terminal runs.</summary>
-    public static readonly IReadOnlyList<string> Terminal = [Completed, Rejected, Failed];
+    public static readonly IReadOnlyList<string> Terminal = [Completed, Rejected, Failed, Cancelled];
 
     /// <summary>A live run: at most one per request (IX_AgentRuns_RequestId_Live).</summary>
     public static readonly IReadOnlyList<string> Active = [Queued, Running, AwaitingApproval, Resuming];

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:campusspace_mobile/features/requests/models.dart';
+import 'package:campusspace_mobile/features/requests/request_status.dart';
 import 'package:campusspace_mobile/features/requests/requests_repository.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -45,8 +46,8 @@ void main() {
     expect(adapter.requests.single.uri.queryParameters, {'pageSize': '100', 'sort': 'code'});
   });
 
-  test('create POSTs the body as JSON and returns the saved request', () async {
-    final (repo, adapter) = repository(requestDetailJson, status: 201);
+  test('create POSTs the body as JSON and returns the request from the 202, already AgentProcessing', () async {
+    final (repo, adapter) = repository(createdRequestJson, status: 202);
 
     final created = await repo.create(NewRequestBody(
       purpose: 'Guest lecture',
@@ -61,7 +62,9 @@ void main() {
     expect(sent.method, 'POST');
     expect(sent.uri.path, '/api/booking-requests');
     expect(jsonDecode(jsonEncode(sent.data))['requestedStart'], '2026-10-26T10:00:00+05:30');
-    expect(created.id, 2);
+    expect(created.id, 31);
+    expect(created.status, RequestStatuses.agentProcessing);
+    expect(created.history.map((h) => h.toStatus), [RequestStatuses.submitted, RequestStatuses.agentProcessing]);
   });
 
   test('cancel POSTs the trimmed reason and returns the cancelled request', () async {

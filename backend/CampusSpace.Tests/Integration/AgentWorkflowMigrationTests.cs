@@ -36,7 +36,9 @@ public class AgentWorkflowMigrationTests(PostgresFixture fixture)
         string duration = "NULL", string started = "NULL", string completed = "NULL") =>
         $"""INSERT INTO "AgentRuns" ("Id", "RequestId", "RevisionNo", "Status", "FailureReason", "DurationMs", "StartedAt", "CompletedAt", "CreatedAt", "UpdatedAt") VALUES ('{Guid.NewGuid()}', {requestId}, {revision}, '{status}', {failureReason}, {duration}, {started}, {completed}, now(), now())""";
 
-    private async Task<long> RequestAsync() => (await QuotationTestData.RequestAsync(Factory)).RequestId;
+    /// <summary>A request with no agent run (submit would create one).</summary>
+    private async Task<long> RequestAsync() => await BookingRequestTestData.InsertSubmittedAsync(
+        Factory, (await TestAuth.CreateUserClientAsync(Factory, Roles.Student)).UserId);
 
     [Fact]
     public async Task Run_checks_reject_bad_revision_status_duration_times_and_a_failure_without_reason()
@@ -72,6 +74,17 @@ public class AgentWorkflowMigrationTests(PostgresFixture fixture)
         await AgentRunTestData.InsertRunAsync(Factory, other, AgentRunStatuses.Rejected, revisionNo: 2);
         await AgentRunTestData.InsertRunAsync(Factory, other, AgentRunStatuses.Queued, revisionNo: 3);
         (await ScalarAsync($"""SELECT count(*) FROM "AgentRuns" WHERE "RequestId" = {other}""")).Should().Be(3L);
+    }
+
+    [Fact]
+    public async Task A_cancelled_run_is_accepted_and_does_not_block_a_new_live_run()
+    {
+        var requestId = await RequestAsync();
+
+        await ScalarAsync(InsertRun(requestId, revision: 1, status: AgentRunStatuses.Cancelled));
+        await ScalarAsync(InsertRun(requestId, revision: 2, status: AgentRunStatuses.AwaitingApproval));
+
+        (await ScalarAsync($"""SELECT count(*) FROM "AgentRuns" WHERE "RequestId" = {requestId}""")).Should().Be(2L);
     }
 
     [Fact]

@@ -102,7 +102,7 @@ namespace CampusSpace.Api.Data.Migrations
 
                             t.HasCheckConstraint("CK_AgentRuns_RevisionNo", "\"RevisionNo\" > 0");
 
-                            t.HasCheckConstraint("CK_AgentRuns_Status", "\"Status\" IN ('Queued', 'Running', 'AwaitingApproval', 'Resuming', 'Completed', 'Rejected', 'Failed')");
+                            t.HasCheckConstraint("CK_AgentRuns_Status", "\"Status\" IN ('Queued', 'Running', 'AwaitingApproval', 'Resuming', 'Completed', 'Rejected', 'Failed', 'Cancelled')");
                         });
                 });
 

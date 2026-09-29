@@ -1,15 +1,26 @@
 import {
   CANCELLABLE_STATUSES,
   DEFAULT_STATUS_GROUP,
+  REFRESH_INTERVAL_MS,
+  REFRESHING_STATUSES,
   REQUEST_STATUSES,
   STATUS_GROUPS,
   isCancellable,
   isStatusGroup,
+  refreshIntervalFor,
   requestStatusChipStyle,
   requestStatusLabel,
 } from './requestStatus'
 
 describe('requestStatus', () => {
+  it('refreshes only while something is AgentProcessing (mobile RequestStatuses.refreshing)', () => {
+    expect(REFRESHING_STATUSES).toEqual(['AgentProcessing'])
+    expect(refreshIntervalFor(['PendingApproval', 'AgentProcessing'])).toBe(REFRESH_INTERVAL_MS)
+    expect(REFRESH_INTERVAL_MS).toBe(3000)
+    expect(refreshIntervalFor(['Submitted', 'PendingApproval', 'AgentFailed', 'Cancelled'])).toBe(false)
+    expect(refreshIntervalFor([])).toBe(false)
+  })
+
   it('lists the nine backend statuses', () => {
     expect(REQUEST_STATUSES).toEqual([
       'Submitted',

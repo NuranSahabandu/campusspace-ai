@@ -15,7 +15,17 @@ export const compactParams = (params: object) =>
   Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '' && v !== null))
 
 /** GET a §9 list endpoint. Keeps showing the current page while the next one loads. */
-export function usePagedQuery<T>(queryKey: QueryKey, url: string, params: object, options: { enabled?: boolean } = {}) {
+export function usePagedQuery<T>(
+  queryKey: QueryKey,
+  url: string,
+  params: object,
+  options: {
+    enabled?: boolean
+    /** Re-fetch every N ms while the loaded page needs it (false: don't). */
+    refetchInterval?: (page: PagedResult<T> | undefined) => number | false
+  } = {},
+) {
+  const { refetchInterval } = options
   return useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
@@ -24,5 +34,6 @@ export function usePagedQuery<T>(queryKey: QueryKey, url: string, params: object
     },
     placeholderData: keepPreviousData,
     enabled: options.enabled,
+    refetchInterval: refetchInterval ? (query) => refetchInterval(query.state.data) : undefined,
   })
 }

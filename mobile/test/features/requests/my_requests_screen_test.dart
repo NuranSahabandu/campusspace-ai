@@ -141,4 +141,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(RequestDetailScreen), findsOneWidget);
   });
+
+  testWidgets('the list re-fetches while a request is AgentProcessing and stops once none is', (tester) async {
+    var calls = 0;
+    stubPages((_, _) async {
+      calls++;
+      final status = calls == 1 ? RequestStatuses.agentProcessing : RequestStatuses.pendingApproval;
+      return PagedResult(items: [testRequest(1, status: status), testRequest(2)], page: 1, pageSize: 20, total: 2);
+    });
+    await pumpRequestsScreens(tester, repository);
+    expect(find.text('Processing'), findsOneWidget);
+
+    await tester.pump(RequestStatuses.refreshInterval);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Waiting for approval'), findsOneWidget);
+    expect(find.text('Request 2'), findsOneWidget, reason: 'the list stays on screen while it reloads');
+    await tester.pump(RequestStatuses.refreshInterval * 3);
+    expect(calls, 2);
+  });
 }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using CampusSpace.Api.Agents;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
@@ -25,7 +26,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         (await ErrorsAsync(response)).GetProperty(field)[0].GetString()!;
 
     [Fact]
-    public async Task Student_representative_submits_and_gets_201_with_the_request_its_lines_and_first_history_row()
+    public async Task Student_representative_submits_and_gets_202_with_the_request_now_AgentProcessing_and_a_running_agent_run()
     {
         await FacilitiesTestData.EnsureFeaturesAsync(Factory);
         var type = await EquipmentTestData.CreateTypeAsync(Factory);
@@ -35,11 +36,11 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         var response = await client.PostAsJsonAsync(Url, Body(clubId, purpose: "  Robotics workshop  ", start: start,
             features: ["Computers", " projector ", "computers"], equipment: [Line(type.Id, 2)], notes: "prefer near the main building"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
         var body = await response.ReadJsonAsync();
         var id = body.GetProperty("id").GetInt64();
         response.Headers.Location!.AbsolutePath.Should().Be($"{Url}/{id}");
-        body.GetProperty("status").GetString().Should().Be(RequestStatuses.Submitted);
+        body.GetProperty("status").GetString().Should().Be(RequestStatuses.AgentProcessing);
         body.GetProperty("purpose").GetString().Should().Be("Robotics workshop");
         body.GetProperty("requestedStart").GetDateTime().Should().Be(start.UtcDateTime);
         body.GetProperty("requestedStart").GetString().Should().EndWith("Z");
@@ -53,9 +54,11 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         body.GetProperty("equipment")[0].GetProperty("quantity").GetInt32().Should().Be(2);
         body.GetProperty("latestProposal").ValueKind.Should().Be(JsonValueKind.Null);
         var history = body.GetProperty("history");
-        history.GetArrayLength().Should().Be(1);
+        history.GetArrayLength().Should().Be(2);
         history[0].GetProperty("fromStatus").ValueKind.Should().Be(JsonValueKind.Null);
         history[0].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.Submitted);
+        history[1].GetProperty("fromStatus").GetString().Should().Be(RequestStatuses.Submitted);
+        history[1].GetProperty("toStatus").GetString().Should().Be(RequestStatuses.AgentProcessing);
 
         await using var scope = Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -65,6 +68,15 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         saved.RequestedStart.Should().Be(start.UtcDateTime);
         saved.EquipmentLines.Should().ContainSingle(l => l.TypeId == type.Id && l.Quantity == 2);
         saved.StatusHistory.Should().ContainSingle(h => h.FromStatus == null && h.ToStatus == RequestStatuses.Submitted && h.ChangedById == userId);
+        saved.StatusHistory.Should().ContainSingle(h => h.FromStatus == RequestStatuses.Submitted
+            && h.ToStatus == RequestStatuses.AgentProcessing && h.ChangedById == userId);
+
+        // AgentRun #1 was created with the request and started at once (the shared fake accepts every start).
+        var run = await db.AgentRuns.AsNoTracking().SingleAsync(r => r.RequestId == id);
+        run.RevisionNo.Should().Be(1);
+        run.Status.Should().Be(AgentRunStatuses.Running);
+        run.StartedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+        Factory.AgentClient.Calls.Should().Contain(("start", run.Id, null));
     }
 
     [Fact]
@@ -90,7 +102,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
             .Should().Be(BookingRequestService.LecturerClubMessage);
 
         var created = await lecturer.PostAsJsonAsync(Url, Body(clubId: null, purpose: "Guest lecture", budget: 0m));
-        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        created.StatusCode.Should().Be(HttpStatusCode.Accepted);
         (await created.ReadJsonAsync()).GetProperty("club").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
@@ -153,7 +165,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         (await ErrorsAsync(await client.PostAsJsonAsync(Url, Body(clubId, notes: new string('n', 1001))))).TryGetProperty("Notes", out _).Should().BeTrue();
 
         (await client.PostAsJsonAsync(Url, Body(clubId, budget: 99_999_999.99m, equipment: [Line(type.Id, 50)])))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
     [Fact]
@@ -165,7 +177,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         for (var i = 0; i < 3; i++)
         {
             var created = await client.PostAsJsonAsync(Url, Body(clubId, purpose: $"Meeting {i}"));
-            created.StatusCode.Should().Be(HttpStatusCode.Created);
+            created.StatusCode.Should().Be(HttpStatusCode.Accepted);
             ids.Add((await created.ReadJsonAsync()).GetProperty("id").GetInt64());
         }
 
@@ -174,11 +186,11 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
             .Should().Be("You already have 3 open requests (the limit is 3)");
 
         // PendingApproval is still open; Rejected is closed.
-        await MoveAsync(Factory, ids[0], RequestStatuses.AgentProcessing, RequestStatuses.PendingApproval);
+        await MoveAsync(Factory, ids[0], RequestStatuses.PendingApproval);
         (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Conflict);
         await MoveAsync(Factory, ids[0], RequestStatuses.Rejected);
 
-        (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
     [Fact]
@@ -189,26 +201,26 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         var (client, _, clubId) = await StudentRepAsync(factory);
 
         (await SetMaxOpenRequestsAsync(officer, 1)).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Accepted);
         (await (await client.PostAsJsonAsync(Url, Body(clubId))).ShouldBeProblemAsync(409)).GetProperty("title").GetString()
             .Should().Be("You already have 1 open requests (the limit is 1)");
 
         (await SetMaxOpenRequestsAsync(officer, 2)).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
     [Fact]
-    public async Task Two_simultaneous_submits_at_cap_minus_one_give_exactly_one_201_and_one_409()
+    public async Task Two_simultaneous_submits_at_cap_minus_one_give_exactly_one_202_and_one_409()
     {
         await using var factory = await fixture.CreateIsolatedFactoryAsync();
         var (officer, _) = await TestAuth.CreateUserClientAsync(factory, Roles.FacilitiesOfficer);
         (await SetMaxOpenRequestsAsync(officer, 2)).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // A race only shows up sometimes, so try it with several users. Without the advisory lock some rounds give two 201s.
+        // A race only shows up sometimes, so try it with several users. Without the advisory lock some rounds give two 202s.
         for (var round = 0; round < 10; round++)
         {
             var (client, userId, clubId) = await StudentRepAsync(factory);
-            (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Created);
+            (await client.PostAsJsonAsync(Url, Body(clubId))).StatusCode.Should().Be(HttpStatusCode.Accepted);
 
             // A second client with the same user's token, so the two requests really run in parallel.
             var second = TestAuth.CreateClient(factory, Roles.Student, userId);
@@ -216,7 +228,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
                 client.PostAsJsonAsync(Url, Body(clubId, purpose: "Race A")),
                 second.PostAsJsonAsync(Url, Body(clubId, purpose: "Race B")));
 
-            responses.Select(r => r.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Created, HttpStatusCode.Conflict], $"round {round}");
+            responses.Select(r => r.StatusCode).Should().BeEquivalentTo([HttpStatusCode.Accepted, HttpStatusCode.Conflict], $"round {round}");
             await using var scope = factory.Services.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             (await db.BookingRequests.CountAsync(r => r.RequesterId == userId)).Should().Be(2);
@@ -264,7 +276,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
 
         // The limits themselves are fine: Saturday 08:00–16:00 is 8 hours, from opening to closing.
         (await client.PostAsJsonAsync(Url, Body(clubId, start: Next(DayOfWeek.Saturday, "08:00"), hours: 8)))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
     /// <summary>Wednesday 2031-03-12 10:00 campus time: the frozen "now" of the timing tests.</summary>
@@ -283,7 +295,7 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
             .Should().Be("Must start at least 48 hours from now");
         // Friday 10:00 is exactly 48 h away.
         (await client.PostAsJsonAsync(Url, Body(clubId, start: Frozen(2, "10:00"))))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
     }
 
     [Fact]
@@ -297,9 +309,69 @@ public class BookingRequestsSubmitTests(PostgresFixture fixture)
         (await ErrorAsync(await student.PostAsJsonAsync(Url, Body(clubId, start: Frozen(61, "10:00"))), "RequestedStart"))
             .Should().Be("Can be booked at most 60 days ahead");
         (await student.PostAsJsonAsync(Url, Body(clubId, start: Frozen(58, "10:00"))))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
         (await lecturer.PostAsJsonAsync(Url, Body(clubId: null, start: Frozen(61, "10:00"))))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
+    [Fact]
+    public async Task When_the_agent_service_is_down_submit_still_returns_202_and_leaves_the_run_Queued()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync();
+        factory.AgentClient.Start = (_, _, _) => Task.FromResult(FakeAgentClient.Unavailable<AgentWorkflowAccepted>());
+        var (client, _, clubId) = await StudentRepAsync(factory);
+
+        var response = await client.PostAsJsonAsync(Url, Body(clubId));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var id = (await response.ReadJsonAsync()).GetProperty("id").GetInt64();
+        var run = await RunAsync(factory, id);
+        run.Status.Should().Be(AgentRunStatuses.Queued);
+        run.StartedAt.Should().BeNull();
+        run.RevisionNo.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_hanging_agent_service_does_not_slow_down_submit_past_the_inline_start_timeout()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync();
+        factory.AgentClient.Start = async (thread, _, ct) =>
+        {
+            // Longer than AgentService:InlineStartTimeoutSeconds (3); honours the token like HttpClient does.
+            await Task.Delay(TimeSpan.FromSeconds(30), ct);
+            return FakeAgentClient.Accepted(thread);
+        };
+        var (client, _, clubId) = await StudentRepAsync(factory);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var response = await client.PostAsJsonAsync(Url, Body(clubId));
+        watch.Stop();
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(6));
+        watch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(2.9));
+        (await RunAsync(factory, (await response.ReadJsonAsync()).GetProperty("id").GetInt64())).Status
+            .Should().Be(AgentRunStatuses.Queued);
+    }
+
+    [Fact]
+    public async Task An_agent_service_that_already_has_the_thread_counts_as_started()
+    {
+        await using var factory = await fixture.CreateIsolatedFactoryAsync();
+        factory.AgentClient.Start = (_, _, _) => Task.FromResult(
+            new AgentCallResult<AgentWorkflowAccepted>(AgentCallOutcome.AlreadyExists));
+        var (client, _, clubId) = await StudentRepAsync(factory);
+
+        var response = await client.PostAsJsonAsync(Url, Body(clubId));
+
+        (await RunAsync(factory, (await response.ReadJsonAsync()).GetProperty("id").GetInt64())).Status
+            .Should().Be(AgentRunStatuses.Running);
+    }
+
+    private static async Task<AgentRun> RunAsync(CustomWebApplicationFactory factory, long requestId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<AppDbContext>().AgentRuns.AsNoTracking().SingleAsync(r => r.RequestId == requestId);
     }
 
     private static Task<HttpResponseMessage> SetMaxOpenRequestsAsync(HttpClient officer, int value) =>

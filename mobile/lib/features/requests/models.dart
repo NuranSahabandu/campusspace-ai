@@ -275,7 +275,7 @@ class StatusChange {
   final DateTime changedAt;
 }
 
-/// GET /api/booking-requests/{id} and the 201 body of POST (BookingRequestDetailDto). History is oldest first.
+/// GET /api/booking-requests/{id} and the 202 body of POST (BookingRequestDetailDto). History is oldest first.
 class RequestDetail {
   const RequestDetail({
     required this.id,

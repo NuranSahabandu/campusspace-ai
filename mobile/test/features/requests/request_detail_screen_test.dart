@@ -313,4 +313,33 @@ void main() {
       expect(find.byKey(const Key('request.cancellation')), findsNothing);
     });
   });
+
+  group('while the agent is planning', () {
+    final processing = RequestDetail.fromJson(_json(createdRequestJson));
+    final pending = RequestDetail.fromJson({..._json(createdRequestJson), 'status': RequestStatuses.pendingApproval});
+
+    testWidgets('an AgentProcessing request re-fetches until the agent moves it, then stops', (tester) async {
+      final answers = [processing, pending];
+      when(() => repository.getRequest(31)).thenAnswer((_) async => answers.length > 1 ? answers.removeAt(0) : answers.first);
+      await pumpRequestsScreens(tester, repository, initialLocation: '/requests/31', userId: _lecturerId);
+      expect(find.text('Processing'), findsWidgets);
+
+      await tester.pump(RequestStatuses.refreshInterval);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Waiting for approval'), findsWidgets);
+      verify(() => repository.getRequest(31)).called(2);
+      await tester.pump(RequestStatuses.refreshInterval * 3);
+      verifyNever(() => repository.getRequest(31));
+    });
+
+    testWidgets('a request in any other status is loaded once', (tester) async {
+      when(() => repository.getRequest(31)).thenAnswer((_) async => pending);
+      await pumpRequestsScreens(tester, repository, initialLocation: '/requests/31', userId: _lecturerId);
+
+      await tester.pump(RequestStatuses.refreshInterval * 3);
+
+      verify(() => repository.getRequest(31)).called(1);
+    });
+  });
 }

@@ -271,8 +271,7 @@ public class AgentToolsEndpointsTests(PostgresFixture fixture) : IAsyncLifetime
             BookingRequestTestData.Body(clubId, start: BookingRequestTestData.FutureStart(weekdaysAhead)))).ReadJsonAsync())
             .GetProperty("id").GetInt64();
         var closed = await SubmitAsync(5);
-        await BookingRequestTestData.MoveAsync(_factory, closed,
-            RequestStatuses.AgentProcessing, RequestStatuses.PendingApproval, RequestStatuses.Rejected);
+        await BookingRequestTestData.MoveAsync(_factory, closed, RequestStatuses.PendingApproval, RequestStatuses.Rejected);
         var other = await SubmitAsync(6);
         var target = await SubmitAsync(7);
 

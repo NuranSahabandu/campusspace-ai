@@ -97,6 +97,31 @@ public static class BookingRequestTestData
         return (client, userId, await CreateClubAsync(factory, userId));
     }
 
+    /// <summary>
+    /// Inserts a Submitted request with no agent run, like the seeded demo requests (submit itself always creates a run
+    /// and moves on to AgentProcessing). Returns its id.
+    /// </summary>
+    public static async Task<long> InsertSubmittedAsync(CustomWebApplicationFactory factory, long requesterId, DateTimeOffset? start = null)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var machine = scope.ServiceProvider.GetRequiredService<IRequestStateMachine>();
+        var s = start ?? FutureStart();
+        var request = new BookingRequest
+        {
+            RequesterId = requesterId,
+            Purpose = $"Legacy request {Guid.NewGuid():N}",
+            Attendees = 20,
+            RequestedStart = s.UtcDateTime,
+            RequestedEnd = s.AddHours(2).UtcDateTime,
+            BudgetLkr = 0,
+        };
+        machine.Start(request, requesterId);
+        db.BookingRequests.Add(request);
+        await db.SaveChangesAsync();
+        return request.Id;
+    }
+
     /// <summary>Moves a request through the real state machine, one step per target status.</summary>
     public static async Task MoveAsync(CustomWebApplicationFactory factory, long requestId, params string[] path)
     {

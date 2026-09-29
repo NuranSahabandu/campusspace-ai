@@ -10,7 +10,7 @@ namespace CampusSpace.Api.Controllers;
 
 /// <summary>
 /// Booking requests (§9 Component C). Students and Lecturers submit, read and cancel their own; Facilities Officers
-/// read and cancel all.
+/// read and cancel all, and restart planning (retry-agent).
 /// Stacked [Authorize] attributes must all pass, so submit and eligibility are for requesters only.
 /// </summary>
 [ApiController]
@@ -53,10 +53,13 @@ public class BookingRequestsController(IBookingRequestService requests) : Contro
     public async Task<ActionResult<EligibilityDto>> Eligibility(CancellationToken ct)
         => Ok(await requests.GetEligibilityAsync(ct));
 
-    /// <summary>Saves the request as Submitted. (Phase 3 starts the agent workflow here and returns 202.)</summary>
+    /// <summary>
+    /// Saves the request and starts planning it (§7.1 rule 6): 202 Accepted with the request, now AgentProcessing, and a
+    /// Location to poll. The agent run continues in the background; the request moves to PendingApproval or AgentFailed.
+    /// </summary>
     [HttpPost]
     [Authorize(Roles = Requesters)]
-    [ProducesResponseType<BookingRequestDetailDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<BookingRequestDetailDto>(StatusCodes.Status202Accepted)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
@@ -64,8 +67,22 @@ public class BookingRequestsController(IBookingRequestService requests) : Contro
     public async Task<ActionResult<BookingRequestDetailDto>> Create(CreateBookingRequestRequest request, CancellationToken ct)
     {
         var created = await requests.CreateAsync(request, ct);
-        return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
+        return AcceptedAtAction(nameof(Get), new { id = created.Id }, created);
     }
+
+    /// <summary>
+    /// Starts a new agent run (the next RevisionNo) for a request whose run failed, or a Submitted request that never got
+    /// one. 202 with the request, now AgentProcessing; 409 for any other status or when the requester is at the cap.
+    /// </summary>
+    [HttpPost("{id:long}/retry-agent")]
+    [Authorize(Roles = Roles.FacilitiesOfficer)]
+    [ProducesResponseType<BookingRequestDetailDto>(StatusCodes.Status202Accepted)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<BookingRequestDetailDto>> RetryAgent(long id, CancellationToken ct)
+        => await requests.RetryAgentAsync(id, ct) is { } detail ? AcceptedAtAction(nameof(Get), new { id }, detail) : NotFound();
 
     /// <summary>
     /// UC07: cancels the request. The owner may give a reason; a Facilities Officer must. Returns the updated request.

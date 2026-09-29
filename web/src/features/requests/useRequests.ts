@@ -3,6 +3,7 @@ import { api } from '../../api/client'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { BookingRequestDetailDto, BookingRequestSummaryDto, ClubDto, PagedResult } from '../../api/types'
 import { clubsKeys } from '../clubs/useClubs'
+import { refreshIntervalFor } from './requestStatus'
 
 /** GET /api/booking-requests parameters. status is sent as repeated ?status=; from/to are inclusive campus dates. */
 export interface BookingRequestsParams extends ListParams {
@@ -32,7 +33,8 @@ export function useBookingRequests(params: BookingRequestsParams, options: { ena
     '/api/booking-requests',
     // An empty status list means every status: send no ?status= at all.
     { ...params, status: params.status?.length ? params.status : undefined },
-    options,
+    // A request the agent is still planning changes on the server; keep the page current until none is.
+    { ...options, refetchInterval: (page) => refreshIntervalFor(page?.items.map((r) => r.status) ?? []) },
   )
 }
 
@@ -41,6 +43,7 @@ export function useBookingRequest(id: number) {
     queryKey: bookingRequestsKeys.detail(id),
     queryFn: async ({ signal }) => (await api.get<BookingRequestDetailDto>(`/api/booking-requests/${id}`, { signal })).data,
     enabled: Number.isInteger(id) && id > 0,
+    refetchInterval: (query) => refreshIntervalFor(query.state.data ? [query.state.data.status] : []),
   })
 }
 

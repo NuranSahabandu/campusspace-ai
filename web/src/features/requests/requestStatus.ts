@@ -34,6 +34,18 @@ const LABELS: Record<RequestStatus, string> = {
   AgentFailed: 'Failed',
 }
 
+/**
+ * The statuses the server moves on its own (the agent run after a 202 submit), so pages showing one re-fetch every
+ * REFRESH_INTERVAL_MS until it changes. The only list of them (mirrors mobile `RequestStatuses.refreshing`).
+ */
+export const REFRESHING_STATUSES: readonly RequestStatus[] = [RequestStatuses.AgentProcessing]
+
+export const REFRESH_INTERVAL_MS = 3000
+
+/** A TanStack Query refetchInterval for data showing these statuses: the interval while any refreshes, else false. */
+export const refreshIntervalFor = (statuses: readonly string[]): number | false =>
+  statuses.some((s) => (REFRESHING_STATUSES as readonly string[]).includes(s)) ? REFRESH_INTERVAL_MS : false
+
 /** The friendly label for a status; an unknown status is shown as sent. */
 export const requestStatusLabel = (status: string): string => (isRequestStatus(status) ? LABELS[status] : status)
 

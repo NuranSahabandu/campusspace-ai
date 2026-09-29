@@ -282,7 +282,7 @@ const requestsPageJson = r'''
 }
 ''';
 
-/// GET /api/booking-requests/2 as lecturer@ (the same shape as the 201 body of POST).
+/// GET /api/booking-requests/2 as lecturer@ (the same shape as the 202 body of POST).
 const requestDetailJson = r'''
 {
   "id": 2,
@@ -335,6 +335,65 @@ const requestDetailJson = r'''
   "updatedAt": "2026-09-27T13:02:47.677815Z"
 }
 ''';
+/// The 202 Accepted body of POST /api/booking-requests as lecturer@ (captured 2026-09-28 against the Phase 3.3 API):
+/// the request is already AgentProcessing, with history null → Submitted → AgentProcessing.
+const createdRequestJson = r'''
+{
+  "id": 31,
+  "purpose": "3.3 fixture capture: guest lecture",
+  "status": "AgentProcessing",
+  "attendees": 40,
+  "requestedStart": "2026-10-19T04:30:00Z",
+  "requestedEnd": "2026-10-19T06:30:00Z",
+  "budgetLkr": 0.00,
+  "notes": null,
+  "requester": {
+    "id": 2,
+    "name": "Dr. Nimal Fernando",
+    "email": "lecturer@campusspace.local"
+  },
+  "club": null,
+  "requiredFeatures": [
+    {
+      "code": "projector",
+      "name": "Projector"
+    }
+  ],
+  "equipment": [
+    {
+      "typeId": 1,
+      "typeCode": "MIC-WIRELESS",
+      "typeName": "Wireless microphone",
+      "quantity": 2
+    }
+  ],
+  "history": [
+    {
+      "fromStatus": null,
+      "toStatus": "Submitted",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": null,
+      "changedAt": "2026-09-28T17:00:22.108589Z"
+    },
+    {
+      "fromStatus": "Submitted",
+      "toStatus": "AgentProcessing",
+      "changedById": 2,
+      "changedByName": "Dr. Nimal Fernando",
+      "reason": null,
+      "changedAt": "2026-09-28T17:00:22.126572Z"
+    }
+  ],
+  "latestProposal": null,
+  "cancelledAt": null,
+  "isLateCancellation": false,
+  "cancelledByOfficer": false,
+  "createdAt": "2026-09-28T17:00:22.136442Z",
+  "updatedAt": "2026-09-28T17:00:22.136442Z"
+}
+''';
+
 
 /// POST /api/booking-requests/6/cancel as lecturer@ with {"reason": "Speaker unavailable"} (200).
 const cancelledRequestJson = r'''

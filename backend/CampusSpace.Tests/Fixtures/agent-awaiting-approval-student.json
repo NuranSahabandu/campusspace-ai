@@ -1,0 +1,819 @@
+{
+  "thread_id": "51eb55b9-57a7-47eb-b052-f82445970e75",
+  "status": "awaiting_approval",
+  "revision": 1,
+  "interrupt": {
+    "request_id": 42,
+    "revision": 1,
+    "proposal": {
+      "venue": {
+        "options": [
+          {
+            "room_id": 1,
+            "code": "A301",
+            "name": "Computer Lab A301",
+            "capacity": 48,
+            "building": "Main Building",
+            "features": [
+              "ac",
+              "computers",
+              "projector",
+              "whiteboard"
+            ],
+            "reason": "48 seats for 45 attendees; has computers, projector; Main Building"
+          },
+          {
+            "room_id": 6,
+            "code": "N201",
+            "name": "Computer Lab N201",
+            "capacity": 60,
+            "building": "New Building",
+            "features": [
+              "ac",
+              "computers",
+              "projector",
+              "smart_board"
+            ],
+            "reason": "60 seats for 45 attendees; has computers, projector; New Building"
+          }
+        ],
+        "unmet": null
+      },
+      "equipment": {
+        "lines": [
+          {
+            "type_code": "MIC-WIRELESS",
+            "qty": 2,
+            "source": "portable"
+          },
+          {
+            "type_code": "PROJ-PORTABLE",
+            "qty": 0,
+            "source": "room_builtin"
+          }
+        ],
+        "substitutions": [],
+        "unmet": []
+      }
+    },
+    "quote": {
+      "lines": [
+        {
+          "kind": "Room",
+          "description": "Computer lab A301, 3 h @ LKR 1,500",
+          "qty": "3.00",
+          "unit_price": "1500.00",
+          "line_total": "4500.00"
+        },
+        {
+          "kind": "Equipment",
+          "description": "Wireless microphone x2 @ LKR 500",
+          "qty": "2.00",
+          "unit_price": "500.00",
+          "line_total": "1000.00"
+        }
+      ],
+      "subtotal": "5500.00",
+      "discount": "0.00",
+      "discount_reason": null,
+      "exempt": false,
+      "total": "5500.00",
+      "currency": "LKR"
+    },
+    "validation": [
+      {
+        "rule": "V01",
+        "passed": true,
+        "message": "4 outputs match their schemas (extra fields forbidden)"
+      },
+      {
+        "rule": "V02",
+        "passed": true,
+        "message": "Room A301 exists and is still free for the window"
+      },
+      {
+        "rule": "V03",
+        "passed": true,
+        "message": "48 seats for 45 attendees (at most 135)"
+      },
+      {
+        "rule": "V04",
+        "passed": true,
+        "message": "Room A301 has computers, projector"
+      },
+      {
+        "rule": "V05",
+        "passed": true,
+        "message": "Fri 14:00\u201317:00 is within 08:00\u201320:00, 3 h \u2264 8 h, on 30-minute boundaries"
+      },
+      {
+        "rule": "V06",
+        "passed": true,
+        "message": "Starts \u2265 48 h from now and within 60 days (Student)"
+      },
+      {
+        "rule": "V07",
+        "passed": true,
+        "message": "No blackout or booking overlaps room A301; public holidays are not checked (not implemented)"
+      },
+      {
+        "rule": "V08",
+        "passed": true,
+        "message": "PROJ-PORTABLE provided by the room (projector); 2 \u00d7 MIC-WIRELESS available (7)"
+      },
+      {
+        "rule": "V09",
+        "passed": true,
+        "message": "Total LKR 5,500.00 equals the .NET recomputation"
+      },
+      {
+        "rule": "V10",
+        "passed": true,
+        "message": "LKR 5,500.00 \u2264 budget LKR 8,000.00"
+      },
+      {
+        "rule": "V11",
+        "passed": true,
+        "message": "active club, registered rep; 1 other open requests < 3"
+      },
+      {
+        "rule": "V12",
+        "passed": true,
+        "message": "2 room ids and 2 equipment codes came from tool results"
+      }
+    ],
+    "summary": "A301 fits 45 attendees (48 seats) with computers, projector. Equipment: 2 \u00d7 MIC-WIRELESS; PROJ-PORTABLE provided by the room. Total LKR 5,500.00 (budget LKR 8,000.00): within budget."
+  },
+  "plan": {
+    "required_features": [
+      "computers",
+      "projector"
+    ],
+    "equipment": [
+      {
+        "type_code": "MIC-WIRELESS",
+        "quantity": 2
+      },
+      {
+        "type_code": "PROJ-PORTABLE",
+        "quantity": 1
+      }
+    ],
+    "soft_preferences": [],
+    "steps": [
+      {
+        "agent": "venue_matching",
+        "task": "Find up to 3 FREE rooms that fit the attendees and have every required feature; rank them with a one-line reason each. Skip excluded rooms."
+      },
+      {
+        "agent": "equipment_allocation",
+        "task": "For the chosen room, drop lines its features cover (room_builtin), check availability of the rest, and propose a substitute when a line is short."
+      },
+      {
+        "agent": "policy_cost",
+        "task": "Price the chosen room and priced lines with calculate_quote, list the policy facts, and write a short officer summary."
+      }
+    ],
+    "planner_fallback": false
+  },
+  "proposal": {
+    "revision": 1,
+    "room_id": 1,
+    "room_code": "A301",
+    "room_name": "Computer Lab A301",
+    "venue": {
+      "options": [
+        {
+          "room_id": 1,
+          "code": "A301",
+          "name": "Computer Lab A301",
+          "capacity": 48,
+          "building": "Main Building",
+          "features": [
+            "ac",
+            "computers",
+            "projector",
+            "whiteboard"
+          ],
+          "reason": "48 seats for 45 attendees; has computers, projector; Main Building"
+        },
+        {
+          "room_id": 6,
+          "code": "N201",
+          "name": "Computer Lab N201",
+          "capacity": 60,
+          "building": "New Building",
+          "features": [
+            "ac",
+            "computers",
+            "projector",
+            "smart_board"
+          ],
+          "reason": "60 seats for 45 attendees; has computers, projector; New Building"
+        }
+      ],
+      "unmet": null
+    },
+    "equipment": {
+      "lines": [
+        {
+          "type_code": "MIC-WIRELESS",
+          "qty": 2,
+          "source": "portable"
+        },
+        {
+          "type_code": "PROJ-PORTABLE",
+          "qty": 0,
+          "source": "room_builtin"
+        }
+      ],
+      "substitutions": [],
+      "unmet": []
+    },
+    "quote": {
+      "lines": [
+        {
+          "kind": "Room",
+          "description": "Computer lab A301, 3 h @ LKR 1,500",
+          "qty": "3.00",
+          "unit_price": "1500.00",
+          "line_total": "4500.00"
+        },
+        {
+          "kind": "Equipment",
+          "description": "Wireless microphone x2 @ LKR 500",
+          "qty": "2.00",
+          "unit_price": "500.00",
+          "line_total": "1000.00"
+        }
+      ],
+      "subtotal": "5500.00",
+      "discount": "0.00",
+      "discount_reason": null,
+      "exempt": false,
+      "total": "5500.00",
+      "currency": "LKR"
+    },
+    "policy_flags": [
+      "Within budget: LKR 5,500.00 vs LKR 8,000.00",
+      "Duration 3 h (at most 8 h)",
+      "PROJ-PORTABLE provided by room A301 (not priced)"
+    ],
+    "officer_summary": "A301 fits 45 attendees (48 seats) with computers, projector. Equipment: 2 \u00d7 MIC-WIRELESS; PROJ-PORTABLE provided by the room. Total LKR 5,500.00 (budget LKR 8,000.00): within budget."
+  },
+  "officer_summary": "A301 fits 45 attendees (48 seats) with computers, projector. Equipment: 2 \u00d7 MIC-WIRELESS; PROJ-PORTABLE provided by the room. Total LKR 5,500.00 (budget LKR 8,000.00): within budget.",
+  "validation": [
+    {
+      "attempt": 1,
+      "rule": "V01",
+      "passed": true,
+      "message": "4 outputs match their schemas (extra fields forbidden)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V02",
+      "passed": true,
+      "message": "Room A301 exists and is still free for the window"
+    },
+    {
+      "attempt": 1,
+      "rule": "V03",
+      "passed": true,
+      "message": "48 seats for 45 attendees (at most 135)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V04",
+      "passed": true,
+      "message": "Room A301 has computers, projector"
+    },
+    {
+      "attempt": 1,
+      "rule": "V05",
+      "passed": true,
+      "message": "Fri 14:00\u201317:00 is within 08:00\u201320:00, 3 h \u2264 8 h, on 30-minute boundaries"
+    },
+    {
+      "attempt": 1,
+      "rule": "V06",
+      "passed": true,
+      "message": "Starts \u2265 48 h from now and within 60 days (Student)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V07",
+      "passed": true,
+      "message": "No blackout or booking overlaps room A301; public holidays are not checked (not implemented)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V08",
+      "passed": true,
+      "message": "PROJ-PORTABLE provided by the room (projector); 2 \u00d7 MIC-WIRELESS available (7)"
+    },
+    {
+      "attempt": 1,
+      "rule": "V09",
+      "passed": true,
+      "message": "Total LKR 5,500.00 equals the .NET recomputation"
+    },
+    {
+      "attempt": 1,
+      "rule": "V10",
+      "passed": true,
+      "message": "LKR 5,500.00 \u2264 budget LKR 8,000.00"
+    },
+    {
+      "attempt": 1,
+      "rule": "V11",
+      "passed": true,
+      "message": "active club, registered rep; 1 other open requests < 3"
+    },
+    {
+      "attempt": 1,
+      "rule": "V12",
+      "passed": true,
+      "message": "2 room ids and 2 equipment codes came from tool results"
+    }
+  ],
+  "nodes": [
+    "supervisor",
+    "venue_matching",
+    "supervisor",
+    "equipment_allocation",
+    "supervisor",
+    "policy_cost",
+    "supervisor",
+    "validate",
+    "human_gate"
+  ],
+  "steps": [
+    {
+      "sequence": 1,
+      "agent_name": "supervisor",
+      "status": "Succeeded",
+      "input": {
+        "request_id": 42,
+        "revision": 1,
+        "replan_reason": null
+      },
+      "output": {
+        "required_features": [
+          "computers",
+          "projector"
+        ],
+        "equipment": [
+          {
+            "type_code": "MIC-WIRELESS",
+            "quantity": 2
+          },
+          {
+            "type_code": "PROJ-PORTABLE",
+            "quantity": 1
+          }
+        ],
+        "soft_preferences": [],
+        "steps": [
+          {
+            "agent": "venue_matching",
+            "task": "Find up to 3 FREE rooms that fit the attendees and have every required feature; rank them with a one-line reason each. Skip excluded rooms."
+          },
+          {
+            "agent": "equipment_allocation",
+            "task": "For the chosen room, drop lines its features cover (room_builtin), check availability of the rest, and propose a substitute when a line is short."
+          },
+          {
+            "agent": "policy_cost",
+            "task": "Price the chosen room and priced lines with calculate_quote, list the policy facts, and write a short officer summary."
+          }
+        ],
+        "planner_fallback": false
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 1,
+      "tool_calls": [
+        {
+          "tool_name": "get_policy",
+          "args": {},
+          "result_summary": {
+            "keys": [
+              "checkout_window_minutes",
+              "free_cancellation_hours",
+              "max_advance_days_lecturer",
+              "max_advance_days_student",
+              "max_capacity_ratio",
+              "max_duration_hours",
+              "max_open_requests",
+              "min_lead_time_hours",
+              "opening_hours",
+              "slot_granularity_minutes"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "get_request_context",
+          "args": {
+            "request_id": 42
+          },
+          "result_summary": {
+            "requestId": 42,
+            "status": "AgentProcessing",
+            "requesterRole": "Student",
+            "attendees": 45,
+            "requestedStart": "2026-10-16T08:30:00Z",
+            "requestedEnd": "2026-10-16T11:30:00Z",
+            "equipmentLines": 2,
+            "hasClub": true,
+            "openRequestCount": 1,
+            "maxOpenRequests": 3,
+            "notes": "<omitted>"
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "list_feature_catalog",
+          "args": {},
+          "result_summary": {
+            "count": 6
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "list_equipment_catalog",
+          "args": {},
+          "result_summary": {
+            "count": 5
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 2,
+      "agent_name": "venue_matching",
+      "status": "Succeeded",
+      "input": {
+        "task": "Find up to 3 FREE rooms that fit the attendees and have every required feature; rank them with a one-line reason each. Skip excluded rooms.\nBRIEF: {\"attendees\": 45, \"end\": \"2026-10-16T11:30:00Z\", \"excluded_room_ids\": [], \"max_capacity_ratio\": 3, \"replan_reason\": null, \"required_features\": [\"computers\", \"projector\"], \"soft_preferences\": [], \"start\": \"2026-10-16T08:30:00Z\"}"
+      },
+      "output": {
+        "options": [
+          {
+            "room_id": 1,
+            "code": "A301",
+            "name": "Computer Lab A301",
+            "capacity": 48,
+            "building": "Main Building",
+            "features": [
+              "ac",
+              "computers",
+              "projector",
+              "whiteboard"
+            ],
+            "reason": "48 seats for 45 attendees; has computers, projector; Main Building"
+          },
+          {
+            "room_id": 6,
+            "code": "N201",
+            "name": "Computer Lab N201",
+            "capacity": 60,
+            "building": "New Building",
+            "features": [
+              "ac",
+              "computers",
+              "projector",
+              "smart_board"
+            ],
+            "reason": "60 seats for 45 attendees; has computers, projector; New Building"
+          }
+        ],
+        "unmet": null
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "search_available_rooms",
+          "args": {
+            "min_capacity": 45,
+            "features": [
+              "computers",
+              "projector"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "max_capacity": null,
+            "building_id": null,
+            "page_size": 100
+          },
+          "result_summary": {
+            "total": 2,
+            "rooms": [
+              "1:A301",
+              "6:N201"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 3,
+      "agent_name": "equipment_allocation",
+      "status": "Succeeded",
+      "input": {
+        "task": "For the chosen room, drop lines its features cover (room_builtin), check availability of the rest, and propose a substitute when a line is short.\nBRIEF: {\"end\": \"2026-10-16T11:30:00Z\", \"lines\": [{\"code\": \"MIC-WIRELESS\", \"quantity\": 2}, {\"code\": \"PROJ-PORTABLE\", \"quantity\": 1}], \"room_features\": [\"ac\", \"computers\", \"projector\", \"whiteboard\"], \"room_id\": 1, \"start\": \"2026-10-16T08:30:00Z\"}"
+      },
+      "output": {
+        "lines": [
+          {
+            "type_code": "MIC-WIRELESS",
+            "qty": 2,
+            "source": "portable"
+          },
+          {
+            "type_code": "PROJ-PORTABLE",
+            "qty": 0,
+            "source": "room_builtin"
+          }
+        ],
+        "substitutions": [],
+        "unmet": []
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "check_equipment_availability",
+          "args": {
+            "codes": [
+              "MIC-WIRELESS",
+              "PROJ-PORTABLE"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z"
+          },
+          "result_summary": {
+            "available": {
+              "MIC-WIRELESS": 7,
+              "PROJ-PORTABLE": 5
+            }
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 4,
+      "agent_name": "policy_cost",
+      "status": "Succeeded",
+      "input": {
+        "task": "Price the chosen room and priced lines with calculate_quote, list the policy facts, and write a short officer summary.\nBRIEF: {\"attendees\": 45, \"budget_lkr\": \"8000.00\", \"builtin\": [\"PROJ-PORTABLE\"], \"duration_hours\": \"3.00\", \"end\": \"2026-10-16T11:30:00Z\", \"equipment_unmet\": [], \"policy\": {\"max_advance_days_lecturer\": 90, \"max_advance_days_student\": 60, \"max_capacity_ratio\": 3, \"max_duration_hours\": 8, \"max_open_requests\": 3, \"min_lead_time_hours\": 48}, \"priced_lines\": [{\"code\": \"MIC-WIRELESS\", \"quantity\": 2}], \"requester_role\": \"Student\", \"required_features\": [\"computers\", \"projector\"], \"room_capacity\": 48, \"room_code\": \"A301\", \"room_id\": 1, \"start\": \"2026-10-16T08:30:00Z\", \"substitutions\": [], \"venue_unmet\": null}"
+      },
+      "output": {
+        "quote": {
+          "lines": [
+            {
+              "kind": "Room",
+              "description": "Computer lab A301, 3 h @ LKR 1,500",
+              "qty": "3.00",
+              "unit_price": "1500.00",
+              "line_total": "4500.00"
+            },
+            {
+              "kind": "Equipment",
+              "description": "Wireless microphone x2 @ LKR 500",
+              "qty": "2.00",
+              "unit_price": "500.00",
+              "line_total": "1000.00"
+            }
+          ],
+          "subtotal": "5500.00",
+          "discount": "0.00",
+          "discount_reason": null,
+          "exempt": false,
+          "total": "5500.00",
+          "currency": "LKR"
+        },
+        "policy_flags": [
+          "Within budget: LKR 5,500.00 vs LKR 8,000.00",
+          "Duration 3 h (at most 8 h)",
+          "PROJ-PORTABLE provided by room A301 (not priced)"
+        ],
+        "officer_summary": "A301 fits 45 attendees (48 seats) with computers, projector. Equipment: 2 \u00d7 MIC-WIRELESS; PROJ-PORTABLE provided by the room. Total LKR 5,500.00 (budget LKR 8,000.00): within budget.",
+        "unmet": null
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 0,
+      "tool_calls": [
+        {
+          "tool_name": "calculate_quote",
+          "args": {
+            "room_id": 1,
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "requester_role": "Student",
+            "equipment": [
+              {
+                "code": "MIC-WIRELESS",
+                "quantity": 2
+              }
+            ]
+          },
+          "result_summary": {
+            "total": "5500.00",
+            "lines": 2,
+            "exempt": false
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    },
+    {
+      "sequence": 5,
+      "agent_name": "validate",
+      "status": "Succeeded",
+      "input": {
+        "attempt": 1,
+        "room_id": 1
+      },
+      "output": {
+        "outcome": "pass",
+        "failed": []
+      },
+      "retries": 0,
+      "error": null,
+      "duration_ms": 1,
+      "tool_calls": [
+        {
+          "tool_name": "get_room_details",
+          "args": {
+            "room_id": 1
+          },
+          "result_summary": {
+            "id": 1,
+            "code": "A301",
+            "capacity": 48,
+            "isActive": true,
+            "features": [
+              "ac",
+              "computers",
+              "projector",
+              "whiteboard"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "search_available_rooms",
+          "args": {
+            "min_capacity": 48,
+            "features": [],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "max_capacity": 48,
+            "building_id": 1,
+            "page_size": 100
+          },
+          "result_summary": {
+            "total": 1,
+            "rooms": [
+              "1:A301"
+            ]
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "check_equipment_availability",
+          "args": {
+            "codes": [
+              "MIC-WIRELESS",
+              "PROJ-PORTABLE"
+            ],
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z"
+          },
+          "result_summary": {
+            "available": {
+              "MIC-WIRELESS": 7,
+              "PROJ-PORTABLE": 5
+            }
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "calculate_quote",
+          "args": {
+            "room_id": 1,
+            "start": "2026-10-16T08:30:00Z",
+            "end": "2026-10-16T11:30:00Z",
+            "requester_role": "Student",
+            "equipment": [
+              {
+                "code": "MIC-WIRELESS",
+                "quantity": 2
+              }
+            ]
+          },
+          "result_summary": {
+            "total": "5500.00",
+            "lines": 2,
+            "exempt": false
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        },
+        {
+          "tool_name": "get_request_context",
+          "args": {
+            "request_id": 42
+          },
+          "result_summary": {
+            "requestId": 42,
+            "status": "AgentProcessing",
+            "requesterRole": "Student",
+            "attendees": 45,
+            "requestedStart": "2026-10-16T08:30:00Z",
+            "requestedEnd": "2026-10-16T11:30:00Z",
+            "equipmentLines": 2,
+            "hasClub": true,
+            "openRequestCount": 1,
+            "maxOpenRequests": 3,
+            "notes": "<omitted>"
+          },
+          "succeeded": true,
+          "error": null,
+          "duration_ms": 0
+        }
+      ]
+    }
+  ],
+  "policy_snapshot": {
+    "opening_hours": {
+      "mon": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "tue": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "wed": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "thu": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "fri": {
+        "open": "08:00",
+        "close": "20:00"
+      },
+      "sat": {
+        "open": "08:00",
+        "close": "16:00"
+      },
+      "sun": null
+    },
+    "min_lead_time_hours": 48,
+    "max_advance_days_student": 60,
+    "max_advance_days_lecturer": 90,
+    "max_duration_hours": 8,
+    "max_capacity_ratio": 3,
+    "slot_granularity_minutes": 30,
+    "free_cancellation_hours": 24,
+    "max_open_requests": 3,
+    "checkout_window_minutes": 30
+  },
+  "error": null,
+  "model": "stub",
+  "started_at": "2026-10-01T03:30:00.000Z",
+  "completed_at": null,
+  "duration_ms": null
+}

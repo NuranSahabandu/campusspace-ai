@@ -198,7 +198,7 @@ sealed class SubmitOutcome {
   const SubmitOutcome();
 }
 
-/// 201: the saved request.
+/// 202: the saved request, now AgentProcessing while the agent plans it.
 class SubmitSucceeded extends SubmitOutcome {
   const SubmitSucceeded(this.request);
 

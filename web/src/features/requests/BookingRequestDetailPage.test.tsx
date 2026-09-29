@@ -241,4 +241,24 @@ describe('BookingRequestDetailPage', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     })
   })
+
+  it('re-fetches an AgentProcessing request until the agent moves it to PendingApproval', async () => {
+    requestsHandlers()
+    const base = BOOKING_REQUEST_DETAILS.find((r) => r.id === 3)!
+    let calls = 0
+    server.use(
+      http.get(`${API}/api/booking-requests/3`, () => {
+        calls++
+        return HttpResponse.json({ ...base, status: calls === 1 ? 'AgentProcessing' : 'PendingApproval' })
+      }),
+    )
+    renderApp('/requests/3', { role: Roles.FacilitiesOfficer })
+
+    // The history may show both labels too, so compare counts: the status chip moves from one to the other.
+    const processing = (await screen.findAllByText('Processing')).length
+    const waiting = screen.queryAllByText('Waiting for approval').length
+    await waitFor(() => expect(screen.queryAllByText('Processing')).toHaveLength(processing - 1), { timeout: 5000 })
+    expect(screen.getAllByText('Waiting for approval')).toHaveLength(waiting + 1)
+    expect(calls).toBe(2)
+  }, 10_000)
 })
