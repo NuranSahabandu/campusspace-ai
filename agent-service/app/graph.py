@@ -378,7 +378,7 @@ def build_graph(checkpointer: BaseCheckpointSaver, tools: Mapping[str, BaseTool]
             )
         features = [f["code"] for f in room["room"]["features"]] if room["room"] else []
         v02 = v02_room_free(chosen["code"], room["room"] is not None, room["free"],
-                            room["error"] or "")  # fmt: skip
+                            room["error"] or "", room["availability_error"])  # fmt: skip
         v08 = v08_from_recheck(request, equipment, stock, features)
         problems = [f"{rule}: {m}" for rule, (ok, m) in (("V02", v02), ("V08", v08)) if not ok]
         now = iso(clock())

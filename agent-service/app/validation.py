@@ -71,7 +71,14 @@ def _first_error(exc: ValidationError) -> str:
     return f"{'.'.join(str(p) for p in error['loc'])}: {error['msg']}"
 
 
-def v02_room_free(code: str | None, room_ok: bool, free: bool, detail: str = "") -> Check:
+def v02_room_free(
+    code: str | None,
+    room_ok: bool,
+    free: bool,
+    detail: str = "",
+    availability_error: str | None = None,
+) -> Check:
+    """Says "no longer free" only when the availability query succeeded without the room."""
     if code is None:
         return False, f"No room was proposed{': ' + detail if detail else ''}"
     if not room_ok:
@@ -79,6 +86,8 @@ def v02_room_free(code: str | None, room_ok: bool, free: bool, detail: str = "")
             False,
             f"Room {code} no longer exists or is inactive{': ' + detail if detail else ''}",
         )
+    if availability_error:
+        return False, f"Availability check failed: {availability_error}"
     if not free:
         return False, f"Room {code} is no longer free for the requested window"
     return True, f"Room {code} exists and is still free for the window"
@@ -162,9 +171,11 @@ def v06_timing(start: datetime, role: str, policy: Mapping[str, Any], now: datet
     return True, f"Starts ≥ {lead} h from now and within {max_days} days ({role})"
 
 
-def v07_blackouts(code: str | None, free: bool) -> Check:
+def v07_blackouts(code: str | None, free: bool, availability_error: str | None = None) -> Check:
     if code is None:
         return False, f"No room to check; {HOLIDAYS_NOTE}"
+    if availability_error:
+        return False, f"Availability check failed: {availability_error}; {HOLIDAYS_NOTE}"
     if not free:
         return False, f"Room {code} overlaps a blackout or booking; {HOLIDAYS_NOTE}"
     return True, f"No blackout or booking overlaps room {code}; {HOLIDAYS_NOTE}"
@@ -274,10 +285,14 @@ def v12_ids_seen(
 
 
 def recheck_room(tools: Mapping[str, BaseTool], room_id: int, start: str, end: str) -> dict:
-    """Current room record and whether it is still free (V02/V03/V04/V07 inputs)."""
+    """Current room record and whether it is still free (V02/V03/V04/V07 inputs).
+
+    `availability_error` is set only when the availability query itself failed (for example a 400
+    from CheckSlot after the opening hours changed), so V02/V07 don't report the room as taken.
+    """
     obs = tools["get_room_details"].invoke({"room_id": room_id})
     if is_error(obs):
-        return {"room": None, "free": False, "error": error_text(obs)}
+        return {"room": None, "free": False, "error": error_text(obs), "availability_error": None}
     room = parse_json(obs)
     obs = tools["search_available_rooms"].invoke(
         {
@@ -290,9 +305,9 @@ def recheck_room(tools: Mapping[str, BaseTool], room_id: int, start: str, end: s
         }
     )
     if is_error(obs):
-        return {"room": room, "free": False, "error": error_text(obs)}
+        return {"room": room, "free": False, "error": None, "availability_error": error_text(obs)}
     free = any(r["id"] == room_id for r in parse_json(obs)["items"])
-    return {"room": room, "free": free, "error": None}
+    return {"room": room, "free": free, "error": None, "availability_error": None}
 
 
 def recheck_equipment(
@@ -357,19 +372,28 @@ def validate_proposal(
         },
     )
 
-    room_check = {"room": None, "free": False, "error": venue.get("unmet")}
+    room_check = {
+        "room": None,
+        "free": False,
+        "error": venue.get("unmet"),
+        "availability_error": None,
+    }
     if chosen:
         room_check = recheck_room(tools, chosen["room_id"], start, end)
     room = room_check["room"]
     room_features = [f["code"] for f in room["features"]] if room else []
     checks["V02"] = v02_room_free(
-        code, room is not None, room_check["free"], room_check["error"] or ""
+        code,
+        room is not None,
+        room_check["free"],
+        room_check["error"] or "",
+        room_check["availability_error"],
     )
     checks["V03"] = v03_capacity(room["capacity"] if room else None, request["attendees"], policy)
     checks["V04"] = v04_features(code, room_features, request["required_features"])
     checks["V05"] = v05_slot(instant(start), instant(end), policy)
     checks["V06"] = v06_timing(instant(start), request["role"], policy, now)
-    checks["V07"] = v07_blackouts(code, room_check["free"])
+    checks["V07"] = v07_blackouts(code, room_check["free"], room_check["availability_error"])
 
     stock = recheck_equipment(tools, equipment_codes(request, equipment), start, end)
     checks["V08"] = v08_from_recheck(request, equipment, stock, room_features)
