@@ -198,7 +198,7 @@ because `parseProblem` only lower-cases the first letter (`max_duration_hours` s
 `ConfirmDialog` (for example a list of changes) as its `children`.
 Request statuses, labels, chip colours and the All/Open/Approved/Closed groups live only in
 `features/requests/requestStatus.ts` (mirrors the mobile `request_status.dart`); show them with `RequestStatusChip`. Queries
-that show requests re-fetch while one is in `REFRESHING_STATUSES` (AgentProcessing): pass
+that show requests re-fetch while one is in `REFRESHING_STATUSES` (AgentProcessing, RevisionRequested; 3 s): pass
 `refetchInterval: refreshIntervalFor(statuses)` (`usePagedQuery` takes it too), never a hand-written interval. Show a
 start/end pair with `formatCampusTimeRange`. The `api` client sends arrays as repeated params (`?status=A&status=B`).
 A list whose filters must survive opening a row uses `useServerTable({ urlState: true })` and keeps its own filters in
@@ -239,7 +239,8 @@ Campus time on mobile: build API times with `campusIso(date, time)` (always `+05
 `formatCampus*` helpers in `lib/core/campus_time.dart`; never use `toLocal()`, `DateTime.now()` or `TimeOfDay.now()`
 for campus dates and times (read `clockProvider`, which tests override). Show money with `formatLkr` (`lib/core/format.dart`). Status labels, colours and
 the My requests filter groups live only in `lib/features/requests/request_status.dart`. Providers that show requests
-re-fetch while one is in `RequestStatuses.refreshing` (AgentProcessing) every `refreshInterval`, through `_refreshWhile`
+re-fetch at `RequestStatuses.refreshIntervalFor(status)` (AgentProcessing and RevisionRequested 3 s, PendingApproval
+15 s, others never; a list uses `shortestRefreshInterval`), through `_refreshWhile`
 in `requests_providers.dart` (a one-shot timer cancelled on rebuild/dispose). Date and time pickers read the
 live policy (`policyProvider`) through the pure rules in `time_rules.dart`. Requests screen tests use
 `pumpRequestsScreens` + `stubRequestsReferenceData`; fixtures in `test/fixtures/requests.dart` are real API responses.
@@ -511,6 +512,39 @@ the view's Plan/Proposal/PolicySnapshotJson. Tests: `AgentPollerEnv.ToPendingApp
 completed fixture), `OfficerAsync`, `DecideAsync(id, action, body)`, `SetPolicyAsync`; the factory sets
 `ApprovalWaitSeconds` 1 and `ApprovalPollMilliseconds` 50; the 3.4 fixtures are `agent-completed-*`,
 `agent-revised-student` and `agent-finalize-failed`.
+
+Approval UI (Phase 3.5): read endpoints, no new rules. `GET /api/approvals/queue` (FacilitiesOfficer; PendingApproval
+only, `pendingSince` ascending by default, sort `pendingSince|requestedStart|attendees`, search purpose/requester/club),
+`GET /api/booking-requests/{id}/agent-runs` (FacilitiesOfficer, newest first) and `GET /api/agent-runs/{id}`
+(FacilitiesOfficer: typed proposal, steps with tool calls, validation grouped by attempt latest first, decisions, policy
+snapshot, `policyChangedKeys`). Requesters get only `BookingRequestDetailDto.LatestProposal` (`IBookingRequestService`),
+the same summary as officers: the live (Draft/Issued) quote's id, total and exempt flag, its run's id and RevisionNo, and the
+room (the booking's once approved, else the proposal's room_id, code/name from Rooms); null without a live quote. Never the
+trace, plan or policy (data minimisation); agent-runs are 403 for them. `ProposalMapper` (`Agents/`) takes the chosen room
+from the proposal's `room_id`, never from the order of `venue.options` (no match: the room from Rooms, every option an
+alternative, a warning); the agent's own quote is never exposed. `PolicyDiff.ChangedKeys` compares the run's snapshot with
+`ToPublicValues()` per key (numbers by value, objects structurally, a missing key is changed), in `PolicyKeys.All` order.
+`RequesterDto` carries `Role`. React (`features/approvals/`, Officer only via `ROUTE_ROLES`): the queue refetches every 15 s;
+the detail shows the request, `ProposalCard` (source chips portable / built into the room / substitute), `QuoteTable`
+(`features/quotations/`, the .NET quotation only), `ValidationChecklist`, `AgentTimeline` (JSON as `JSON.stringify`
+text in `<pre>`), `RunHistory`, `PolicyChangedBanner` (labels from `policyLabel`). Decisions go through `DecisionDialog`
+(RHF + Zod, ≤ 1000, reason/notes required) and show only while the request is PendingApproval and its newest run is
+AwaitingApproval: approve 200 → toast and Approved; 202 ApprovalInProgress → "Approval in progress…" and the request
+re-fetches every 3 s (`APPROVAL_IN_PROGRESS_REFRESH_MS`) until it leaves PendingApproval; revise 202 → "New proposal being
+prepared" (follows `refreshIntervalFor`); 409 → a page alert with the Problem Details `title` exactly as sent (the API
+puts every message there, never `detail`) via `useApiMutation`'s `onConflict`, then everything re-fetches. Run, run-detail
+and quotation queries sit under `bookingRequestsKeys.all` and are keyed by the request's `updatedAt`, so a status change
+reloads them. The request detail page links "Review proposal" (PendingApproval) and shows `RetryAgentButton` ("Retry
+agent" for AgentFailed, "Start agent" for Submitted with no live run, `retryAgentLabel` in `approvals/agentRuns.ts`; a
+409 toast is the server's title). Flutter's `RequestOutcomeCard`: PendingApproval "Proposed: <room>, LKR x" (or
+Fee-exempt) + "Waiting for the Facilities Officer"; Approved the room, campus slot and `QuotationSection`
+(`requestQuotationProvider`, only while Approved); Rejected "Rejected by Facilities", or "Closed automatically" when the
+Rejected history row has no actor, with its reason; AgentFailed "We couldn't prepare a proposal: <reason>. Facilities can
+retry."; after an officer's revise "Facilities asked for changes; a new proposal is being prepared" with the notes (a
+system RevisionRequested, a failed approval, reads "The proposal is being prepared again"). Every reason is plain text.
+Fixtures: web `features/approvals/approvalsFixtures.ts` and mobile `test/fixtures/proposals.dart` are verbatim API
+captures (generated by the Task 3.5 capture scripts; recapture after a contract change). CI also runs the mobile request
+tests with `TZ=America/New_York`.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
