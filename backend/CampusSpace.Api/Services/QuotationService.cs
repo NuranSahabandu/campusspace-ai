@@ -86,44 +86,88 @@ public sealed class QuotationService(
             throw new ConflictException(QuotationConfiguration.LiveQuoteMessage);
 
         // The void must reach the database before the insert, or IX_Quotations_RequestId_Live rejects the new Draft.
-        // EF can't order an UPDATE before an INSERT for a filtered index, so it runs now (in the caller's transaction).
-        // ExecuteUpdate bypasses the automatic audit, so the same audit row SaveChanges would write is added by hand.
-        var drafts = live.Select(q => q.Id).ToList();
-        if (drafts.Count > 0)
-        {
-            var now = DateTime.UtcNow;
-            await db.Quotations
-                .Where(q => drafts.Contains(q.Id))
-                .ExecuteUpdateAsync(s => s.SetProperty(q => q.Status, QuotationStatuses.Void).SetProperty(q => q.UpdatedAt, now), ct);
-            var details = JsonSerializer.Serialize(new { changed = new[] { nameof(Quotation.Status) } });
-            db.AuditLogs.AddRange(drafts.Select(id => new AuditLog
-            {
-                UserId = currentUser.UserId,
-                Action = AuditActions.Updated,
-                EntityType = nameof(Quotation),
-                EntityId = id.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                DetailsJson = details,
-                At = now,
-            }));
-        }
+        await VoidByUpdateAsync(live.Select(q => q.Id).ToList(), ct);
 
-        var quotation = new Quotation
-        {
-            RequestId = requestId,
-            Subtotal = quote.Subtotal,
-            Discount = quote.Discount,
-            Total = quote.Total,
-            DiscountReason = quote.DiscountReason,
-            IsExempt = quote.Exempt,
-            Status = QuotationStatuses.Draft,
-            // Unit prices are copied: a later fee or rule change doesn't change this quote.
-            Lines = quote.Lines.Select(l => new QuotationLine
-            {
-                Kind = l.Kind, EquipmentTypeId = l.EquipmentTypeId, Description = l.Description,
-                Qty = l.Qty, UnitPrice = l.UnitPrice, LineTotal = l.LineTotal,
-            }).ToList(),
-        };
+        var quotation = NewQuotation(requestId, quote, QuotationStatuses.Draft);
         db.Quotations.Add(quotation);
         return quotation;
     }
+
+    public async Task<IssuedQuote> IssueForApprovalAsync(long requestId, Guid runId, QuoteResult quote, CancellationToken ct = default)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("IssueForApprovalAsync must run inside the approval transaction.");
+
+        var live = await db.Quotations.AsNoTracking().Include(q => q.Lines)
+            .Where(q => q.RequestId == requestId && QuotationStatuses.Live.Contains(q.Status))
+            .ToListAsync(ct);
+        if (live.Any(q => q.Status == QuotationStatuses.Issued))
+            throw new ConflictException(QuotationConfiguration.LiveQuoteMessage);
+
+        var draft = live.SingleOrDefault();
+        if (draft is not null && draft.AgentRunId == runId && Matches(draft, quote))
+        {
+            var tracked = await db.Quotations.SingleAsync(q => q.Id == draft.Id, ct);
+            tracked.Status = QuotationStatuses.Issued;
+            return new IssuedQuote(tracked, draft.Total, Recalculated: false);
+        }
+
+        // Prices changed since the Draft (a new pricing rule or fee), or there is no Draft of this run: the Draft is voided
+        // and the price computed now is issued. Voided first, for the same filtered-index reason as in CreateDraftAsync.
+        await VoidByUpdateAsync(live.Select(q => q.Id).ToList(), ct);
+        var issued = NewQuotation(requestId, quote, QuotationStatuses.Issued);
+        issued.AgentRunId = runId;
+        db.Quotations.Add(issued);
+        return new IssuedQuote(issued, draft?.Total, Recalculated: true);
+    }
+
+    /// <summary>Same totals, exemption and lines (in order) as the calculator's result.</summary>
+    private static bool Matches(Quotation draft, QuoteResult quote) =>
+        draft.Subtotal == quote.Subtotal && draft.Discount == quote.Discount && draft.Total == quote.Total
+        && draft.IsExempt == quote.Exempt && draft.DiscountReason == quote.DiscountReason
+        && draft.Lines.OrderBy(l => l.Id)
+            .Select(l => (l.Kind, l.EquipmentTypeId, l.Description, l.Qty, l.UnitPrice, l.LineTotal))
+            .SequenceEqual(quote.Lines.Select(l => (l.Kind, l.EquipmentTypeId, l.Description, l.Qty, l.UnitPrice, l.LineTotal)));
+
+    /// <summary>
+    /// Voids quotes with ExecuteUpdate, so the UPDATE reaches the database before a later INSERT (EF can't order an UPDATE
+    /// before an INSERT for a filtered index). ExecuteUpdate bypasses the automatic audit, so the same audit row SaveChanges
+    /// would write is added by hand.
+    /// </summary>
+    private async Task VoidByUpdateAsync(IReadOnlyList<long> ids, CancellationToken ct)
+    {
+        if (ids.Count == 0)
+            return;
+        var now = DateTime.UtcNow;
+        await db.Quotations
+            .Where(q => ids.Contains(q.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(q => q.Status, QuotationStatuses.Void).SetProperty(q => q.UpdatedAt, now), ct);
+        var details = JsonSerializer.Serialize(new { changed = new[] { nameof(Quotation.Status) } });
+        db.AuditLogs.AddRange(ids.Select(id => new AuditLog
+        {
+            UserId = currentUser.UserId,
+            Action = AuditActions.Updated,
+            EntityType = nameof(Quotation),
+            EntityId = id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            DetailsJson = details,
+            At = now,
+        }));
+    }
+
+    private static Quotation NewQuotation(long requestId, QuoteResult quote, string status) => new()
+    {
+        RequestId = requestId,
+        Subtotal = quote.Subtotal,
+        Discount = quote.Discount,
+        Total = quote.Total,
+        DiscountReason = quote.DiscountReason,
+        IsExempt = quote.Exempt,
+        Status = status,
+        // Unit prices are copied: a later fee or rule change doesn't change this quote.
+        Lines = quote.Lines.Select(l => new QuotationLine
+        {
+            Kind = l.Kind, EquipmentTypeId = l.EquipmentTypeId, Description = l.Description,
+            Qty = l.Qty, UnitPrice = l.UnitPrice, LineTotal = l.LineTotal,
+        }).ToList(),
+    };
 }

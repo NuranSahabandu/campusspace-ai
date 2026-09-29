@@ -68,6 +68,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRequestStateMachine, RequestStateMachine>();
         services.AddScoped<IBookingRequestService, BookingRequestService>();
         services.AddScoped<IAgentToolService, AgentToolService>();
+        services.AddScoped<IApprovalFinalizer, ApprovalFinalizer>();
         return services;
     }
 
