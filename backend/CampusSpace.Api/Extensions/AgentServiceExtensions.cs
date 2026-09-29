@@ -33,6 +33,7 @@ public static class AgentServiceExtensions
             .RedactLoggedHeaders(_ => true);
 
         services.AddScoped<IAgentRunStarter, AgentRunStarter>();
+        services.AddScoped<IProposalResolver, ProposalResolver>();
         services.AddScoped<IAgentRunSync, AgentRunSync>();
         // One instance, so tests can resolve it and call PollOnceAsync; ExecuteAsync returns at once when it is disabled.
         services.AddSingleton<AgentRunPoller>();

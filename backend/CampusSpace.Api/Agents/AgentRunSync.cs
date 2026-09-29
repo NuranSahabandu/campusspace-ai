@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Data.Configurations;
 using CampusSpace.Api.Middleware;
@@ -17,12 +16,12 @@ namespace CampusSpace.Api.Agents;
 /// anything moved them since the read (a cancel, another tick), the change is skipped. The trace copy inserts only rows
 /// not stored yet (steps by Sequence, rules by Attempt + RuleCode), so repeating a tick never duplicates anything.
 /// </summary>
-public sealed partial class AgentRunSync(
+public sealed class AgentRunSync(
     AppDbContext db,
     IAgentClient agent,
     IAgentRunStarter starter,
     IRequestStateMachine stateMachine,
-    IQuotationCalculator calculator,
+    IProposalResolver resolver,
     IQuotationService quotations,
     IOptions<AgentServiceOptions> options,
     TimeProvider clock,
@@ -117,12 +116,13 @@ public sealed partial class AgentRunSync(
     private async Task AwaitApprovalAsync(Guid runId, long requestId, AgentWorkflowView view, CancellationToken ct)
     {
         var proposal = view.ReadProposal();
-        var (quote, error) = await PriceAsync(requestId, proposal, ct);
-        if (quote is null)
+        var resolved = await resolver.ResolveAsync(requestId, proposal, ct);
+        if (resolved.Value is null)
         {
-            await FailAsync(runId, requestId, AgentRunStatuses.Running, error!, view, ct);
+            await FailAsync(runId, requestId, AgentRunStatuses.Running, resolved.Error!, view, ct);
             return;
         }
+        var quote = resolved.Value.Quote;
         if (proposal!.Quote is { } agentQuote && agentQuote.Total != quote.Total)
             logger.LogWarning("Agent run {RunId}: the agent's quote total differs from the calculator's; the Draft uses the calculator's",
                 runId);
@@ -140,41 +140,6 @@ public sealed partial class AgentRunSync(
             quotation.AgentRunId = run.Id;
             stateMachine.Transition(request, RequestStatuses.PendingApproval, changedById: null);
         }, ct);
-    }
-
-    /// <summary>Prices the proposed room and portable equipment for the request's slot and requester role.</summary>
-    private async Task<(QuoteResult? Quote, string? Error)> PriceAsync(long requestId, AgentProposal? proposal, CancellationToken ct)
-    {
-        if (proposal is null)
-            return (null, "The agent paused for approval without a proposal");
-
-        var request = await db.BookingRequests.AsNoTracking().Where(r => r.Id == requestId)
-            .Select(r => new { r.RequestedStart, r.RequestedEnd, r.Requester.Role })
-            .SingleAsync(ct);
-        // room_builtin lines are qty 0 and unpriced (addendum Change B); the calculator skips qty 0 too.
-        var lines = (proposal.Equipment?.Lines ?? [])
-            .Where(l => l.Qty > 0 && l.Source != AgentEquipmentLine.RoomBuiltin)
-            .ToList();
-        var codes = lines.Select(l => l.TypeCode).Distinct().ToList();
-        var typeIds = await db.EquipmentTypes.Where(t => codes.Contains(t.Code)).ToDictionaryAsync(t => t.Code, t => t.Id, ct);
-        var unknown = codes.Where(c => !typeIds.ContainsKey(c)).ToList();
-        if (unknown.Count > 0)
-            return (null, $"The proposal names unknown equipment types: {string.Join(", ", unknown)}");
-
-        var role = request.Role == Roles.Lecturer ? RequesterRoles.Lecturer : RequesterRoles.Student;
-        try
-        {
-            var quote = await calculator.CalculateAsync(new QuoteInput(
-                proposal.RoomId, Utc(request.RequestedStart), Utc(request.RequestedEnd), role,
-                lines.Select(l => new QuoteEquipmentLine(typeIds[l.TypeCode], l.Qty)).ToList()), ct);
-            return quote is null
-                ? (null, "Quote could not be computed: the proposed room is unknown or inactive")
-                : (quote, null);
-        }
-        catch (BusinessRuleException ex)
-        {
-            return (null, $"Quote could not be computed: {ex.Message}");
-        }
     }
 
     /// <summary>Run → Failed (with the trace, if any) and request AgentProcessing → AgentFailed, with the reason.</summary>
@@ -219,72 +184,12 @@ public sealed partial class AgentRunSync(
         return true;
     }
 
-    /// <summary>Adds the steps (with their tool calls) and rule results not stored yet, and refreshes Nodes and Model.</summary>
-    private async Task CopyTraceAsync(AgentRun run, AgentWorkflowView view, CancellationToken ct)
-    {
-        var sequences = (await db.AgentSteps.Where(s => s.RunId == run.Id).Select(s => s.Sequence).ToListAsync(ct)).ToHashSet();
-        foreach (var step in view.Steps ?? [])
-        {
-            if (step.Sequence < 1 || !sequences.Add(step.Sequence))
-                continue;
-            db.AgentSteps.Add(new AgentStep
-            {
-                RunId = run.Id,
-                Sequence = step.Sequence,
-                AgentName = NameOrUnknown(step.AgentName, AgentStepConfiguration.AgentNameMaxLength),
-                Status = AgentStepStatuses.All.Contains(step.Status) ? step.Status : AgentStepStatuses.Failed,
-                InputJson = Raw(step.Input),
-                OutputJson = Raw(step.Output),
-                Retries = Math.Max(step.Retries, 0),
-                Error = step.Error,
-                DurationMs = Math.Max(step.DurationMs, 0),
-                ToolCalls = (step.ToolCalls ?? []).Select(c => new AgentToolCall
-                {
-                    ToolName = NameOrUnknown(c.ToolName, AgentToolCallConfiguration.ToolNameMaxLength),
-                    ArgsJson = Raw(c.Args) ?? "{}",
-                    ResultSummary = Raw(c.ResultSummary),
-                    Succeeded = c.Succeeded,
-                    Error = c.Succeeded ? c.Error : c.Error ?? "Tool call failed",
-                    DurationMs = Math.Max(c.DurationMs, 0),
-                }).ToList(),
-            });
-        }
+    private Task CopyTraceAsync(AgentRun run, AgentWorkflowView view, CancellationToken ct) =>
+        AgentTrace.CopyAsync(db, run, view, logger, ct);
 
-        var rules = (await db.ValidationResults.Where(v => v.RunId == run.Id).Select(v => new { v.Attempt, v.RuleCode }).ToListAsync(ct))
-            .Select(v => (v.Attempt, v.RuleCode)).ToHashSet();
-        foreach (var rule in view.Validation ?? [])
-        {
-            if (rule.Attempt < 1 || !RuleCode().IsMatch(rule.Rule))
-            {
-                logger.LogWarning("Agent run {RunId}: skipped a validation row with attempt {Attempt} and rule {Rule}",
-                    run.Id, rule.Attempt, Truncate(rule.Rule, 10));
-                continue;
-            }
-            if (rules.Add((rule.Attempt, rule.Rule)))
-                db.ValidationResults.Add(new AgentValidationResult
-                {
-                    RunId = run.Id, Attempt = rule.Attempt, RuleCode = rule.Rule, Passed = rule.Passed, Message = rule.Message,
-                });
-        }
+    private static string? Raw(JsonElement? element) => AgentTrace.Raw(element);
 
-        if (view.Nodes is { } nodes)
-            run.Nodes = nodes.ToList();
-        if (!string.IsNullOrWhiteSpace(view.Model))
-            run.Model = Truncate(view.Model, AgentRunConfiguration.ModelMaxLength);
-    }
+    private static string Truncate(string value, int max) => AgentTrace.Truncate(value, max);
 
-    [GeneratedRegex("^V(0[1-9]|1[0-2])$")]
-    private static partial Regex RuleCode();
-
-    private static string? Raw(JsonElement? element) =>
-        element is { ValueKind: not (JsonValueKind.Null or JsonValueKind.Undefined) } e ? e.GetRawText() : null;
-
-    private static string NameOrUnknown(string? name, int max) =>
-        string.IsNullOrWhiteSpace(name) ? "unknown" : Truncate(name.Trim(), max);
-
-    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
-
-    private static int Ms(TimeSpan span) => (int)Math.Clamp(span.TotalMilliseconds, 0, int.MaxValue);
-
-    private static DateTimeOffset Utc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    private static int Ms(TimeSpan span) => AgentTrace.Ms(span);
 }
