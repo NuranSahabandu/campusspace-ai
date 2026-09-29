@@ -47,6 +47,36 @@ public sealed class AgentPollerEnv : IAsyncDisposable
         return (id, run);
     }
 
+    /// <summary>
+    /// A request paused for approval, as 3.3 leaves it: submitted, then one tick over the awaiting fixture (the trace, the
+    /// Draft quote, PendingApproval). The agent then reads as the matching completed fixture, as if finalize had passed.
+    /// </summary>
+    public async Task<(long RequestId, Guid RunId)> ToPendingApprovalAsync(bool lecturer = false, int weekdaysAhead = 20)
+    {
+        var (requestId, runId) = await SubmitAsync(lecturer, weekdaysAhead);
+        AgentReturns(AgentFixtures.View(lecturer ? AgentFixtures.AwaitingLecturer : AgentFixtures.AwaitingStudent));
+        await Poller.PollOnceAsync();
+        AgentReturns(AgentFixtures.View(lecturer ? AgentFixtures.CompletedLecturer : AgentFixtures.CompletedStudent));
+        return (requestId, runId);
+    }
+
+    /// <summary>A Facilities Officer (a real user: decisions store the officer's id), created once per environment.</summary>
+    public async Task<(HttpClient Client, long UserId)> OfficerAsync() =>
+        _officer ??= await TestAuth.CreateUserClientAsync(Factory, Roles.FacilitiesOfficer);
+
+    private (HttpClient Client, long UserId)? _officer;
+
+    /// <summary>POST /api/booking-requests/{id}/{action} as the officer (approve, reject, request-revision, cancel).</summary>
+    public async Task<HttpResponseMessage> DecideAsync(long requestId, string action, object? body = null)
+    {
+        var (client, _) = await OfficerAsync();
+        return await client.PostAsJsonAsync($"{BookingRequestTestData.Url}/{requestId}/{action}", body ?? new { });
+    }
+
+    /// <summary>Changes one PolicySettings value directly (tests about a policy changed after the proposal).</summary>
+    public Task SetPolicyAsync(string key, string value) =>
+        QueryAsync(db => db.PolicySettings.Where(p => p.Key == key).ExecuteUpdateAsync(s => s.SetProperty(p => p.Value, value)));
+
     public async Task<T> QueryAsync<T>(Func<AppDbContext, Task<T>> query)
     {
         await using var scope = Factory.Services.CreateAsyncScope();

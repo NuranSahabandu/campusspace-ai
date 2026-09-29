@@ -69,6 +69,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingRequestService, BookingRequestService>();
         services.AddScoped<IAgentToolService, AgentToolService>();
         services.AddScoped<IApprovalFinalizer, ApprovalFinalizer>();
+        services.AddScoped<IApprovalService, ApprovalService>();
         return services;
     }
 

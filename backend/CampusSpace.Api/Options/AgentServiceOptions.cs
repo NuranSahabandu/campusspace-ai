@@ -35,6 +35,15 @@ public sealed class AgentServiceOptions
     /// </summary>
     [Range(1, 60)] public int InlineStartTimeoutSeconds { get; set; } = 3;
 
+    /// <summary>
+    /// How long approve waits for the agent's finalize before answering 202 ApprovalInProgress (the poller then finishes the
+    /// approval). 0 checks once.
+    /// </summary>
+    [Range(0, 60)] public int ApprovalWaitSeconds { get; set; } = 10;
+
+    /// <summary>How often approve reads the run while it waits.</summary>
+    [Range(50, 5000)] public int ApprovalPollMilliseconds { get; set; } = 500;
+
     /// <summary>Off in Testing, where tests call AgentRunPoller.PollOnceAsync themselves.</summary>
     public bool PollerEnabled { get; set; } = true;
 }

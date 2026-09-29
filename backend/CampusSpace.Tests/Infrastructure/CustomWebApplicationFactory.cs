@@ -51,6 +51,9 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
         builder.UseSetting("AgentTools:Key", AgentToolsKey);
         builder.UseSetting("AgentService:ServiceKey", AgentServiceKey);
         builder.UseSetting("AgentService:PollerEnabled", "false");
+        // Approve waits for the agent's finalize: short in tests, so a "slow agent" test answers 202 within a second.
+        builder.UseSetting("AgentService:ApprovalWaitSeconds", "1");
+        builder.UseSetting("AgentService:ApprovalPollMilliseconds", "50");
         builder.ConfigureTestServices(services => services.AddSingleton<IAgentClient>(AgentClient));
         // The agent service is not running in tests: its /health always answers 200.
         builder.ConfigureTestServices(services => services.AddHttpClient(AgentServiceHealthCheck.ClientName)

@@ -94,7 +94,7 @@ public sealed class ApprovalFinalizer(
         if (!slot.IsValid)
             return new(ApprovalFailureKind.Time, Join(slot));
         if (start <= clock.GetUtcNow())
-            return new(ApprovalFailureKind.Time, BookingWindowRules.FutureMessage);
+            return new(ApprovalFailureKind.Time, Sentence(BookingWindowRules.FutureMessage));
 
         var submittedAt = await db.RequestStatusHistory
             .Where(h => h.RequestId == request.Id && h.ToStatus == RequestStatuses.Submitted)
