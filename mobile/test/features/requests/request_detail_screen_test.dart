@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../../fixtures/proposals.dart';
 import '../../fixtures/requests.dart';
 import '../../helpers.dart';
 
@@ -22,7 +23,11 @@ const _lecturerId = 2;
 void main() {
   late MockRequestsRepository repository;
 
-  setUp(() => repository = MockRequestsRepository());
+  setUp(() {
+    repository = MockRequestsRepository();
+    // An approved request shows its quotation.
+    when(() => repository.getQuotation(any())).thenAnswer((_) async => Quotation.fromJson(_json(issuedQuotationJson)));
+  });
 
   final rejected = RequestDetail(
     id: 7,
@@ -52,7 +57,7 @@ void main() {
     createdAt: DateTime.utc(2026, 9, 28, 4, 30),
   );
 
-  testWidgets('shows the request, the proposal placeholder and the timeline oldest first', (tester) async {
+  testWidgets('shows the request, why it was rejected and the timeline oldest first', (tester) async {
     when(() => repository.getRequest(7)).thenAnswer((_) async => rejected);
     await pumpRequestsScreens(tester, repository, initialLocation: '/requests/7');
 
@@ -64,7 +69,7 @@ void main() {
     expect(find.text('Computers'), findsOneWidget);
     expect(find.text('2 × Wireless microphone'), findsOneWidget);
     expect(find.text('prefer near the main building'), findsOneWidget);
-    expect(find.text(RequestDetailScreen.proposalPlaceholder), findsOneWidget);
+    expect(find.text(RequestOutcomeCard.rejectedTitle), findsOneWidget);
 
     Finder row(int i) => find.byKey(Key('timeline.$i'));
     expect(find.descendant(of: row(0), matching: find.text('Submitted')), findsOneWidget);
@@ -324,22 +329,27 @@ void main() {
       await pumpRequestsScreens(tester, repository, initialLocation: '/requests/31', userId: _lecturerId);
       expect(find.text('Processing'), findsWidgets);
 
-      await tester.pump(RequestStatuses.refreshInterval);
+      await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
 
       expect(find.text('Waiting for approval'), findsWidgets);
       verify(() => repository.getRequest(31)).called(2);
-      await tester.pump(RequestStatuses.refreshInterval * 3);
+      // Waiting for the officer: every 15 s, not every 3 s.
+      await tester.pump(const Duration(seconds: 9));
       verifyNever(() => repository.getRequest(31));
     });
 
-    testWidgets('a request in any other status is loaded once', (tester) async {
-      when(() => repository.getRequest(31)).thenAnswer((_) async => pending);
-      await pumpRequestsScreens(tester, repository, initialLocation: '/requests/31', userId: _lecturerId);
+    testWidgets('a request in a settled status is loaded once', (tester) async {
+      for (final status in [RequestStatuses.submitted, RequestStatuses.approved, RequestStatuses.rejected]) {
+        when(() => repository.getRequest(31))
+            .thenAnswer((_) async => RequestDetail.fromJson({..._json(createdRequestJson), 'status': status}));
+        await tester.pumpWidget(const SizedBox());
+        await pumpRequestsScreens(tester, repository, initialLocation: '/requests/31', userId: _lecturerId);
 
-      await tester.pump(RequestStatuses.refreshInterval * 3);
+        await tester.pump(const Duration(minutes: 1));
 
-      verify(() => repository.getRequest(31)).called(1);
+        verify(() => repository.getRequest(31)).called(1);
+      }
     });
   });
 }

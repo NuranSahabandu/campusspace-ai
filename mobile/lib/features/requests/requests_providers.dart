@@ -11,12 +11,13 @@ import 'requests_repository.dart';
 // 403 must show at once), so they never retry on their own.
 Duration? _noRetry(int _, Object _) => null;
 
-/// Reloads [ref]'s provider after [RequestStatuses.refreshInterval] when [refresh] is true: a request the agent is
-/// still planning (202 from submit) changes on the server without the requester. The timer is cancelled whenever the
-/// provider rebuilds or is disposed, so there is never more than one.
-void _refreshWhile(Ref ref, bool refresh) {
-  if (!refresh || !ref.mounted) return;
-  final timer = Timer(RequestStatuses.refreshInterval, ref.invalidateSelf);
+/// Reloads [ref]'s provider after [interval] (from [RequestStatuses.refreshIntervals]); null does nothing. A request
+/// the agent is planning, or one waiting for the Facilities Officer, changes on the server without the requester. The
+/// timer is cancelled whenever the provider rebuilds or is disposed (the screen closed), so there is never more than
+/// one, and nothing refreshes while no screen shows the request.
+void _refreshWhile(Ref ref, Duration? interval) {
+  if (interval == null || !ref.mounted) return;
+  final timer = Timer(interval, ref.invalidateSelf);
   ref.onDispose(timer.cancel);
 }
 
@@ -93,7 +94,7 @@ class MyRequestsNotifier extends AsyncNotifier<RequestsPage> {
     final result =
         await ref.read(requestsRepositoryProvider).getRequests(filter.statuses, page: 1, pageSize: pageSize);
     // Reloads page 1 only; the screen keeps showing the list while it does.
-    _refreshWhile(ref, result.items.any((r) => RequestStatuses.needsRefresh(r.status)));
+    _refreshWhile(ref, RequestStatuses.shortestRefreshInterval(result.items.map((r) => r.status)));
     return RequestsPage(items: result.items, total: result.total, page: 1);
   }
 
@@ -135,8 +136,15 @@ final myRequestsProvider =
 final requestDetailProvider = FutureProvider.autoDispose.family<RequestDetail, int>(
   (ref, id) async {
     final detail = await ref.watch(requestsRepositoryProvider).getRequest(id);
-    _refreshWhile(ref, RequestStatuses.needsRefresh(detail.status));
+    _refreshWhile(ref, RequestStatuses.refreshIntervalFor(detail.status));
     return detail;
   },
+  retry: _noRetry,
+);
+
+/// The .NET quotation of an approved request (GET /api/booking-requests/{id}/quotation). The detail screen watches it
+/// only while the request is Approved, so it is fetched once per visit.
+final requestQuotationProvider = FutureProvider.autoDispose.family<Quotation, int>(
+  (ref, id) => ref.watch(requestsRepositoryProvider).getQuotation(id),
   retry: _noRetry,
 );

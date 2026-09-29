@@ -142,22 +142,34 @@ void main() {
     expect(find.byType(RequestDetailScreen), findsOneWidget);
   });
 
-  testWidgets('the list re-fetches while a request is AgentProcessing and stops once none is', (tester) async {
+  testWidgets('the list re-fetches every 3 s while processing, every 15 s while pending, and stops after',
+      (tester) async {
     var calls = 0;
     stubPages((_, _) async {
       calls++;
-      final status = calls == 1 ? RequestStatuses.agentProcessing : RequestStatuses.pendingApproval;
+      final status = switch (calls) {
+        1 => RequestStatuses.agentProcessing,
+        2 => RequestStatuses.pendingApproval,
+        _ => RequestStatuses.approved,
+      };
       return PagedResult(items: [testRequest(1, status: status), testRequest(2)], page: 1, pageSize: 20, total: 2);
     });
     await pumpRequestsScreens(tester, repository);
     expect(find.text('Processing'), findsOneWidget);
 
-    await tester.pump(RequestStatuses.refreshInterval);
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
-
     expect(find.text('Waiting for approval'), findsOneWidget);
     expect(find.text('Request 2'), findsOneWidget, reason: 'the list stays on screen while it reloads');
-    await tester.pump(RequestStatuses.refreshInterval * 3);
-    expect(calls, 2);
+
+    await tester.pump(const Duration(seconds: 14));
+    expect(calls, 2, reason: 'a pending proposal refreshes every 15 s, not every 3 s');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(calls, 3);
+    expect(find.text('Waiting for approval'), findsNothing, reason: 'now Approved');
+
+    await tester.pump(const Duration(minutes: 2));
+    expect(calls, 3);
   });
 }

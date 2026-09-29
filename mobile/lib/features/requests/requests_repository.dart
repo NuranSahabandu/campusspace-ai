@@ -54,6 +54,12 @@ class RequestsRepository {
     return RequestDetail.fromJson(response.data!);
   }
 
+  /// UC06: the request's live (Draft or Issued) .NET quotation. A 404 means it has none.
+  Future<Quotation> getQuotation(int requestId) async {
+    final response = await _dio.get<Map<String, dynamic>>('/api/booking-requests/$requestId/quotation');
+    return Quotation.fromJson(response.data!);
+  }
+
   /// UC07: cancels the request and returns it. An empty [reason] is sent as null (the owner's reason is optional).
   Future<RequestDetail> cancel(int id, {String? reason}) async {
     final trimmed = reason?.trim();
