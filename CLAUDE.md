@@ -409,7 +409,9 @@ supervisor's `stub_planner`, and `enforce_plan_rules` still fixes the step order
 supervisor at run start and again on an officer revise (`refresh_policy`, set by human_gate; `load_policy`), never on
 approve/reject/cancel; a failed re-fetch ends in "policy unavailable". The view's `policy_snapshot` is the latest one,
 and the validate node (plain code, V01–V12 in `app/validation.py`) reads every number from it, never a literal; V05/V06 mirror `BookingWindowRules` messages, so keep
-them in step. V07 does not check public holidays (not implemented). Requester notes are replaced by `wrap_notes(...)`
+them in step. V02/V07 (and finalize's re-check) say "Availability check failed: <the tool's error text>" when the
+availability tool returns a TOOL_ERROR; "no longer free" only when the query succeeded without the room. V07 does not
+check public holidays (not implemented). Requester notes are replaced by `wrap_notes(...)`
 before anything reaches state, are never parsed into requirements or sent in a brief, and the tool trace keeps only
 whitelisted summaries (notes `"<omitted>"`). Checkpoints use SqliteSaver at `AGENT_CHECKPOINT_PATH` (default
 `agent-service/data/checkpoints.sqlite`, git-ignored); never InMemorySaver outside tests. The trace (nodes, steps with
@@ -491,21 +493,26 @@ run → Completed with the finalize trace. Approval re-check (our reading of add
 now; a requester who submitted on time mustn't fail because the officer was slow, but a policy change still applies.
 Then the room is active, has no overlapping blackout (V07) or active booking (V02, friendly; `no_room_overlap` 23P01 is
 the guarantee), and still has the feature covering each room_builtin line (addendum B, V08*); `ReserveAsync` is V08.
-Failure kinds (our answer to addendum Open question 7, `ApprovalFailureKind`, classified only in the finaliser): Time
-(V05, V06, start in the past) → run Failed, live quote voided, request PendingApproval → Rejected by the system (actor
-null, "The requested time is no longer valid: …"), no new run, best-effort resume "cancel"; 409 "The requested time is
-no longer valid: …. The request was closed; the requester can submit a new time." Proposal (everything else: room
-busy/23P01, blackout, inactive room, equipment short, builtin feature removed, agent finalize failed, unexpected agent
-status, "Agent did not confirm the approval in time") → `FailApprovalAsync`: run Failed, quote voided, request →
-RevisionRequested (saved, which frees the live-run index) → a new run (RevisionNo next) → AgentProcessing in one tx, then
+Failure kinds (our answer to addendum Open question 7, `ApprovalFailureKind`): every approval failure, whatever its
+source (agent finalize failed, a .NET re-check, 23P01, `ReserveAsync`, the watchdog's "Agent did not confirm the approval
+in time", an unexpected agent status or 404), is classified in ONE place, `FailApprovalAsync`, by running .NET's own time
+checks first: `CheckSlot` (current policy), `CheckTiming` as of submission (current policy), start still in the future.
+.NET is the authority; the original (often the agent's) reason is kept in the run's FailureReason for the trace. Any
+fails → Time: run Failed, live quote voided, request PendingApproval → Rejected by the system (actor null, "The requested
+time is no longer valid: <.NET's message>"), no new run, best-effort resume "cancel"; 409 "The requested time is no longer
+valid: …. The request was closed; the requester can submit a new time." (an approve call that finds the poller got there
+first rebuilds it from that history reason). Otherwise → Proposal (room busy/23P01, blackout, inactive room, equipment
+short, builtin feature removed, agent finalize failed, unexpected status, not confirmed in time): run Failed, quote
+voided, request → RevisionRequested with the original reason (saved, which frees the live-run index) → a new run
+(RevisionNo next) → AgentProcessing in one tx, then
 a best-effort start; 409 "The proposal is no longer valid: …. A new proposal is being prepared." Poller, Resuming (GET
 first; the watchdog counts `RunTimeoutMinutes` from the decision's DecidedAt): awaiting_approval with no validation
 attempt newer than stored → the resume was lost: re-send the saved decision (once per tick; timed out → fail); revise +
 newer attempt → the 3.3 awaiting path (trace, new Draft, PolicySnapshotJson overwritten, AgentProcessing →
 PendingApproval); running → copy the trace (timed out → fail); approve + completed → finaliser (even when timed out);
-failed → approve: new proposal, revise: run Failed + AgentFailed; any other status or 404 → warning, then the same
-failure for its decision; timed out → approve: new proposal "Agent did not confirm the approval in time", revise: "Agent
-run timed out" + AgentFailed. Orphans: a live run whose request doesn't match (Queued/Running need AgentProcessing;
+failed → approve: `FailApprovalAsync`, revise: run Failed + AgentFailed; any other status or 404 → warning, then the
+same failure for its decision; timed out → approve: `FailApprovalAsync` "Agent did not confirm the approval in time",
+revise: "Agent run timed out" + AgentFailed. Orphans: a live run whose request doesn't match (Queued/Running need AgentProcessing;
 Resuming needs AgentProcessing for a revise or PendingApproval for an approve; no decision is an orphan) → run Failed
 "Orphaned run (request is …)", the request untouched, best-effort resume "cancel" for Running/Resuming. A Failed run keeps
 the view's Plan/Proposal/PolicySnapshotJson. Tests: `AgentPollerEnv.ToPendingApprovalAsync` (then the agent reads as the
