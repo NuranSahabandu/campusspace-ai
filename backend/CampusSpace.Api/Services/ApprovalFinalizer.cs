@@ -31,8 +31,11 @@ public sealed class ApprovalFinalizer(
     public static string NewProposalMessage(string reason) =>
         $"The proposal is no longer valid: {Sentence(reason)}. A new proposal is being prepared.";
 
-    public static string TimeClosedMessage(string reason) =>
-        $"The requested time is no longer valid: {Sentence(reason)}. The request was closed; the requester can submit a new time.";
+    public static string TimeClosedMessage(string reason) => TimeClosedMessageFromReason(TimeClosedReason(reason));
+
+    /// <summary>The officer's 409 title rebuilt from the history reason a time close stored (<see cref="TimeClosedReason"/>).</summary>
+    public static string TimeClosedMessageFromReason(string closedReason) =>
+        $"{closedReason}. The request was closed; the requester can submit a new time.";
 
     /// <summary>The history reason when a time failure closes the request.</summary>
     public static string TimeClosedReason(string reason) => $"The requested time is no longer valid: {Sentence(reason)}";
@@ -40,7 +43,7 @@ public sealed class ApprovalFinalizer(
     public async Task<ApprovalOutcome> FinalizeApprovedAsync(Guid runId, AgentWorkflowView view, CancellationToken ct = default)
     {
         db.ChangeTracker.Clear();
-        ApprovalFailure failure;
+        string failure;
         await using (var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct))
         {
             var (request, run) = await LockAsync(runId, ct);
@@ -64,7 +67,7 @@ public sealed class ApprovalFinalizer(
             catch (ConflictException ex)
             {
                 // ReserveAsync: "Not enough equipment: …" (V08).
-                failure = new(ApprovalFailureKind.Proposal, ex.Message);
+                failure = ex.Message;
             }
             catch (DbUpdateException ex) when (ex.InnerException is PostgresException
             {
@@ -72,19 +75,20 @@ public sealed class ApprovalFinalizer(
             })
             {
                 // Another approval committed an overlapping booking after the friendly check: the constraint is the guarantee.
-                failure = new(ApprovalFailureKind.Proposal, await RoomBookedMessageAsync(view, ct));
+                failure = await RoomBookedMessageAsync(view, ct);
             }
             await transaction.RollbackAsync(ct);
         }
 
-        db.ChangeTracker.Clear();
-        return failure.Kind == ApprovalFailureKind.Time
-            ? await CloseForTimeAsync(runId, failure.Reason, view, ct)
-            : await FailApprovalAsync(runId, failure.Reason, view, ct);
+        // Classified with every other approval failure: the time checks decide first (see FailApprovalAsync).
+        return await FailApprovalAsync(runId, failure, view, ct);
     }
 
-    /// <summary>V05 and V06 with the current policy; lead time and advance window as of submission (see CLAUDE.md).</summary>
-    private async Task<ApprovalFailure?> CheckTimeAsync(BookingRequest request, CancellationToken ct)
+    /// <summary>
+    /// .NET's own time checks, null when the time is still valid: V05 with the current policy, the start still in the future,
+    /// and V06 with the current policy but its lead time and advance window as of submission (see CLAUDE.md).
+    /// </summary>
+    private async Task<string?> CheckTimeAsync(BookingRequest request, CancellationToken ct)
     {
         var start = AgentTrace.Utc(request.RequestedStart);
         var end = AgentTrace.Utc(request.RequestedEnd);
@@ -92,9 +96,9 @@ public sealed class ApprovalFinalizer(
 
         var slot = windowRules.CheckSlot(start, end, snapshot);
         if (!slot.IsValid)
-            return new(ApprovalFailureKind.Time, Join(slot));
+            return Join(slot);
         if (start <= clock.GetUtcNow())
-            return new(ApprovalFailureKind.Time, Sentence(BookingWindowRules.FutureMessage));
+            return Sentence(BookingWindowRules.FutureMessage);
 
         var submittedAt = await db.RequestStatusHistory
             .Where(h => h.RequestId == request.Id && h.ToStatus == RequestStatuses.Submitted)
@@ -102,39 +106,38 @@ public sealed class ApprovalFinalizer(
             .FirstOrDefaultAsync(ct) ?? request.CreatedAt;
         var role = await db.Users.Where(u => u.Id == request.RequesterId).Select(u => u.Role).SingleAsync(ct);
         var timing = windowRules.CheckTiming(start, role, snapshot, AgentTrace.Utc(submittedAt));
-        return timing.IsValid ? null : new(ApprovalFailureKind.Time, $"{Sentence(Join(timing))} (as of submission)");
+        return timing.IsValid ? null : $"{Sentence(Join(timing))} (as of submission)";
     }
 
     /// <summary>
     /// The room and equipment re-checks (V02, V07, V08 and the builtin lines of addendum B), then the booking, its reservations,
     /// the issued quote and the status changes, all tracked for the caller's SaveChanges. Null when everything is in place.
     /// </summary>
-    private async Task<ApprovalFailure?> ResolveAndBookAsync(
+    private async Task<string?> ResolveAndBookAsync(
         BookingRequest request, AgentRun run, ApprovalDecision decision, AgentWorkflowView view, CancellationToken ct)
     {
         var proposal = view.ReadProposal() ?? ReadStored(run.ProposalJson);
         var resolved = await resolver.ResolveAsync(request.Id, proposal, ct);
         if (resolved.Value is not { } p)
-            return new(ApprovalFailureKind.Proposal, resolved.Error!);
+            return resolved.Error!;
 
         var room = await db.Rooms.AsNoTracking().Where(r => r.Id == p.RoomId)
             .Select(r => new { r.Code, r.IsActive, Features = r.RoomFeatures.Select(f => f.Feature.Code).ToList() })
             .SingleOrDefaultAsync(ct);
         if (room is null || !room.IsActive)
-            return new(ApprovalFailureKind.Proposal, $"Room {room?.Code ?? p.RoomId.ToString(CultureInfo.InvariantCulture)} is no longer active");
+            return $"Room {room?.Code ?? p.RoomId.ToString(CultureInfo.InvariantCulture)} is no longer active";
         var window = CampusTime.UtcRange(p.Start, p.End);
         if (await db.RoomBlackouts.AnyAsync(b => b.RoomId == p.RoomId && b.TimeRange.Overlaps(window), ct))
-            return new(ApprovalFailureKind.Proposal, $"Room {room.Code} is blacked out for this time");
+            return $"Room {room.Code} is blacked out for this time";
         if (await db.Bookings.AnyAsync(b => b.RoomId == p.RoomId && BookingStatuses.Active.Contains(b.Status)
                 && b.TimeRange.Overlaps(window), ct))
-            return new(ApprovalFailureKind.Proposal, RoomBookedMessage(room.Code));
+            return RoomBookedMessage(room.Code);
         foreach (var line in p.BuiltinLines)
         {
             if (line.CoveredByFeatureCode is null)
-                return new(ApprovalFailureKind.Proposal, $"{line.TypeCode} is not covered by any room feature");
+                return $"{line.TypeCode} is not covered by any room feature";
             if (!room.Features.Contains(line.CoveredByFeatureCode))
-                return new(ApprovalFailureKind.Proposal,
-                    $"Room {room.Code} no longer has the {line.CoveredByFeatureCode} feature that covers {line.TypeCode}");
+                return $"Room {room.Code} no longer has the {line.CoveredByFeatureCode} feature that covers {line.TypeCode}";
         }
 
         var booking = new Booking { Request = request, RoomId = p.RoomId, TimeRange = window, Status = BookingStatuses.Confirmed };
@@ -170,8 +173,21 @@ public sealed class ApprovalFinalizer(
             if (request is null || run is null || !await IsApprovingAsync(request, run, ct))
                 return ApprovalOutcome.Skipped;
 
+            // .NET is the authority on the time: whatever failed (the agent's finalize, a re-check, 23P01, ReserveAsync, the
+            // watchdog), a time that is no longer valid can't be fixed by a re-plan. The run keeps the original reason.
             await EndRunAsync(run, reason, view, ct);
             await QuotationService.VoidLiveAsync(db, request.Id, ct);
+            if (await CheckTimeAsync(request, ct) is { } timeReason)
+            {
+                stateMachine.Transition(request, RequestStatuses.Rejected, changedById: null, HistoryReason(TimeClosedReason(timeReason)));
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                logger.LogWarning("Agent run {RunId}: the approval failed ({Reason}) and the requested time is no longer valid "
+                    + "({TimeReason}); the request was closed", runId, reason, timeReason);
+                await CancelThreadAsync(runId, ct);
+                return new(ApprovalOutcomeKind.TimeClosed, TimeClosedMessage(timeReason));
+            }
+
             stateMachine.Transition(request, RequestStatuses.RevisionRequested, changedById: null, HistoryReason(reason));
             // Saved first: the failed run must leave IX_AgentRuns_RequestId_Live before the new run enters it.
             await db.SaveChangesAsync(ct);
@@ -190,31 +206,6 @@ public sealed class ApprovalFinalizer(
         if (view is null || view.Status == AgentWorkflowStatuses.AwaitingApproval)
             await CancelThreadAsync(runId, ct);
         return new(ApprovalOutcomeKind.NewProposal, NewProposalMessage(reason));
-    }
-
-    /// <summary>
-    /// A time failure (V05, V06 or a start in the past): a re-plan can't fix the time the requester chose, so the request is
-    /// closed as Rejected by the system (addendum Open question 7, see CLAUDE.md). No new run.
-    /// </summary>
-    private async Task<ApprovalOutcome> CloseForTimeAsync(Guid runId, string reason, AgentWorkflowView? view, CancellationToken ct)
-    {
-        db.ChangeTracker.Clear();
-        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
-        {
-            var (request, run) = await LockAsync(runId, ct);
-            if (request is null || run is null || !await IsApprovingAsync(request, run, ct))
-                return ApprovalOutcome.Skipped;
-
-            await EndRunAsync(run, reason, view, ct);
-            await QuotationService.VoidLiveAsync(db, request.Id, ct);
-            stateMachine.Transition(request, RequestStatuses.Rejected, changedById: null, HistoryReason(TimeClosedReason(reason)));
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-        }
-        logger.LogWarning("Agent run {RunId}: the requested time is no longer valid ({Reason}); the request was closed", runId, reason);
-
-        await CancelThreadAsync(runId, ct);
-        return new(ApprovalOutcomeKind.TimeClosed, TimeClosedMessage(reason));
     }
 
     /// <summary>Run → Failed with the reason, the trace and outputs (so the officer sees which policy it was judged against).</summary>
@@ -286,6 +277,4 @@ public sealed class ApprovalFinalizer(
     private static string HistoryReason(string reason) => AgentTrace.Truncate(reason, RequestStatusHistoryConfiguration.ReasonMaxLength);
 
     private static string Money(decimal amount) => amount.ToString("N2", CultureInfo.InvariantCulture);
-
-    private sealed record ApprovalFailure(ApprovalFailureKind Kind, string Reason);
 }

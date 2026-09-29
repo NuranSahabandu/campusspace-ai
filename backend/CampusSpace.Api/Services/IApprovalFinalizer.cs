@@ -3,9 +3,11 @@ using CampusSpace.Api.Agents;
 namespace CampusSpace.Api.Services;
 
 /// <summary>
-/// Why a final check failed (addendum Open question 7, decided for 3.4). Time: V05, V06 as of submission, or a start in the
-/// past; the time comes from the requester's form, so a re-plan can't fix it and the request is closed. Proposal: anything
-/// else (room busy or 23P01, blackout, room inactive, equipment short, builtin feature removed, agent finalize failed); a new
+/// How an approval failure is handled (addendum Open question 7, decided for 3.4, refined in 3.6). Every failure, whatever its
+/// source, is classified in <see cref="IApprovalFinalizer.FailApprovalAsync"/> by .NET's own time checks first. Time: V05
+/// (current policy), V06 as of submission, or a start in the past; the time comes from the requester's form, so a re-plan
+/// can't fix it and the request is closed with .NET's message. Proposal: the time is still valid (room busy or 23P01,
+/// blackout, room inactive, equipment short, builtin feature removed, agent finalize failed, not confirmed in time); a new
 /// proposal is prepared.
 /// </summary>
 public enum ApprovalFailureKind
@@ -47,13 +49,15 @@ public interface IApprovalFinalizer
     /// (current policy, V06 as of submission) and the start, the room (active, no blackout, not booked), the builtin lines,
     /// then inserts the Booking (the exclusion constraint is the guarantee), reserves the equipment, issues the quote
     /// (recomputed by IQuotationCalculator), and moves the request to Approved and the run to Completed. A failed check is
-    /// classified by <see cref="ApprovalFailureKind"/> and handled in a new transaction.
+    /// rolled back and handed to <see cref="FailApprovalAsync"/>, which classifies it.
     /// </summary>
     Task<ApprovalOutcome> FinalizeApprovedAsync(Guid runId, AgentWorkflowView view, CancellationToken ct = default);
 
     /// <summary>
-    /// The new-proposal path: run → Failed with the reason, the live quote voided, request PendingApproval → RevisionRequested
-    /// → AgentProcessing with a new run (RevisionNo = next) in one transaction, then a best-effort start.
+    /// The one place an approval failure is classified (<see cref="ApprovalFailureKind"/>). In one transaction: run → Failed
+    /// with <paramref name="reason"/> (kept for the trace), the live quote voided, then .NET's time checks. Time invalid →
+    /// request Rejected by the system with .NET's time message, no new run, then a best-effort cancel. Otherwise → request
+    /// PendingApproval → RevisionRequested → AgentProcessing with a new run (RevisionNo = next), then a best-effort start.
     /// </summary>
     Task<ApprovalOutcome> FailApprovalAsync(Guid runId, string reason, AgentWorkflowView? view, CancellationToken ct = default);
 }

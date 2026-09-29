@@ -93,6 +93,34 @@ public class ApprovalPollerTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task A_failed_finalize_after_the_weekday_was_closed_seen_by_the_poller_closes_the_request()
+    {
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        var (requestId, runId) = await ApprovedSlowlyAsync(env);
+        var day = await CloseWeekdayAsync(env, requestId);
+        var failed = AgentFixtures.View(AgentFixtures.FinalizeFailed);
+        env.AgentReturns(failed);
+
+        await env.Poller.PollOnceAsync();
+
+        await ShouldBeClosedForTimeAsync(env, null, requestId, runId, $"The campus is closed on {day}s", runReason: failed.Error);
+    }
+
+    [Fact]
+    public async Task An_approval_the_agent_never_confirms_closes_the_request_when_the_time_is_no_longer_valid()
+    {
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        var (requestId, runId) = await ApprovedSlowlyAsync(env);
+        var day = await CloseWeekdayAsync(env, requestId);
+
+        env.Clock.Advance(TimeSpan.FromMinutes(5));
+        await env.Poller.PollOnceAsync();
+
+        await ShouldBeClosedForTimeAsync(env, null, requestId, runId, $"The campus is closed on {day}s",
+            runReason: AgentRunSync.ApprovalNotConfirmedMessage);
+    }
+
+    [Fact]
     public async Task A_time_failure_seen_by_the_poller_closes_the_request()
     {
         await using var env = await AgentPollerEnv.CreateAsync(fixture);

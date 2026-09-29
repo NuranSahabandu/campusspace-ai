@@ -91,13 +91,18 @@ public sealed class ApprovalService(
                 .Select(r => new { r.Status, r.FailureReason, RequestStatus = r.Request.Status }).SingleAsync(ct);
             if (run.Status == AgentRunStatuses.Failed)
                 throw new ConflictException(run.RequestStatus == RequestStatuses.Rejected
-                    ? ApprovalFinalizer.TimeClosedMessage(run.FailureReason!)
+                    ? ApprovalFinalizer.TimeClosedMessageFromReason(await ClosedReasonAsync(id, ct))
                     : ApprovalFinalizer.NewProposalMessage(run.FailureReason!));
             if (run.Status != AgentRunStatuses.Completed)
                 return new ApproveResult(null, InProgress: true);
         }
         return new ApproveResult(await requests.GetAsync(id, ct), InProgress: false);
     }
+
+    /// <summary>The time close's history reason: the run's FailureReason is the original (often the agent's) reason.</summary>
+    private Task<string> ClosedReasonAsync(long id, CancellationToken ct) =>
+        db.RequestStatusHistory.AsNoTracking().Where(h => h.RequestId == id && h.ToStatus == RequestStatuses.Rejected)
+            .OrderByDescending(h => h.Id).Select(h => h.Reason!).FirstAsync(ct);
 
     public async Task<BookingRequestDetailDto?> RejectAsync(long id, string? reason, CancellationToken ct = default)
     {

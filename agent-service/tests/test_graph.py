@@ -135,6 +135,20 @@ def test_approve_fails_when_the_room_was_booked_meanwhile(h: Harness, api: FakeC
     )
 
 
+def test_approve_after_the_day_was_closed_says_the_availability_check_failed(
+    h: Harness, api: FakeCampusApi
+) -> None:
+    tid = h.start()
+    api.policy["opening_hours"]["fri"] = None
+
+    view = h.resume(tid, "approve")
+
+    assert view.status == "failed"
+    assert view.error.startswith("Final re-check failed: V02: Availability check failed: HTTP 400")
+    assert "The campus is closed on Fridays" in view.error
+    assert "no longer free" not in view.error
+
+
 def test_reject_ends_the_run(h: Harness) -> None:
     tid = h.start()
 

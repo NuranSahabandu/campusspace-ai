@@ -85,6 +85,25 @@ def test_v02_fails(code, room_ok, free, expected) -> None:
     assert not passed and message.startswith(expected)
 
 
+def test_v02_reports_a_failed_availability_check_not_a_taken_room() -> None:
+    passed, message = v02_room_free(
+        "A301", True, False, "", "HTTP 400: Start: The campus is closed on Fridays"
+    )
+    assert not passed
+    assert message == "Availability check failed: HTTP 400: Start: The campus is closed on Fridays"
+
+
+def test_v07_reports_a_failed_availability_check() -> None:
+    passed, message = v07_blackouts(
+        "A301", False, "HTTP 400: Start: The campus is closed on Fridays"
+    )
+    assert not passed
+    assert message.startswith(
+        "Availability check failed: HTTP 400: Start: The campus is closed on Fridays;"
+    )
+    assert "blackout" not in message
+
+
 def test_v07_pass_and_fail_mention_holidays() -> None:
     ok, message = v07_blackouts("A301", True)
     assert ok and "public holidays are not checked (not implemented)" in message
@@ -420,6 +439,21 @@ def test_validate_proposal_sees_a_room_booked_since_the_proposal(tools_for) -> N
     assert results["V02"] == (False, "Room A301 is no longer free for the requested window")
     assert not results["V07"][0]
     assert {"V02", "V07"} <= RECOVERABLE
+
+
+def test_validate_proposal_reports_a_rejected_availability_query_accurately(tools_for) -> None:
+    # The officer closed Fridays after the proposal: the availability tool answers 400 (CheckSlot).
+    api = FakeCampusApi()
+    api.policy["opening_hours"]["fri"] = None
+
+    results = by_rule(validate_proposal(proposal_state(), tools_for(api), NOW))
+
+    passed, message = results["V02"]
+    assert not passed
+    assert message.startswith("Availability check failed: HTTP 400")
+    assert "The campus is closed on Fridays" in message
+    assert "no longer free" not in message
+    assert results["V07"][1].startswith("Availability check failed: HTTP 400")
 
 
 def test_validate_proposal_catches_a_tampered_price(tools_for) -> None:
