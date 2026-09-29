@@ -413,8 +413,35 @@ public sealed class BookingRequestService(
             row.Requester, row.Club,
             // Feature codes can't change and a feature in use can't be deleted, so every code has a name.
             row.RequiredFeatures.Select(code => new RequiredFeatureDto(code, names.GetValueOrDefault(code, code))).ToList(),
-            row.Equipment, history, LatestProposal: null,
+            row.Equipment, history, await LatestProposalAsync(id, ct),
             row.CancelledAt, row.IsLateCancellation, row.CancelledByOfficer, row.CreatedAt, row.UpdatedAt);
+    }
+
+    /// <summary>
+    /// The live (Draft or Issued) quote, its run and the proposed room; null without a live quote. The room is the booking's
+    /// once approved, otherwise the proposal's room_id; code and name come from Rooms. The same summary for owner and officer.
+    /// </summary>
+    private async Task<LatestProposalDto?> LatestProposalAsync(long requestId, CancellationToken ct)
+    {
+        var quote = await db.Quotations.AsNoTracking()
+            .Where(q => q.RequestId == requestId && QuotationStatuses.Live.Contains(q.Status) && q.AgentRunId != null)
+            .OrderByDescending(q => q.Id)
+            .Select(q => new
+            {
+                q.Id, q.Total, q.IsExempt, q.Status, RunId = q.AgentRunId!.Value, q.AgentRun!.RevisionNo, q.AgentRun.ProposalJson,
+            })
+            .FirstOrDefaultAsync(ct);
+        if (quote is null)
+            return null;
+
+        var bookedRoomId = await db.Bookings.AsNoTracking().Where(b => b.RequestId == requestId)
+            .OrderByDescending(b => b.Id).Select(b => (long?)b.RoomId).FirstOrDefaultAsync(ct);
+        var roomId = bookedRoomId ?? ProposalMapper.RoomId(quote.ProposalJson);
+        var room = roomId is { } id
+            ? await db.Rooms.AsNoTracking().Where(r => r.Id == id).Select(r => new { r.Code, r.Name }).SingleOrDefaultAsync(ct)
+            : null;
+        return new LatestProposalDto(
+            quote.RunId, quote.RevisionNo, roomId, room?.Code, room?.Name, quote.Id, quote.Total, quote.IsExempt, quote.Status);
     }
 
     /// <summary>Normalised like FeatureService (trimmed, lower-case), de-duplicated in order. Unknown codes are listed.</summary>

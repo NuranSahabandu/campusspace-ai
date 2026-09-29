@@ -58,14 +58,14 @@ public record RequestStatusHistoryDto(
 
 /// <summary>
 /// A request with everything the requester entered, and its history oldest first. Times are UTC.
-/// LatestProposal is always null until the agent workflow exists (Phase 3). IsLateCancellation flags an owner's late
+/// LatestProposal summarises the live quote and its run (see LatestProposalDto). IsLateCancellation flags an owner's late
 /// cancellation (it is not charged); CancelledByOfficer marks an officer's.
 /// </summary>
 public record BookingRequestDetailDto(
     long Id, string Purpose, string Status, int Attendees, DateTime RequestedStart, DateTime RequestedEnd,
     decimal BudgetLkr, string? Notes, RequesterDto Requester, ClubRefDto? Club,
     IReadOnlyList<RequiredFeatureDto> RequiredFeatures, IReadOnlyList<RequestedEquipmentDto> Equipment,
-    IReadOnlyList<RequestStatusHistoryDto> History, object? LatestProposal,
+    IReadOnlyList<RequestStatusHistoryDto> History, LatestProposalDto? LatestProposal,
     DateTime? CancelledAt, bool IsLateCancellation, bool CancelledByOfficer, DateTime CreatedAt, DateTime UpdatedAt);
 
 /// <summary>
