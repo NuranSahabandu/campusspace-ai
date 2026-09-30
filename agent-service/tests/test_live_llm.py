@@ -1,4 +1,5 @@
-"""Optional: real Gemini calls (planner, venue and equipment workers, thinking comparison).
+"""Optional: real Gemini calls (planner, venue, equipment and policy workers, thinking comparison,
+and one full four-agent run).
 Skipped unless both are in the environment:
 
     RUN_LIVE_LLM=1 uv run --env-file ../.env pytest -m live_llm -s
@@ -20,10 +21,12 @@ from app.schemas import EquipmentResult, Plan, VenueResult
 from app.tools import ToolClient, build_tools, recording
 from app.workers.equipment_llm import LlmEquipmentWorker
 from app.workers.planner import LlmPlanner, PlannerInput
+from app.workers.policy_llm import LlmPolicyWorker
 from app.workers.supervisor import INSTRUCTIONS, build_brief, enforce_plan_rules, load_context
 from app.workers.venue_llm import LlmVenueWorker
 from tests.conftest import make_settings
 from tests.fake_api import FakeCampusApi
+from tests.harness import Harness, latest
 from tests.keys import TEST_TOOLS_KEY
 
 # Read at import, before the autouse clean_env fixture removes it from the environment.
@@ -203,3 +206,117 @@ def test_planner_thinking_low_uses_fewer_output_tokens_than_medium(
 
     medium, low = results["medium"][0].usage, results["low"][0].usage
     assert low["output_tokens"] <= medium["output_tokens"]
+
+
+# ---------- Task 4.4: policy worker and the full four-agent run ----------
+
+# USD per 1M tokens, paid tier, standard; output includes thinking tokens. Source:
+# https://ai.google.dev/gemini-api/docs/pricing (checked 2026-09-30). An ESTIMATE for the report.
+PRICES = {"gemini-3.5-flash": (1.50, 9.00), "gemini-3.5-flash-lite": (0.30, 2.50)}
+
+
+def cost_usd(model: str, usage: dict | None) -> float:
+    if not usage or model not in PRICES:
+        return 0.0
+    price_in, price_out = PRICES[model]
+    return (usage["input_tokens"] * price_in + usage["output_tokens"] * price_out) / 1_000_000
+
+
+def report(view) -> float:
+    """Per-step latency, tokens, mode and corrections; returns the run's estimated cost."""
+    total = 0.0
+    for step in view.steps:
+        out = step["output"] or {}
+        usage = out.get("usage")
+        model = out.get("model", "")
+        cost = cost_usd(model, usage)
+        total += cost
+        print(f"  #{step['sequence']:>2} {step['agent_name']:<21} {step['duration_ms']:>6} ms "
+              f"mode={out.get('mode') or out.get('planner') or '-':<8} "
+              f"tokens={usage and (usage['input_tokens'], usage['output_tokens'])} "
+              f"~${cost:.5f} tools={[c['tool_name'] for c in step['tool_calls']]}")  # fmt: skip
+        for c in out.get("corrections") or []:
+            print(f"       correction: {c}")
+        if out.get("fallback_reason"):
+            print(f"       fallback: {out['fallback_reason']}")
+    return total
+
+
+def summary_replacements(view) -> list[str]:
+    """User fix 2: every summary/flag the checks replaced or dropped, with why."""
+    [step] = [s for s in view.steps if s["agent_name"] == "policy_cost"]
+    return [c for c in (step["output"] or {}).get("corrections", [])
+            if c.startswith(("officer_summary", "flag", "policy_flags"))]  # fmt: skip
+
+
+@pytest.mark.parametrize("request_id", [42, 43], ids=["student", "lecturer"])
+def test_real_policy_worker_on_the_demo(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, request_id: int
+) -> None:
+    settings = make_settings(
+        monkeypatch, AGENT_LLM_AGENTS="policy_cost", GOOGLE_API_KEY=_KEY, WORKER_MODEL=_WORKER
+    )
+    worker = LlmPolicyWorker(lambda: build_chat_model("worker", settings), settings.worker_model)
+    h = Harness(tmp_path / "p.sqlite", FakeCampusApi(), workers={"policy_cost": worker})
+    try:
+        view = h.view(h.start(request_id))
+    finally:
+        h.close()
+
+    [step] = [s for s in view.steps if s["agent_name"] == "policy_cost"]
+    out = step["output"]
+    print(f"\nrequest={request_id} status={view.status}")
+    report(view)
+    print(f"summary={view.proposal and view.proposal['officer_summary']!r}\n"
+          f"flags={view.proposal and view.proposal['policy_flags']}\n"
+          f"replaced/dropped={summary_replacements(view)}")  # fmt: skip
+    assert out["mode"] == "llm", out.get("fallback_reason")
+    assert view.status == "awaiting_approval"
+    assert all(v["passed"] for v in latest(view))
+    total = view.proposal["quote"]["total"]
+    assert total == ("5500.00" if request_id == 42 else "0.00")
+    assert [c["tool_name"] for c in step["tool_calls"]].count("calculate_quote") >= 1
+
+
+def test_full_graph_with_all_four_llm_agents(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """The Phase 4 exit check: every agent on Gemini, over the fake API, request 42."""
+    settings = make_settings(
+        monkeypatch,
+        AGENT_LLM_AGENTS="supervisor,venue_matching,equipment_allocation,policy_cost",
+        GOOGLE_API_KEY=_KEY,
+        PLANNER_MODEL=_MODEL,
+        WORKER_MODEL=_WORKER,
+    )
+
+    def worker_model():
+        return build_chat_model("worker", settings)
+
+    planner = LlmPlanner(lambda: build_chat_model("planner", settings), settings.planner_model)
+    workers = {
+        "venue_matching": LlmVenueWorker(worker_model, settings.worker_model),
+        "equipment_allocation": LlmEquipmentWorker(worker_model, settings.worker_model),
+        "policy_cost": LlmPolicyWorker(worker_model, settings.worker_model),
+    }
+    h = Harness(tmp_path / "full.sqlite", FakeCampusApi(), planner=planner, workers=workers,
+                model_label=settings.model_label())  # fmt: skip
+    try:
+        started = time.perf_counter()
+        view = h.view(h.start())
+        wall = time.perf_counter() - started
+    finally:
+        h.close()
+
+    print(f"\nstatus={view.status} model={view.model} wall={wall:.1f}s "
+          f"duration_ms={view.duration_ms} usage={view.usage}")  # fmt: skip
+    cost = report(view)
+    passed = sum(v["passed"] for v in latest(view))
+    print(f"rules passed={passed}/12 total={view.proposal and view.proposal['quote']['total']} "
+          f"estimated cost=${cost:.5f}\nsummary={view.officer_summary!r}\n"
+          f"flags={view.proposal and view.proposal['policy_flags']}\n"
+          f"replaced/dropped={summary_replacements(view)}")  # fmt: skip
+    assert view.status == "awaiting_approval", view.error
+    assert passed == 12
+    assert view.proposal["quote"]["total"] == "5500.00"
+    modes = {s["agent_name"]: (s["output"] or {}).get("mode") for s in view.steps}
+    assert modes["venue_matching"] == modes["equipment_allocation"] == "llm"
+    assert modes["policy_cost"] == "llm"
