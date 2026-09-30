@@ -43,6 +43,7 @@ POLICY_FACTS = (
     "max_advance_days_student",
     "max_advance_days_lecturer",
     "max_open_requests",
+    "free_cancellation_hours",
 )
 
 

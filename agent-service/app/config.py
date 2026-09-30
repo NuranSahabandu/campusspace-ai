@@ -19,11 +19,10 @@ MIN_SERVICE_KEY_LENGTH = 32
 MIN_TOOLS_KEY_LENGTH = 32
 
 # Agents that AGENT_LLM_AGENTS can switch to Gemini, and the ones that have an LLM implementation.
-# Phase 4 adds each worker to LLM_IMPLEMENTED as it lands (4.2 venue, 4.3 equipment, 4.4 policy).
+# Phase 4 added each worker to LLM_IMPLEMENTED as it landed (4.2 venue, 4.3 equipment, 4.4 policy).
 LLM_AGENTS = ("supervisor", "venue_matching", "equipment_allocation", "policy_cost")
 WORKER_AGENTS = LLM_AGENTS[1:]
-LLM_IMPLEMENTED = frozenset({"supervisor", "venue_matching", "equipment_allocation"})
-_PENDING_TASK = {"venue_matching": "4.2", "equipment_allocation": "4.3", "policy_cost": "4.4"}
+LLM_IMPLEMENTED = frozenset(LLM_AGENTS)  # Phase 4 complete (4.4 added policy_cost)
 
 # Same Flash (planning) / Flash-Lite (workers) split as the labs (Labs 06/07 and Lab 05 api/main.py
 # CHAT_MODEL), one generation newer: Gemini answers 404 "no longer available to new users" for the
@@ -109,9 +108,7 @@ class Settings(BaseSettings):
         pending = [n for n in names if n not in LLM_IMPLEMENTED]
         if pending:
             # /health must never claim "llm" for an agent that is still a stub.
-            missing = [
-                f"{n} has no LLM implementation yet (Task {_PENDING_TASK[n]})" for n in pending
-            ]
+            missing = [f"{n} has no LLM implementation yet" for n in pending]
             raise ValueError("AGENT_LLM_AGENTS: " + "; ".join(missing))
         return ",".join(n for n in LLM_AGENTS if n in names)
 

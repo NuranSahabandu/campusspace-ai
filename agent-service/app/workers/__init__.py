@@ -3,8 +3,8 @@
 Phase 3 workers are deterministic stubs that call the real tools. Phase 4 replaces them one at a
 time with a create_agent ReAct worker (passed to build_graph as `workers`) with the same contract:
 task string in, validated structured result out. An LLM worker falls back to its stub.
-The LLM workers share one loop (app/workers/tool_agent.py): venue_llm.py (4.2) and
-equipment_llm.py (4.3).
+The LLM workers share one loop (app/workers/tool_agent.py): venue_llm.py (4.2),
+equipment_llm.py (4.3) and policy_llm.py (4.4).
 """
 
 from collections.abc import Callable, Mapping
@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from app.budget import UNLIMITED, LlmBudget
 from app.schemas import RESULT_MODELS
-from app.tools import WORKER_TOOLS, current_recorder
+from app.tools import LOCAL_TOOLS, WORKER_TOOLS, current_recorder
 from app.workers.common import LlmAttempt, WorkerFailed, WorkerOutcome, WorkerUnavailable
 from app.workers.equipment import equipment_allocation
 from app.workers.policy_cost import policy_cost
@@ -51,7 +51,8 @@ class WorkerRunner:
         isolation: no history goes in, no tool debris comes out). The budget is a time limit, not
         context. An LLM worker's result was checked by the worker; when it falls back, the stub runs
         here and the LLM metadata (with the fallback reason) is kept."""
-        allowed = {t: self._tools[t] for t in WORKER_TOOLS[name]}
+        # LOCAL_TOOLS (check_policy) are built by the LLM worker from its brief.
+        allowed = {t: self._tools[t] for t in WORKER_TOOLS[name] if t not in LOCAL_TOOLS}
         meta = None
         if name in self._llm:
             attempt = self._llm[name].run(task, allowed, budget)

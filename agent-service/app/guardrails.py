@@ -32,6 +32,25 @@ def strip_tags(text: str) -> str:
     return _ANY_TAG.sub("", text)
 
 
+# Any other markup-looking tag (<b>, </system>, <tool_call x="y">); "< 8000" is not a tag.
+_MARKUP = re.compile(r"<\s*/?\s*[A-Za-z][\w:-]*[^<>]*>")
+
+
+def strip_markup(text: str) -> str:
+    """Our delimiters and any other tag removed, whitespace collapsed: plain text."""
+    return " ".join(_MARKUP.sub(" ", strip_tags(text)).split())
+
+
+def plain_text(text: str, limit: int) -> str:
+    """strip_markup, then cut to limit characters (at the last space when there is one nearby)."""
+    cleaned = strip_markup(text)
+    if len(cleaned) <= limit:
+        return cleaned
+    cut = cleaned[:limit]
+    space = cut.rfind(" ")
+    return (cut[:space] if space > limit - 40 else cut).rstrip(" ,;:")
+
+
 def wrap_officer_notes(text: str | None) -> str:
     """The officer's revise notes for the planner, in their own delimiter (preferences only)."""
     cleaned = strip_tags(text or "").strip()

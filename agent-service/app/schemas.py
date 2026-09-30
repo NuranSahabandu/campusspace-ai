@@ -142,6 +142,15 @@ class PolicyResult(Strict):
     unmet: str | None = None
 
 
+class PolicyAnswer(Strict):
+    """What the Policy and Cost MODEL writes. It cannot write a price: code composes the
+    PolicyResult with the quote rebuilt from its calculate_quote result (app/workers/policy_llm.py).
+    No length limits here: code trims (a retry for a long flag would waste the budget)."""
+
+    policy_flags: list[str]
+    officer_summary: str
+
+
 RESULT_MODELS: dict[str, type[Strict]] = {
     "venue_matching": VenueResult,
     "equipment_allocation": EquipmentResult,
