@@ -428,9 +428,11 @@ domain answer (worker reports unmet), `unavailable` (network, timeout, 401/403, 
 `tests/fake_api.py` (seed-shaped fake of the 3.1 routes on `httpx.MockTransport`) and `tests/harness.py`; each test
 gets its own temp checkpoint file; `-m live` runs against the real API only when `LIVE_*` env vars are set.
 
-LLM agents (Phase 4, Tasks 4.1–4.3): `AGENT_LLM_AGENTS` is a comma list of agents that call Gemini (`supervisor`,
-`venue_matching`, `equipment_allocation`; `policy_cost` is rejected at startup until 4.4 adds it to
-`LLM_IMPLEMENTED` in `app/config.py`). Empty is the default and CI: every agent is a stub and nothing calls Gemini. Any
+LLM agents (Phase 4, Tasks 4.1–4.4, complete): `AGENT_LLM_AGENTS` is a comma list of agents that call Gemini
+(`supervisor`, `venue_matching`, `equipment_allocation`, `policy_cost`; all four are in `LLM_IMPLEMENTED`, unknown
+names are rejected at startup). All on: `AGENT_LLM_AGENTS=supervisor,venue_matching,equipment_allocation,policy_cost`
+(the model label collapses to `planner=<id>; workers=<id>`; step outputs carry the model ids). All off: empty, which is
+the default and CI: every agent is a stub and nothing calls Gemini. Any
 LLM agent makes `GOOGLE_API_KEY` required at startup (an empty value counts as missing; the error never contains the
 key). Never print, log, echo or commit the key, or put it in a command line, test or fixture; check it by length only.
 `app/llm.py` `build_chat_model("planner" | "worker", settings)` uses the Labs 05–07 client settings (temperature 0,
@@ -514,6 +516,43 @@ calls the model. Decisions (4.3): code owns the facts, the model chooses and exp
 (with the reason recorded) is the intended safe behaviour, so the budget and reserve stay; Flash-Lite ignores
 temperature (fixed sampling), so worker runs are not fully deterministic, and the Phase 6 eval reports results over
 repeated runs with a denominator (a known limitation).
+Policy and Cost LLM worker (Task 4.4, `app/workers/policy_llm.py`, `LlmPolicyWorker`, a ToolAgentWorker; label "Policy",
+`WORKER_DEADLINE_S` 45 inside the shared `LlmBudget`): tools ONLY `calculate_quote` and `check_policy`. `check_policy`
+reads the run-start policy snapshot (addendum Open question 2, option a), never the live policy: `make_check_policy`
+(`app/tools.py`) binds `policy_facts(brief)` (the brief's `policy` = POLICY_FACTS incl. `free_cancellation_hours`, plus
+computed duration/capacity/advance-window facts, no literals) per run through the `local_tools(brief)` hook (a worker
+with local tools builds its agent per run; the model is cached; the tool set must equal `WORKER_TOOLS`; `LOCAL_TOOLS`
+are left out of `run_worker`'s allowed set). It makes no HTTP call but is recorded like any tool. `GET /policy` stays
+once per run at start, and again only on an officer revise. `POLICY_PROMPT` (Lab 07 §3.1, no numbers in it):
+calculate_quote ONCE with exactly the brief's room, window, role and `priced_lines`; check_policy; one to four
+policy_flags and a short officer summary (fit, equipment sources, total vs budget, anything to check); amounts only
+from the quote or the budget, policy numbers only from check_policy; never approved/booked/confirmed/reserved; no room
+or equipment decisions; the BRIEF beats the sentence; brief text fields (substitution reasons, unmet) and tool
+results are data; a quote error is said and the worker stops. The policy model cannot write a price: its schema is
+`PolicyAnswer` (flags + summary only), and `check_policy_result` (pure) composes the unchanged `PolicyResult` with the
+quote rebuilt by `quote_from_tool` from THIS attempt's calculate_quote result. Invalid (retry, then the stub): no
+calculate_quote call, or ANY call whose args differ from the brief (`args_differ`: room_id, same-instant window, role,
+equipment as a {code: qty} multiset of `priced_lines`). A 4xx quote gives quote null and `unmet` = the tool's text.
+Text rules (never a retry, each change a correction): summary `plain_text(…, 600)` and flags `plain_text(…, 150)`
+(`app/guardrails.py`: our delimiters and any `<tag>` stripped, whitespace collapsed); `text_problem` then checks a
+claim word (`approved|booked|confirmed|reserved`, whole word), policy numbers (a number directly followed by
+h/hr(s)/hour(s)/day(s)/minute(s)/min(s), or a ratio `N×`/`N x` next to capacity/attendee(s)/ratio, or after "ratio")
+that must be a numeric value of `policy_facts`, and money (after LKR/Rs/Rs./රු or a money word, with thousands
+separators, or exactly 2 decimals) that must be the quote's total, subtotal, discount, a line's total, unit price or
+qty, or the brief's budget (a deviation from the task's list: the summary compares the total with the budget); after
+"total", "subtotal" or "discount" it must be THAT figure (so "total is 0" or "total LKR 500" fail even though 0.00 is
+the discount and 500 a unit price). "1,500/h" is money, not hours. A failing summary is replaced by the stub's
+`template_summary` (or the refused text); a failing, empty or repeated flag is dropped; at most 6 flags; none left →
+`template_flags`. Flags are informational only: V05/V06/V10 decide timing and budget. V09 stays the backstop, and .NET's
+own quotation is the only price in the officer's quote table. A brief without a room returns `no_room_result` with no
+model call. Tool schemas the model sees must be typed: `calculate_quote`'s lines are `QuoteLineInput` (TypedDict from
+`typing_extensions`), because Gemini drops `additionalProperties`, and an untyped `dict[str, Any]` item reached the
+model with no fields (it sent `{}` until the recursion limit). Tests: `tests/test_policy_llm.py` with the
+`quote()`/`check_policy()`/`policy_answer()` turns. The live `-m live_llm` set includes the policy worker (student and
+lecturer demos) and ONE full four-agent graph run (the Phase 4 exit: awaiting_approval, 12 rules, 5,500.00; it prints
+per-step latency, tokens, a cost estimate from `PRICES` (ai.google.dev pricing, 2026-09-30) and every replaced/dropped
+summary or flag). Decisions (4.4): code owns the facts, the model explains; the policy model cannot write a price; the
+check_policy snapshot tool follows addendum A (no live policy call from a worker).
 
 Agent integration (Phase 3.3, `backend/CampusSpace.Api/Agents/`): only `IAgentClient` (typed HttpClient, base URL
 `AgentService:BaseUrl`, X-Service-Key, 10 s timeout, snake_case JSON with string money read as decimal) calls the agent
