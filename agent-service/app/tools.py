@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, SecretStr, ValidationError
+from typing_extensions import TypedDict  # pydantic needs it on Python < 3.12
 
 from app.limits import TOOL_TIMEOUT_S
 from app.schemas import (
@@ -40,6 +41,15 @@ from app.schemas import (
     SubstitutesArgs,
     ToolCallTrace,
 )
+
+
+class QuoteLineInput(TypedDict):
+    """One calculate_quote line. Typed (not dict[str, Any]) so the model sees code and quantity:
+    Gemini drops additionalProperties, which left an untyped item with no fields at all."""
+
+    code: str
+    quantity: int
+
 
 PREFIX = "/internal/agent-tools"
 TOOL_ERROR = "TOOL_ERROR:"
@@ -420,7 +430,7 @@ def build_tools(client: ToolClient) -> dict[str, BaseTool]:
         start_iso: str,
         end_iso: str,
         requester_role: str,
-        equipment: list[dict[str, Any]],
+        equipment: list[QuoteLineInput],
     ) -> str:
         """Price a room slot and equipment lines [{code, quantity}] for the requester role
         (Student or Lecturer) with the official calculator. Calculates only; saves nothing.
