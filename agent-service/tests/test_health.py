@@ -29,6 +29,7 @@ def test_health_returns_200_without_key(client: TestClient) -> None:
         "checkpointer": "sqlite",
         "checkpointer_ok": True,
         "google_api_key_configured": False,
+        "fault_injection": None,
     }
 
 

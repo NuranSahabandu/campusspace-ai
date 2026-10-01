@@ -21,14 +21,17 @@ RUN_TIMEOUT_S = 180.0  # per run segment (start, or one resume); the officer's w
 MAX_NOTES_LENGTH = 1000  # officer revise notes
 
 # LLM client (Labs 05–07 get_llm(): temperature 0, timeout 60, max_retries 3 for free-tier 429s).
+# langchain-google-genai passes max_retries to google-genai as HttpRetryOptions(attempts=3): three
+# calls in all (two retries, ~1 s then ~2 s backoff with jitter) for 408/429/5xx and connection or
+# timeout errors; Retry-After is not read (Task 5.5 drills D1-D3, D9).
 LLM_TIMEOUT_S = 60
 LLM_MAX_RETRIES = 3
 
 # LLM steps: invalid structured output is retried once (plan §10.10), then the stub.
 MAX_PLANNER_ATTEMPTS = 2
 MAX_WORKER_ATTEMPTS = 2
-# Wall clock per LLM step. The client alone can take ~4 min (60 s × (1 + 3 retries)), which would
-# outlast RUN_TIMEOUT_S and .NET's watchdog, so a step waits at most this long.
+# Wall clock per LLM step. The client alone can take ~3 min (60 s × 3 attempts + backoff), which
+# would outlast RUN_TIMEOUT_S and .NET's watchdog, so a step waits at most this long.
 PLANNER_DEADLINE_S = 60.0
 WORKER_DEADLINE_S = 45.0
 # Shared per-segment LLM budget (app/budget.py): an LLM step gets

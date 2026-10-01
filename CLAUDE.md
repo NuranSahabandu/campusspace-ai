@@ -594,6 +594,24 @@ per-step latency, tokens, a cost estimate from `PRICES` (ai.google.dev pricing, 
 summary or flag). Decisions (4.4): code owns the facts, the model explains; the policy model cannot write a price; the
 check_policy snapshot tool follows addendum A (no live policy call from a worker).
 
+Failure drills (Task 5.5, `app/faults.py`): development-only LLM fault injection at the httpx transport inside
+google-genai's client (`build_chat_model(role, settings, agent)`), so the SDK retry, our retries, deadlines, budget and
+fallbacks run unchanged. `AGENT_FAULT` = `rate_limit | rate_limit_retry_after | slow | connection | malformed |
+bad_key | model_not_found` on `AGENT_FAULT_AGENTS` (comma list, each must be in `AGENT_LLM_AGENTS`), optionally only
+the first `AGENT_FAULT_TIMES` calls per agent. Startup refuses it unless `AGENT_ENV=development`; it is logged at
+startup and shown on `/health` (`fault_injection`, null when off) by name only. Turn it on with env overrides on the
+command line (never in `.env` for long, never in CI: `test_ci_never_turns_on_faults_or_llm_agents`), for example
+`AGENT_ENV=development AGENT_FAULT=rate_limit AGENT_FAULT_AGENTS=equipment_allocation AGENT_LLM_AGENTS=supervisor,venue_matching,equipment_allocation,policy_cost uv run uvicorn app.main:app --port 8000`;
+off = restart without them. Tests build the real `ChatGoogleGenerativeAI` with a fake key over these faults (no
+network). LLM failure reasons are fixed texts from `llm_error_reason` (`app/llm.py`: "rate limited (HTTP 429)",
+"model not found (HTTP 404)", "timeout", "connection error", …, else the exception type): never `str(exc)`, which
+carries Google's error JSON or quotes model output. The client retry is google-genai `HttpRetryOptions(attempts=3)`:
+three calls in all, Retry-After ignored. AFC: `CampusGeminiChat` sets `automatic_function_calling.disable=True` per
+request (we send declarations only; our create_agent loop runs tools), which removes the "AFC is enabled" INFO line
+and the one-time AFC WARNING; never filter logs for it. Outcome (2026-10-01, 16 live runs): every fault ended in a
+fallback or a recorded failure, never a hang; budget exhaustion finished in 151 s; watchdog, restart and resume
+after a restart all worked; two leaks found and fixed. Evidence: `docs/evidence/agent-failure-drills.md`.
+
 Agent integration (Phase 3.3, `backend/CampusSpace.Api/Agents/`): only `IAgentClient` (typed HttpClient, base URL
 `AgentService:BaseUrl`, X-Service-Key, 10 s timeout, snake_case JSON with string money read as decimal) calls the agent
 service. It returns an outcome (Ok, AlreadyExists, NotFound, Conflict, Unavailable with a Detail such as "HTTP 401") and

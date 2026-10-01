@@ -10,6 +10,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.faults import FAULTS
+
 # Anchored to this file (app/config.py -> agent-service/ -> repo root), not the working directory.
 ROOT_ENV = Path(__file__).resolve().parents[2] / ".env"
 # agent-service/data/ is git-ignored; anchored to this file like ROOT_ENV.
@@ -62,6 +64,23 @@ class Settings(BaseSettings):
     worker_thinking: ThinkingLevel = Field(
         default=DEFAULT_WORKER_THINKING, validation_alias="WORKER_THINKING"
     )
+
+    # Development-only fault injection (app/faults.py, Task 5.5 drills). Off unless AGENT_FAULT is
+    # set, and then only with AGENT_ENV=development and LLM target agents (see _fault_rules).
+    agent_env: str = Field(default="production", validation_alias="AGENT_ENV")
+    agent_fault: str = Field(default="", validation_alias="AGENT_FAULT")
+    agent_fault_agents: str = Field(default="", validation_alias="AGENT_FAULT_AGENTS")
+    agent_fault_times: int = Field(default=0, ge=0, validation_alias="AGENT_FAULT_TIMES")
+
+    @field_validator("agent_env", "agent_fault", "agent_fault_agents", mode="before")
+    @classmethod
+    def _normalise(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("agent_fault_times", mode="before")
+    @classmethod
+    def _empty_times_means_every_call(cls, value: object) -> object:
+        return 0 if value in (None, "") else value
 
     @field_validator("checkpoint_path", mode="before")
     @classmethod
@@ -148,6 +167,46 @@ class Settings(BaseSettings):
                 "AGENT_LLM_AGENTS empty for stub agents"
             )
         return self
+
+    @model_validator(mode="after")
+    def _fault_rules(self) -> "Settings":
+        if not self.agent_fault:
+            return self
+        if self.agent_env != "development":
+            raise ValueError(
+                "AGENT_FAULT is for development only: set AGENT_ENV=development, or unset "
+                "AGENT_FAULT"
+            )
+        if self.agent_fault not in FAULTS:
+            raise ValueError(f"AGENT_FAULT must be one of: {', '.join(FAULTS)}")
+        targets = self.fault_agents
+        if not targets:
+            raise ValueError("AGENT_FAULT_AGENTS must name the agent(s) to fault")
+        inert = sorted(t for t in targets if t not in self.llm_agents)
+        if inert:
+            raise ValueError(
+                f"AGENT_FAULT_AGENTS names agent(s) that are not LLM agents ({', '.join(inert)}); "
+                "add them to AGENT_LLM_AGENTS"
+            )
+        return self
+
+    @property
+    def fault_agents(self) -> frozenset[str]:
+        return frozenset(n.strip() for n in self.agent_fault_agents.split(",") if n.strip())
+
+    def fault_for(self, agent: str) -> str | None:
+        """The injected fault for this agent's Gemini client, or None."""
+        return self.agent_fault if self.agent_fault and agent in self.fault_agents else None
+
+    def fault_summary(self) -> dict | None:
+        """Names only, for /health and the startup warning."""
+        if not self.agent_fault:
+            return None
+        return {
+            "fault": self.agent_fault,
+            "agents": [a for a in LLM_AGENTS if a in self.fault_agents],
+            "times": self.agent_fault_times,
+        }
 
     @property
     def llm_agents(self) -> frozenset[str]:

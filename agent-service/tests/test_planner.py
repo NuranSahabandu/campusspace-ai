@@ -165,8 +165,8 @@ def test_invalid_output_twice_falls_back_to_the_stub_plan(run) -> None:
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
-        (TimeoutError("read timed out"), "Planner LLM error: TimeoutError: read timed out"),
-        (RuntimeError("429 quota"), "Planner LLM error: RuntimeError: 429 quota"),
+        (TimeoutError("read timed out"), "Planner LLM error: timeout"),
+        (RuntimeError("429 quota"), "Planner LLM error: RuntimeError"),
     ],
 )
 def test_an_llm_exception_falls_back_and_the_run_continues(
@@ -189,7 +189,7 @@ def test_a_broken_client_falls_back(run, tmp_path: Path, api: FakeCampusApi) -> 
     try:
         view = h.view(h.start())
         out = steps_of(view, "supervisor")[0]["output"]
-        assert out["fallback_reason"] == "Planner LLM error: RuntimeError: client init failed"
+        assert out["fallback_reason"] == "Planner LLM error: RuntimeError"
         assert view.status == "awaiting_approval"
     finally:
         h.close()

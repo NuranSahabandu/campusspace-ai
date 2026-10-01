@@ -369,8 +369,8 @@ def test_only_a_search_for_the_brief_window_makes_a_room_free(api: FakeCampusApi
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
-        (RuntimeError("429 quota"), "Venue LLM error: RuntimeError: 429 quota"),
-        (TimeoutError("read timed out"), "Venue LLM error: TimeoutError: read timed out"),
+        (RuntimeError("429 quota"), "Venue LLM error: RuntimeError"),
+        (TimeoutError("read timed out"), "Venue LLM error: timeout"),
     ],
 )
 def test_an_llm_exception_falls_back_to_the_stub(run, error: Exception, reason: str) -> None:
@@ -394,7 +394,7 @@ def test_a_broken_client_falls_back(tmp_path: Path, api: FakeCampusApi) -> None:
     finally:
         h.close()
     out = venue_steps(view)[0]["output"]
-    assert out["fallback_reason"] == "Venue LLM error: RuntimeError: client init failed"
+    assert out["fallback_reason"] == "Venue LLM error: RuntimeError"
     assert view.status == "awaiting_approval"
 
 

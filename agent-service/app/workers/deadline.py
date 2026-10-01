@@ -23,7 +23,3 @@ def submit(fn: Callable[[], Any], name: str = "llm-call") -> Future:
 
     threading.Thread(target=run, name=name, daemon=True).start()
     return future
-
-
-def describe_error(exc: BaseException, limit: int = 200) -> str:
-    return f"{type(exc).__name__}: {str(exc)[:limit]}".rstrip(": ")

@@ -502,8 +502,8 @@ def test_no_equipment_skips_the_step_and_the_model(run, api: FakeCampusApi) -> N
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
-        (RuntimeError("429 quota"), "Equipment LLM error: RuntimeError: 429 quota"),
-        (TimeoutError("read timed out"), "Equipment LLM error: TimeoutError: read timed out"),
+        (RuntimeError("429 quota"), "Equipment LLM error: RuntimeError"),
+        (TimeoutError("read timed out"), "Equipment LLM error: timeout"),
     ],
 )
 def test_an_llm_exception_falls_back_to_the_stub(run, error: Exception, reason: str) -> None:
@@ -528,7 +528,7 @@ def test_a_broken_client_falls_back(tmp_path: Path, api: FakeCampusApi) -> None:
     finally:
         h.close()
     out = equipment_steps(view)[0]["output"]
-    assert out["fallback_reason"] == "Equipment LLM error: RuntimeError: client init failed"
+    assert out["fallback_reason"] == "Equipment LLM error: RuntimeError"
     assert view.status == "awaiting_approval"
 
 
