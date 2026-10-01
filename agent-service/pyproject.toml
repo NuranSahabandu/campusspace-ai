@@ -42,6 +42,7 @@ pythonpath = ["."]
 markers = [
     "live: calls the real .NET API; skipped unless LIVE_* env vars are set",
     "live_llm: calls real Gemini; skipped unless GOOGLE_API_KEY and RUN_LIVE_LLM=1 are set",
+    "postgres: needs a real PostgreSQL; skipped unless AGENT_TEST_POSTGRES_URL is set (CI sets it)",
 ]
 
 [dependency-groups]
