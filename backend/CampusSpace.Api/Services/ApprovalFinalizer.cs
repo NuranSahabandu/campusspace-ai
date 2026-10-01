@@ -37,8 +37,14 @@ public sealed class ApprovalFinalizer(
     public static string TimeClosedMessageFromReason(string closedReason) =>
         $"{closedReason}. The request was closed; the requester can submit a new time.";
 
+    /// <summary>
+    /// How every time close's history reason starts. NotificationOutbox reads it to tell this system rejection (a neutral
+    /// "Closed" email) from an officer's.
+    /// </summary>
+    public const string TimeClosedPrefix = "The requested time is no longer valid:";
+
     /// <summary>The history reason when a time failure closes the request.</summary>
-    public static string TimeClosedReason(string reason) => $"The requested time is no longer valid: {Sentence(reason)}";
+    public static string TimeClosedReason(string reason) => $"{TimeClosedPrefix} {Sentence(reason)}";
 
     public async Task<ApprovalOutcome> FinalizeApprovedAsync(Guid runId, AgentWorkflowView view, CancellationToken ct = default)
     {
