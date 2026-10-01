@@ -1,0 +1,12 @@
+# Only CampusSpace.Api/ is copied into the image; keep build output, tests, local data and secrets out of the context.
+**/bin/
+**/obj/
+**/TestResults/
+**/App_Data/
+**/*.user
+**/.env
+**/.env.*
+**/appsettings.Development.json
+CampusSpace.Tests/
+.vs/
+.idea/
