@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/problem.dart';
+import '../../core/config.dart';
 import '../../core/router.dart';
 import '../../core/validators.dart';
 import 'auth_controller.dart';
@@ -106,6 +107,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onPressed: _submitting ? null : () => context.go(AppRoutes.register),
           child: const Text('New student? Create an account'),
         ),
+        if (appVersionLabel() case final version when version.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text(
+            version,
+            key: const Key('login.version'),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
       ],
     );
   }

@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -34,9 +36,32 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Signed with the debug key on purpose (Task 6.D4): the APK is a course deliverable installed fresh from
+            // the GitHub Release, not a Play Store app, and a release keystore would need its passwords at every build.
+            // A build from another machine has another signature: uninstall the old app before installing it.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+// A release APK must call the deployed API over HTTPS: refuse to build it without
+// --dart-define=API_URL=https://... (no silent fallback to the emulator's http://10.0.2.2:5080).
+// Flutter passes the dart-defines as one comma-separated property of base64-encoded "NAME=value" entries.
+val releaseApiUrl: String? =
+    (findProperty("dart-defines") as String?)
+        ?.split(",")
+        ?.filter { it.isNotBlank() }
+        ?.map { String(Base64.getDecoder().decode(it)) }
+        ?.firstOrNull { it.startsWith("API_URL=") }
+        ?.removePrefix("API_URL=")
+        ?.trim()
+tasks.matching { it.name == "compileFlutterBuildRelease" }.configureEach {
+    doFirst {
+        if (releaseApiUrl == null || !Regex("^https://[^/\\s]+").containsMatchIn(releaseApiUrl)) {
+            throw GradleException(
+                "A release build needs an https API URL. Build it with: " +
+                    "flutter build apk --release --dart-define=API_URL=https://campusspace-api.onrender.com",
+            )
         }
     }
 }

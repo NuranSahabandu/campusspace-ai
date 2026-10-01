@@ -177,7 +177,7 @@ Deployment (from the repo root; docs/deploy/RUNBOOK.md; every script asks for se
 ```bash
 docker build --platform linux/amd64 -t campusspace-api backend          # the images Render builds
 docker build --platform linux/amd64 -t campusspace-agent agent-service
-./scripts/neon-db.sh roles | password <role> | migrate | check           # Neon, as the owner, DIRECT endpoint
+./scripts/neon-db.sh roles | password-sql <role> | migrate | check        # Neon, as the owner, DIRECT endpoint
 ./scripts/verify-deploy.sh --api <url> --agent <url> --web <url>         # checks a deployment end to end
 ```
 
@@ -242,8 +242,14 @@ flutter analyze                                     # must report no issues
 flutter test                                        # fakes + provider overrides; no network, no emulator
 flutter emulators --launch Pixel_10                 # then `flutter devices` for the emulator id
 flutter run -d <emulator-id> --dart-define=API_URL=http://10.0.2.2:5080   # needs the API on :5080
+flutter build apk --release --dart-define=API_URL=https://campusspace-api.onrender.com   # universal APK (Task 6.D4)
 ```
 
+Release APK (Task 6.D4): a release build needs an https `API_URL`; `android/app/build.gradle.kts` fails
+`compileFlutterBuildRelease` without one, and `resolveApiUrl` (`lib/core/config.dart`) throws in release mode (`main`
+then shows `ConfigErrorApp`); never reintroduce a release default. Release is signed with the debug key on purpose
+(no keystore passwords; another machine's build needs an uninstall first). Universal APK, never `--split-per-abi`.
+The version is pubspec's `version`, shown on the login screen via `appVersionLabel()` (FLUTTER_BUILD_NAME/NUMBER).
 Mobile conventions: call the API only through `dioProvider` (`lib/core/api/dio_client.dart`) inside a feature
 repository. One plain `AsyncNotifier` per feature (ADR-2); no code generation (no freezed, riverpod_generator or
 build_runner) and hand-written `fromJson`. The session lives in `authControllerProvider` and only in
@@ -939,7 +945,7 @@ rewrite only). Topology: clients → API (HTTPS + JWT); API ↔ agent service ov
 keys; API → Neon DIRECT endpoint as `campusspace_app` (CONNECT on `campusspace`, DML + sequences only; it takes only
 transaction-scoped locks, so pooling would work too, but one process with its own Npgsql pool needs no pgbouncer);
 agent → Neon POOLED endpoint as `campusspace_agent` (its own database only); migrations and roles from a Mac as the
-Neon owner through `scripts/neon-db.sh` (`roles` = `docs/deploy/neon-roles.sql`, `password <role>` = psql `\password`,
+Neon owner through `scripts/neon-db.sh` (`roles` = `docs/deploy/neon-roles.sql`, `password-sql <role>` = ALTER ROLE via stdin (Neon refuses the hashed `\password` form),
 `migrate` = the idempotent EF script, `check` = `docs/deploy/neon-check.sql`; the owner URL is read with a hidden prompt
 into PG* variables; psql runs from `postgres:16`). Roles are created by SQL, never in the Neon console (console roles
 join `neon_superuser`). Health: `/health/live` on both services runs no check (no DB, no outbound call; exempt from

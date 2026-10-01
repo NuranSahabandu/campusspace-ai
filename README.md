@@ -172,8 +172,40 @@ The Android emulator reaches your machine's `localhost` through `10.0.2.2`.
    flutter test
    ```
 
-Debug builds allow plain HTTP only to `10.0.2.2` and `localhost`; release builds are HTTPS-only. Building a release
-APK comes in Phase 6. See [mobile/README.md](mobile/README.md) for the structure.
+Debug builds allow plain HTTP only to `10.0.2.2` and `localhost`; release builds are HTTPS-only. See
+[mobile/README.md](mobile/README.md) for the structure.
+
+### Install the APK on an Android phone
+
+The release APK talks to the deployed API (see "Live URLs"). It needs Android 7.0 or newer.
+
+1. On the phone, open the **APK download** link from "Live URLs" (the GitHub Release `v1.0.0`) and download
+   `campusspace-ai-v1.0.0.apk`.
+2. Open the downloaded file. If Android says installs from this source are blocked, tap **Settings**, turn on
+   **Allow from this source** for your browser (or Files app), and go back.
+3. Tap **Install**, then **Open**. Google Play Protect may warn about an unknown developer: tap **More details** →
+   **Install anyway**. If Android says **App not installed**, a copy signed by another machine is already installed:
+   uninstall CampusSpace first, then install again.
+4. Sign in with a student, lecturer or technician demo account (emails under "Test accounts"; the deployed password is
+   in the submitted report). The first sign-in can take about a minute while the free Render service wakes up.
+   The login screen shows the version (`Version 1.0.0 (1)`).
+
+### Build the release APK
+
+```bash
+cd mobile
+flutter build apk --release --dart-define=API_URL=https://campusspace-api.onrender.com
+# -> build/app/outputs/flutter-apk/app-release.apk (one universal APK, ~57 MB: arm64, armv7 and x86_64)
+```
+
+- **API_URL is required and must be https.** The Gradle build refuses a release without it ("A release build needs an
+  https API URL"), and the app itself refuses one at run time (`resolveApiUrl`), so a release can never fall back to
+  `10.0.2.2`.
+- **Signing: the debug key, on purpose.** The APK is a course deliverable installed fresh from the GitHub Release, not a
+  Play Store app, and a dedicated release keystore would need its passwords at every build. The cost: an APK built on
+  another machine has another signature, so Android refuses to update one with the other (uninstall first). A debug
+  build from the same machine shares the signature and can be replaced in place.
+- The version is pubspec's `version` (`1.0.0+1` = versionName 1.0.0, versionCode 1). Raise it for a new release.
 
 ### Status notifications (UC08)
 
@@ -242,17 +274,19 @@ To re-seed, wipe the database (`docker compose down -v`) and run the API again.
 
 ## Live URLs
 
-Fill these in after the first deploy ([runbook](docs/deploy/RUNBOOK.md)). Open them in an incognito window before
-submitting; free Render services sleep, so the first call takes about a minute (warm-up: runbook step 7).
+Free Render services sleep, so the first call takes about a minute (warm-up: [runbook](docs/deploy/RUNBOOK.md) step 7).
+Open them in an incognito window before submitting.
 
 | What | URL |
 |------|-----|
-| Web app (Vercel) | `https://<project>.vercel.app` |
-| API health (database + agent service) | `https://campusspace-api.onrender.com/health` |
-| API Swagger | `https://campusspace-api.onrender.com/swagger` |
-| Agent service health | `https://campusspace-agent.onrender.com/health` |
+| Web app (Vercel) | https://campusspace-ai.vercel.app |
+| API health (database + agent service) | https://campusspace-api.onrender.com/health |
+| API Swagger | https://campusspace-api.onrender.com/swagger |
+| Agent service health | https://campusspace-agent.onrender.com/health |
+| Android APK download (GitHub Release `v1.0.0`) | https://github.com/NuranSahabandu/campusspace-ai/releases/download/v1.0.0/campusspace-ai-v1.0.0.apk |
 
 The demo accounts are the ones under "Test accounts"; their deployed password is in the submitted report, never here.
+Installing the APK: "Install the APK on an Android phone" above.
 
 ## Deploy
 

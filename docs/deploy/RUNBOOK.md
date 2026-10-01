@@ -47,13 +47,17 @@ to each other.
 
 1. **Create the project.** Neon console → **New project**. Name `campusspace`, Postgres version **16**, cloud **AWS**,
    region **Asia Pacific (Singapore)**. Create.
-   *Expected:* the project dashboard, branch `main`, a database `neondb` and the owner role `neondb_owner`.
-2. **Fix the compute at 0.25 CU.** **Branches** → `main` → **Computes** → the primary compute → **Edit**. Set the
+   *Expected:* the project dashboard, the default branch, a database `neondb` and the owner role `neondb_owner`.
+   Newer Neon projects call the default branch `production`, older ones `main`: wherever this runbook says the branch,
+   use the one your dashboard shows. Keep the default database and owner names if you can; the scripts don't depend on
+   them (`neon-db.sh` connects as the user in the URL you paste, and `neon-roles.sql` grants to `CURRENT_USER`), so a
+   project created with other names works too.
+2. **Fix the compute at 0.25 CU.** **Branches** → your default branch (`production` or `main`) → **Computes** → the primary compute → **Edit**. Set the
    autoscaling minimum **and** maximum to **0.25 CU** (do not allow 0.5). Leave scale to zero at 5 minutes (the Free
    plan can't change it). Save.
    *Expected:* the compute shows "0.25 CU".
-3. **Copy the owner's DIRECT connection URL.** **Connect** (top of the dashboard) → branch `main`, database `neondb`,
-   role `neondb_owner`, **Connection pooling OFF** → copy the `postgresql://…` URL. It must NOT contain `-pooler`.
+3. **Copy the owner's DIRECT connection URL.** **Connect** (top of the dashboard) → the default branch, database `neondb`,
+   role `neondb_owner` (or your project's owner), **Connection pooling OFF** → copy the `postgresql://…` URL. It must NOT contain `-pooler`.
    Keep it on the clipboard only; you paste it into the scripts' hidden prompt (steps 1.4, 1.5, 2).
 4. **Create the databases, roles and grants.**
    ```bash
@@ -62,7 +66,7 @@ to each other.
    Paste the owner URL at `Owner connection URL (DIRECT endpoint; input hidden):`.
    *Expected* (NOTICE lines on a re-run are normal):
    ```
-   roles and databases ready. Next: ./scripts/neon-db.sh password campusspace_app (and campusspace_agent)
+   roles and databases ready. Next: ./scripts/neon-db.sh password-sql campusspace_app (and campusspace_agent)
           role        | has_any_attribute | member_of | connect_campusspace | connect_agent_db | create_in_public
    campusspace_agent  | f                 | -         | f                   | t                | f
    campusspace_app    | f                 | -         | t                   | f                | f
@@ -77,13 +81,15 @@ to each other.
    ```
    Paste it into your password manager as "Neon campusspace_app". Then copy the owner URL again and run:
    ```bash
-   ./scripts/neon-db.sh password campusspace_app
+   ./scripts/neon-db.sh password-sql campusspace_app
    ```
-   Paste the owner URL, then paste the new password at `Enter new password for user "campusspace_app":` and again
-   at `Enter it again:`. *Expected:* `password set for campusspace_app`. Repeat both commands for `campusspace_agent`
-   ("Neon campusspace_agent").
-   `\password` hashes the password in psql before it is sent. **If Neon refuses it** (an error about the password),
-   use the fallback, which sends it as SQL over the TLS connection instead: `./scripts/neon-db.sh password-sql <role>`.
+   Paste the owner URL, then paste the new password at `New password for campusspace_app (hex, >= 32 characters; input
+   hidden):` and again at `Again:`. *Expected:* `password set for campusspace_app`. Repeat both commands for
+   `campusspace_agent` ("Neon campusspace_agent").
+   The password goes to Neon as `ALTER ROLE … PASSWORD '…'` through psql's stdin (never a command line) over TLS; the
+   script accepts only hex, so nothing in it can break out of the SQL literal. Neon needs the clear text to check the
+   password's strength: the hashed form that `./scripts/neon-db.sh password` sends (psql's `\password`) is refused with
+   "Neon only supports being given plaintext passwords". Keep `password` for a self-hosted PostgreSQL only.
 6. **Build the two connection strings** (in the password manager, not in a file). Take the endpoint host from the
    owner URL, e.g. `ep-cool-name-123456.ap-southeast-1.aws.neon.tech` (the pooled host inserts `-pooler` after the
    endpoint id: `ep-cool-name-123456-pooler.ap-southeast-1.aws.neon.tech`).
@@ -288,7 +294,7 @@ window before submitting.
   redeploy (if Render doesn't start them, **Manual Deploy** → **Deploy latest commit** on each): a service still on the
   old key fails every agent call until it restarts.
 - `Jwt__Key`: campusspace-api → **Environment** → edit (same command) → save and deploy. Every user signs in again.
-- A Neon role password: `./scripts/neon-db.sh password <role>` with a new value, then update `ConnectionStrings__Default`
+- A Neon role password: `./scripts/neon-db.sh password-sql <role>` with a new value, then update `ConnectionStrings__Default`
   (API) or `AGENT_CHECKPOINT_URL` (agent) in Render and deploy.
 - R2, Brevo, Gemini: create a new key in that dashboard, paste it in Render, deploy, then delete the old key there.
 - `Seed__DemoPassword` can't be rotated this way: the seed never changes an existing password, and no endpoint changes

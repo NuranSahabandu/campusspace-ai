@@ -54,4 +54,10 @@ test/                          helpers.dart (FakeTokenStorage, MockAuthRepositor
 - `INTERNET` is in the main manifest, so release builds have network access.
 - Cleartext HTTP is allowed only in debug builds and only to `10.0.2.2` and `localhost`
   (`android/app/src/debug/res/xml/network_security_config.xml`). Release builds are HTTPS-only.
-- Release APK builds come in Phase 6.
+- Release APK (Task 6.D4): `flutter build apk --release --dart-define=API_URL=https://campusspace-api.onrender.com`.
+  `android/app/build.gradle.kts` fails the build unless `API_URL` is https, and `resolveApiUrl` (`lib/core/config.dart`)
+  throws in release mode (then `main` shows `ConfigErrorApp`), so a release never falls back to `10.0.2.2`.
+- Release builds are signed with the debug key (a course APK, no keystore passwords to manage). An APK built on another
+  machine has another signature: uninstall the installed app first.
+- The login screen shows `Version <name> (<code>)` from Flutter's `FLUTTER_BUILD_NAME`/`FLUTTER_BUILD_NUMBER`
+  dart-defines (pubspec `version`), hidden when they are absent.
