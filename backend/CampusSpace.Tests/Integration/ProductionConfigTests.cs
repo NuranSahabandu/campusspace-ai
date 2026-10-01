@@ -76,11 +76,13 @@ public class ProductionConfigTests(PostgresFixture fixture)
         var plain = await api.Client().GetAsync("/api/auth/me");
         var forwarded = await api.HttpsClient().GetAsync("/api/auth/me");
         var health = await api.Client().GetAsync("/health");
+        var live = await api.Client().GetAsync("/health/live");
 
         plain.StatusCode.Should().Be(HttpStatusCode.TemporaryRedirect);
         plain.Headers.Location.Should().Be(new Uri("https://localhost/api/auth/me"));
         forwarded.StatusCode.Should().Be(HttpStatusCode.Unauthorized); // reached the API as https
         health.StatusCode.Should().Be(HttpStatusCode.OK);
+        live.StatusCode.Should().Be(HttpStatusCode.OK); // Render's health check calls it over plain HTTP
     }
 
     [Fact]

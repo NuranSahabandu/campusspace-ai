@@ -41,7 +41,7 @@ if (app.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
 app.UseAgentToolRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(options => options.GetLevel = HealthLogLevels.ForRequest);
 
 // The spec needs a public Swagger URL in Production (Swagger:Enabled); internal agent-tool routes stay hidden.
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
@@ -60,7 +60,11 @@ app.UseCors(ServiceCollectionExtensions.FrontendsCorsPolicy);
 app.UseAuthentication();
 app.UseAuthorization();
 
+// /health checks the database and the agent service (the evidence URL). /health/live runs no check at all (no database,
+// no outbound call): it is the platform's frequent health check, so it never wakes Neon or the agent service.
 app.MapHealthChecks("/health", new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
+    .AllowAnonymous();
+app.MapHealthChecks(HealthLogLevels.LivePath, new HealthCheckOptions { Predicate = _ => false })
     .AllowAnonymous();
 app.MapControllers();
 
