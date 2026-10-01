@@ -1,3 +1,4 @@
+import 'package:campusspace_mobile/core/config.dart';
 import 'package:campusspace_mobile/features/auth/auth_controller.dart';
 import 'package:campusspace_mobile/features/auth/login_screen.dart';
 import 'package:campusspace_mobile/features/auth/models.dart';
@@ -33,6 +34,17 @@ void main() {
     expect(find.text('Email is required'), findsOneWidget);
     expect(find.text('Password is required'), findsOneWidget);
     verifyNever(() => repository.login(any(), any()));
+  });
+
+  testWidgets('shows the app version from the build when Flutter passes it', (tester) async {
+    await pumpApp(tester, storage, repository);
+
+    final label = appVersionLabel();
+    if (label.isEmpty) {
+      expect(find.byKey(const Key('login.version')), findsNothing);
+    } else {
+      expect(find.text(label), findsOneWidget);
+    }
   });
 
   testWidgets('success navigates to the home screen', (tester) async {
