@@ -1,3 +1,4 @@
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { AuditLogDto } from '../../api/types'
 
@@ -20,5 +21,8 @@ export const AUDIT_ENTITY_TYPES = ['User', 'Club', 'ClubMember'] as const
 export const AUDIT_SORT_FIELDS: Record<string, string> = { at: 'at' }
 
 export function useAuditLogs(params: AuditLogsParams, options: { enabled?: boolean } = {}) {
-  return usePagedQuery<AuditLogDto>(auditLogsKeys.list(params), '/api/audit-logs', params, options)
+  return usePagedQuery<AuditLogDto>(auditLogsKeys.list(params), '/api/audit-logs', params, {
+    ...options,
+    meta: MAIN_QUERY_META,
+  })
 }

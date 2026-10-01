@@ -8,6 +8,7 @@ import { parseProblem } from '../../api/problem'
 import type { BookingRequestDetailDto, LatestProposalDto } from '../../api/types'
 import { formatCampusTimeRange, formatDateTime } from '../../ui/formatDateTime'
 import { formatLkr } from '../../ui/formatLkr'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { RunHistory } from '../approvals/RunHistory'
 import { EmailStatusCard } from '../notifications/EmailStatusCard'
 import { useRequestRuns } from '../approvals/useApprovals'
@@ -52,20 +53,13 @@ export function BookingRequestDetailPage() {
   if (isPending) return <LinearProgress aria-label="Loading request" />
   if (isError) {
     const problem = parseProblem(error)
+    // Deliberate: a 403 (the object-level check) reads like a 404, so the page never reveals that a request exists.
+    // That is why its query has no MAIN_QUERY_META (no /forbidden redirect).
     if (problem.status === 404 || problem.status === 403) return notFound
     return (
       <>
         {back}
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={() => refetch()}>
-              Retry
-            </Button>
-          }
-        >
-          Could not load the request: {problem.title}
-        </Alert>
+        <QueryErrorAlert error={error} what="the request" onRetry={() => refetch()} />
       </>
     )
   }

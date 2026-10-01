@@ -1,6 +1,6 @@
-import { Alert, Button, Chip, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
-import { parseProblem } from '../../api/problem'
+import { Chip, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { Card } from '../requests/RequestCards'
 import { NOTIFICATION_KIND_LABELS, NOTIFICATION_STATUS_COLORS, useRequestNotifications } from './notifications'
 
@@ -21,16 +21,7 @@ function EmailStatusTable({ query }: { query: ReturnType<typeof useRequestNotifi
   if (query.isPending) return <Skeleton variant="rectangular" height={60} aria-label="Loading emails" />
   if (query.isError)
     return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => query.refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load the emails: {parseProblem(query.error).title}
-      </Alert>
+      <QueryErrorAlert error={query.error} what="the emails" onRetry={() => query.refetch()} />
     )
   if (!query.data.length) return <Typography color="text.secondary">No emails yet</Typography>
   return (

@@ -1,7 +1,5 @@
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import {
-  Alert,
-  Button,
   Chip,
   Paper,
   Skeleton,
@@ -13,9 +11,9 @@ import {
   TableRow,
   Typography,
 } from '@mui/material'
-import { parseProblem } from '../../api/problem'
 import type { CurrentPricingRuleDto } from '../../api/types'
 import { formatDateOnly } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { formatRate, REQUESTER_ROLES, roomTypeLabel } from './pricingValues'
 import { useCurrentPrices } from './usePricing'
 
@@ -40,16 +38,7 @@ export function CurrentPricesCard() {
   let body
   if (isError) {
     body = (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load current prices: {parseProblem(error).title}
-      </Alert>
+      <QueryErrorAlert error={error} what="current prices" onRetry={() => refetch()} />
     )
   } else if (isPending) {
     body = <Skeleton variant="rectangular" height={180} aria-label="Loading current prices" />

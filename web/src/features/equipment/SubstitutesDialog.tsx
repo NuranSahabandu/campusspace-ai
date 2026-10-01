@@ -14,9 +14,9 @@ import {
   TextField,
 } from '@mui/material'
 import { api } from '../../api/client'
-import { parseProblem } from '../../api/problem'
 import type { EquipmentTypeDto, EquipmentTypeRefDto } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { equipmentTypesKeys, useEquipmentTypeOptions, useSubstitutes } from './useEquipment'
 
 interface SubstitutesForm {
@@ -62,16 +62,7 @@ export function SubstitutesDialog({ type, onClose }: { type: EquipmentTypeDto; o
             {errors.root?.server && <Alert severity="error">{errors.root.server.message}</Alert>}
             {loading && !failed && <LinearProgress aria-label="Loading substitutes" />}
             {failed && (
-              <Alert
-                severity="error"
-                action={
-                  <Button color="inherit" size="small" onClick={() => failed.refetch()}>
-                    Retry
-                  </Button>
-                }
-              >
-                Could not load substitutes: {parseProblem(failed.error).title}
-              </Alert>
+              <QueryErrorAlert error={failed.error} what="substitutes" onRetry={() => failed.refetch()} />
             )}
             {!loading && !failed && (
               <Controller

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { BookingRequestDetailDto, BookingRequestSummaryDto, ClubDto, PagedResult } from '../../api/types'
 import { clubsKeys } from '../clubs/useClubs'
@@ -34,7 +35,11 @@ export function useBookingRequests(params: BookingRequestsParams, options: { ena
     // An empty status list means every status: send no ?status= at all.
     { ...params, status: params.status?.length ? params.status : undefined },
     // A request the agent is still planning changes on the server; keep the page current until none is.
-    { ...options, refetchInterval: (page) => refreshIntervalFor(page?.items.map((r) => r.status) ?? []) },
+    {
+      ...options,
+      refetchInterval: (page) => refreshIntervalFor(page?.items.map((r) => r.status) ?? []),
+      meta: MAIN_QUERY_META,
+    },
   )
 }
 
@@ -47,6 +52,8 @@ export function useBookingRequest(id: number, { refreshMs }: { refreshMs?: numbe
     queryKey: bookingRequestsKeys.detail(id),
     queryFn: async ({ signal }) => (await api.get<BookingRequestDetailDto>(`/api/booking-requests/${id}`, { signal })).data,
     enabled: Number.isInteger(id) && id > 0,
+    // No MAIN_QUERY_META: a 403 here is the object-level check, shown as "Request not found" so a request's existence
+    // is not revealed (the detail pages treat 403 and 404 alike).
     refetchInterval: (query) => refreshMs || refreshIntervalFor(query.state.data ? [query.state.data.status] : []),
   })
 }

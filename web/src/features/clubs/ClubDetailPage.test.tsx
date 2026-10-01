@@ -89,4 +89,13 @@ describe('ClubDetailPage', () => {
     // Only students and lecturers are offered.
     expect(new Set(roles)).toEqual(new Set([Roles.Student, Roles.Lecturer]))
   })
+
+  it('shows "Club not found" for a non-numeric id without calling the API', async () => {
+    const calls: string[] = []
+    server.use(http.get(`${API}/api/clubs/:id`, ({ params }) => (calls.push(String(params.id)), HttpResponse.json({}))))
+    renderApp('/clubs/abc', { role: Roles.Admin })
+
+    expect(await screen.findByText('Club not found')).toBeInTheDocument()
+    expect(calls).toEqual([])
+  })
 })

@@ -1,6 +1,7 @@
 import { Link as RouterLink } from 'react-router'
-import { Alert, Box, Button, Link, Skeleton, Stack } from '@mui/material'
+import { Box, Link, Skeleton, Stack } from '@mui/material'
 import { formatDateOnly } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { formatMs, formatRate } from '../agentRuns/format'
 import { MetricCard } from '../agentRuns/MetricsCards'
 import { BuildingUtilizationPanel } from '../reports/BuildingUtilizationPanel'
@@ -32,18 +33,7 @@ export function OfficerDashboard() {
       </Stack>
     )
   if (dashboard.isError)
-    return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => dashboard.refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load the dashboard.
-      </Alert>
-    )
+    return <QueryErrorAlert error={dashboard.error} what="the dashboard" onRetry={() => dashboard.refetch()} />
 
   const d = dashboard.data
   const range = `${formatDateOnly(d.from)} – ${formatDateOnly(d.to)}`

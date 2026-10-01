@@ -57,7 +57,7 @@ describe('Officer dashboard', () => {
     const requests = reportsHandlers({ status: { dashboard: 500 } })
     const { user } = renderApp('/', { role: Roles.FacilitiesOfficer })
 
-    expect(await screen.findByText('Could not load the dashboard.')).toBeInTheDocument()
+    expect(await screen.findByText('Could not load the dashboard: Something went wrong')).toBeInTheDocument()
     reportsHandlers()
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await within(await screen.findByRole('region', { name: 'Pending approvals' })).findByText('4')).toBeInTheDocument()

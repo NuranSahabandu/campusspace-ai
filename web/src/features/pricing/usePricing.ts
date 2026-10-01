@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { CurrentPricingRuleDto, PricingRuleDto } from '../../api/types'
 
@@ -26,7 +27,7 @@ export const PRICING_SORT_FIELDS: Record<string, string> = {
 }
 
 export function usePricingRules(params: PricingRulesParams) {
-  return usePagedQuery<PricingRuleDto>(pricingKeys.list(params), '/api/pricing-rules', params)
+  return usePagedQuery<PricingRuleDto>(pricingKeys.list(params), '/api/pricing-rules', params, { meta: MAIN_QUERY_META })
 }
 
 /** One row per room type and requester role; the rule fields are null where no rule is in effect. */

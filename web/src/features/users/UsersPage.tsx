@@ -41,7 +41,7 @@ const baseColumns: GridColDef<UserDto>[] = [
 export function UsersPage() {
   const table = useServerTable({ sortFields: USERS_SORT_FIELDS })
   const [role, setRole] = useState('')
-  const query = useUsers({ ...table.params, role })
+  const query = useUsers({ ...table.params, role }, { main: true })
   const currentUserId = useAuthStore((s) => s.user?.id)
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<UserDto | null>(null)

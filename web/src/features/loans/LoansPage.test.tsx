@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import { browser } from '../../api/client'
 import { Roles } from '../../auth/roles'
 import { API, server } from '../../test/server'
 import { renderApp } from '../../test/utils'
@@ -161,7 +162,8 @@ describe('LoansPage', () => {
     expect(await screen.findByText('No overdue loans')).toBeInTheDocument()
   })
 
-  it('shows a 403 from the API as an error with Retry', async () => {
+  it('sends a 403 on the loans list (the main query) to the access-denied page', async () => {
+    const assign = vi.spyOn(browser, 'assign').mockImplementation(() => {})
     server.use(
       http.get(`${API}/api/loans`, () =>
         HttpResponse.json({ title: 'Forbidden', status: 403, traceId: 'trace-403' }, { status: 403 }),
@@ -169,7 +171,19 @@ describe('LoansPage', () => {
     )
     renderApp('/loans', { role: Roles.FacilitiesOfficer })
 
-    expect(await screen.findByText('Could not load loans: Forbidden')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/forbidden'))
+    // Until the page changes, the grid says so in place, with no Retry.
+    expect(await screen.findByText("You don't have access to this.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('shows "Loan not found." in the drawer for a 404', async () => {
+    loansHandlers()
+    server.use(http.get(`${API}/api/loans/:id`, () => HttpResponse.json({ status: 404, title: 'Not Found' }, { status: 404 })))
+    const { user } = renderApp('/loans', { role: Roles.FacilitiesOfficer })
+
+    const drawer = await openLoan(user, 'MIC-0001')
+    expect(await within(drawer).findByText('Loan not found.')).toBeInTheDocument()
+    expect(within(drawer).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 })

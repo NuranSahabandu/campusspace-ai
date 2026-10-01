@@ -109,6 +109,15 @@ describe('RoomDetailPage', () => {
     await waitFor(() => expect(requests.at(-1)?.has('from')).toBe(false))
   })
 
+  it('shows "Room not found" for a non-numeric id without calling the API', async () => {
+    const calls: string[] = []
+    server.use(http.get(`${API}/api/rooms/:id`, ({ params }) => (calls.push(String(params.id)), HttpResponse.json({}))))
+    renderApp('/rooms/abc', { role: Roles.FacilitiesOfficer })
+
+    expect(await screen.findByText('Room not found')).toBeInTheDocument()
+    expect(calls).toEqual([])
+  })
+
   it('shows "Room not found" for a 404', async () => {
     server.use(http.get(`${API}/api/rooms/99`, () => HttpResponse.json({ status: 404, title: 'Not Found' }, { status: 404 })))
     renderApp('/rooms/99', { role: Roles.FacilitiesOfficer })

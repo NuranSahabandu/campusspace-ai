@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import type { DashboardDto, DemandReportDto, UtilizationReportDto } from '../../api/types'
 import { bookingRequestsKeys } from '../requests/useRequests'
 
@@ -27,6 +28,7 @@ export function useUtilizationReport(range: ReportRange, options: { enabled?: bo
       (await api.get<UtilizationReportDto>('/api/reports/utilization', { params: range, signal })).data,
     placeholderData: keepPreviousData,
     enabled: options.enabled,
+    meta: MAIN_QUERY_META,
   })
 }
 
@@ -36,6 +38,7 @@ export function useDemandReport(range: ReportRange, options: { enabled?: boolean
     queryFn: async ({ signal }) => (await api.get<DemandReportDto>('/api/reports/demand', { params: range, signal })).data,
     placeholderData: keepPreviousData,
     enabled: options.enabled,
+    meta: MAIN_QUERY_META,
   })
 }
 
@@ -43,5 +46,6 @@ export function useDashboard() {
   return useQuery({
     queryKey: reportsKeys.dashboard(),
     queryFn: async ({ signal }) => (await api.get<DashboardDto>('/api/reports/dashboard', { signal })).data,
+    meta: MAIN_QUERY_META,
   })
 }

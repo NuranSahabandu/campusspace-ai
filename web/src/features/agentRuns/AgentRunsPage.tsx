@@ -20,9 +20,9 @@ import {
 } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import { useQueryClient } from '@tanstack/react-query'
-import { parseProblem } from '../../api/problem'
 import type { AgentRunListItemDto } from '../../api/types'
 import { useServerTable } from '../../hooks/useServerTable'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { ServerDataGrid } from '../../ui/ServerDataGrid'
 import { campusAddDays, campusToday, formatDateTime } from '../../ui/formatDateTime'
 import { AGENT_RUN_STATUSES, RUN_STATUS_COLORS, isAgentRunStatus } from '../approvals/agentRuns'
@@ -299,16 +299,7 @@ export function AgentRunsPage() {
 function MetricsSection({ query }: { query: ReturnType<typeof useAgentRunMetrics> }) {
   if (query.isError)
     return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => query.refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load the agent metrics: {parseProblem(query.error).title}
-      </Alert>
+      <QueryErrorAlert error={query.error} what="the agent metrics" onRetry={() => query.refetch()} />
     )
   if (query.isPending) return <Skeleton variant="rectangular" height={160} aria-label="Loading agent metrics" />
   const { runs, agents } = query.data

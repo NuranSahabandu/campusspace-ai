@@ -4,6 +4,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import EditIcon from '@mui/icons-material/Edit'
 import { Alert, Button, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material'
 import { parseProblem } from '../../api/problem'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { BlackoutsSection } from './BlackoutsSection'
 import { FeatureChips } from './FeatureChips'
 import { RoomFormDialog } from './RoomFormDialog'
@@ -22,29 +23,21 @@ export function RoomDetailPage() {
     </Button>
   )
 
-  if (isPending) return <LinearProgress aria-label="Loading room" />
-  if (isError) {
-    const problem = parseProblem(error)
+  // A non-numeric id (/rooms/abc) never reaches the API (the query is disabled); it is not found, like a 404.
+  const validId = Number.isInteger(id) && id > 0
+  if (!validId || isError) {
     return (
       <>
         {back}
-        {problem.status === 404 ? (
+        {!validId || parseProblem(error).status === 404 ? (
           <Alert severity="warning">Room not found</Alert>
         ) : (
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={() => refetch()}>
-                Retry
-              </Button>
-            }
-          >
-            Could not load the room: {problem.title}
-          </Alert>
+          <QueryErrorAlert error={error} what="the room" onRetry={() => refetch()} />
         )}
       </>
     )
   }
+  if (isPending) return <LinearProgress aria-label="Loading room" />
 
   const facts = [
     ['Building', `${room.building.code} · ${room.building.name}`],

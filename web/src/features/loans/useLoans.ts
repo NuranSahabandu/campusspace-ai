@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { LoanDto } from '../../api/types'
 
@@ -20,7 +21,7 @@ export const loansKeys = {
 export const LOANS_SORT_FIELDS: Record<string, string> = { dueAt: 'dueAt' }
 
 export function useLoans(params: LoansParams) {
-  return usePagedQuery<LoanDto>(loansKeys.list(params), '/api/loans', params)
+  return usePagedQuery<LoanDto>(loansKeys.list(params), '/api/loans', params, { meta: MAIN_QUERY_META })
 }
 
 export function useLoan(id: number) {

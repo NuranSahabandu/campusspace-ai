@@ -1,9 +1,9 @@
-import { Alert, Box, Button, Paper, Skeleton, Stack, Typography } from '@mui/material'
+import { Box, Paper, Skeleton, Stack, Typography } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRowParams, type GridValidRowModel } from '@mui/x-data-grid'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { parseProblem } from '../api/problem'
 import type { PagedResult } from '../api/types'
 import { PAGE_SIZE_OPTIONS, type ServerTableGridProps } from '../hooks/useServerTable'
+import { QueryErrorAlert } from './QueryErrorAlert'
 
 interface Props<T extends GridValidRowModel> {
   query: UseQueryResult<PagedResult<T>>
@@ -39,16 +39,7 @@ export function ServerDataGrid<T extends GridValidRowModel>({
 
   if (isError) {
     return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load {noun}: {parseProblem(error).title}
-      </Alert>
+      <QueryErrorAlert error={error} what={noun} onRetry={() => refetch()} />
     )
   }
 
