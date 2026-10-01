@@ -50,6 +50,12 @@ export const campusToday = (): string => {
   return `${parts.year}-${parts.month}-${parts.day}`
 }
 
+/** A campus date ("yyyy-MM-dd") plus `days` (may be negative), as "yyyy-MM-dd". Pure calendar arithmetic in UTC. */
+export const campusAddDays = (date: string, days: number): string => {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10)
+}
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const campusPartsFormat = new Intl.DateTimeFormat('en-CA', {
