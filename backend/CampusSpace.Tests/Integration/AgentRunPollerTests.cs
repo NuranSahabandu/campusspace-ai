@@ -39,6 +39,48 @@ public class AgentRunPollerTests(PostgresFixture fixture)
     }
 
     [Fact]
+    public async Task A_cold_starting_agent_service_is_retried_with_the_same_thread_id_until_it_answers()
+    {
+        // Render's free plan: the agent service sleeps and takes about a minute to wake. Every tick tries the start
+        // again (each POST times out meanwhile), always with the run's own thread_id, and the run is not failed.
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        env.Agent.Start = (_, _, _) => Task.FromResult(FakeAgentClient.Unavailable<AgentWorkflowAccepted>("timeout"));
+        var (_, runId) = await env.SubmitAsync();
+        var created = new DateTimeOffset((await env.RunAsync(runId)).CreatedAt, TimeSpan.Zero);
+
+        foreach (var seconds in new[] { 3, 30, 60, 90 })
+        {
+            env.Clock.Set(created + TimeSpan.FromSeconds(seconds));
+            await env.Poller.PollOnceAsync();
+            (await env.RunAsync(runId)).Status.Should().Be(AgentRunStatuses.Queued);
+        }
+        env.Agent.Start = (thread, _, _) => Task.FromResult(FakeAgentClient.Accepted(thread));
+        env.Clock.Set(created + TimeSpan.FromSeconds(100));
+        await env.Poller.PollOnceAsync();
+
+        (await env.RunAsync(runId)).Status.Should().Be(AgentRunStatuses.Running);
+        var starts = env.Agent.Calls.Where(c => c.Call == "start").ToList();
+        starts.Should().HaveCount(6, "the inline start, four timed-out ticks and the one that got through");
+        starts.Should().OnlyContain(c => c.Thread == runId);
+    }
+
+    [Fact]
+    public async Task A_start_the_agent_service_already_received_counts_as_started()
+    {
+        // The inline POST timed out on our side but reached the waking agent service: the retry answers 409 (thread
+        // exists), which is the same run, so it is Running and never started twice.
+        await using var env = await AgentPollerEnv.CreateAsync(fixture);
+        env.Agent.Start = (_, _, _) => Task.FromResult(FakeAgentClient.Unavailable<AgentWorkflowAccepted>("timeout"));
+        var (_, runId) = await env.SubmitAsync();
+
+        env.Agent.Start = (_, _, _) => Task.FromResult(
+            new AgentCallResult<AgentWorkflowAccepted>(AgentCallOutcome.AlreadyExists, null, "HTTP 409"));
+        await env.Poller.PollOnceAsync();
+
+        (await env.RunAsync(runId)).Status.Should().Be(AgentRunStatuses.Running);
+    }
+
+    [Fact]
     public async Task When_enabled_the_hosted_poller_ticks_on_its_own()
     {
         await using var isolated = await fixture.CreateIsolatedFactoryAsync();

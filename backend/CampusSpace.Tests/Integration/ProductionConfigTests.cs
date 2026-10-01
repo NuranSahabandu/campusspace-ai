@@ -4,6 +4,8 @@ using CampusSpace.Api.Options;
 using CampusSpace.Api.Photos;
 using CampusSpace.Tests.Infrastructure;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace CampusSpace.Tests.Integration;
@@ -83,6 +85,19 @@ public class ProductionConfigTests(PostgresFixture fixture)
         forwarded.StatusCode.Should().Be(HttpStatusCode.Unauthorized); // reached the API as https
         health.StatusCode.Should().Be(HttpStatusCode.OK);
         live.StatusCode.Should().Be(HttpStatusCode.OK); // Render's health check calls it over plain HTTP
+    }
+
+    [Fact]
+    public async Task Production_gives_a_sleeping_agent_service_4_minutes_to_start_a_run()
+    {
+        // Render's free agent service takes about a minute to wake (2 minutes elsewhere, the default).
+        await using var api = new ProductionApi(fixture.ConnectionString);
+
+        var options = api.Factory.Services.GetRequiredService<IOptions<AgentServiceOptions>>().Value;
+
+        options.StartTimeoutMinutes.Should().Be(4);
+        options.RunTimeoutMinutes.Should().Be(4);
+        options.PollSeconds.Should().Be(3);
     }
 
     [Fact]
