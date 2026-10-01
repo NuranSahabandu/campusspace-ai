@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/problem.dart';
 import '../../core/campus_time.dart';
 import '../../core/router.dart';
+import '../../core/ui/error_retry_view.dart';
 import '../rooms/room_widgets.dart';
 import 'models.dart';
 import 'request_status.dart';
@@ -65,14 +66,7 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
-          child: MessageView(
-            icon: Icons.error_outline,
-            message: Problem.from(error).title,
-            action: FilledButton.tonal(
-              onPressed: () => ref.invalidate(myRequestsProvider),
-              child: const Text('Retry'),
-            ),
-          ),
+          child: ErrorRetryView(error: error, onRetry: () => ref.invalidate(myRequestsProvider)),
         ),
       ];
     }

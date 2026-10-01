@@ -200,6 +200,17 @@ void main() {
     expect(router.routerDelegate.currentConfiguration.last.matchedLocation, '/requests');
   });
 
+  testWidgets('empty features and equipment lists say so', (tester) async {
+    stubRequestsReferenceData(requests, facilities);
+    when(() => facilities.getFeatures()).thenAnswer((_) async => const []);
+    when(() => requests.getEquipmentTypes()).thenAnswer((_) async => const []);
+    await pumpRequestsScreens(tester, requests, facilities: facilities, initialLocation: '/requests/new');
+    notifier(tester).goTo(RequestSteps.needs);
+    await tester.pumpAndSettle();
+    expect(find.text(NewRequestScreen.noFeatures), findsOneWidget);
+    expect(find.text(NewRequestScreen.noEquipment), findsOneWidget);
+  });
+
   group('notification permission (UC08)', () {
     testWidgets('is asked after the first successful submit, not before', (tester) async {
       when(() => requests.create(any())).thenAnswer((_) async => lecturerRequest);

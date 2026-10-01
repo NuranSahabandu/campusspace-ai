@@ -9,9 +9,9 @@ import '../../core/api/problem.dart';
 import '../../core/campus_time.dart';
 import '../../core/format.dart';
 import '../../core/router.dart';
+import '../../core/ui/error_retry_view.dart';
 import '../../core/validators.dart';
 import '../notifications/notification_permission.dart';
-import '../rooms/room_widgets.dart';
 import '../rooms/rooms_providers.dart';
 import 'models.dart';
 import 'new_request_controller.dart';
@@ -23,6 +23,8 @@ class NewRequestScreen extends ConsumerStatefulWidget {
   const NewRequestScreen({super.key});
 
   static const submitted = 'Request submitted';
+  static const noFeatures = 'No room features are available';
+  static const noEquipment = 'No equipment is available to request';
   static const academic = 'Academic booking (no club)';
   static const notesHelper = 'Anything the reviewer should know, e.g. location preferences';
   static const capTitle = 'Request limit reached';
@@ -90,14 +92,7 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       body: SafeArea(
         child: switch (eligibility) {
           AsyncValue(:final value?) => _form(state, value),
-          AsyncValue(:final error?) => MessageView(
-            icon: Icons.error_outline,
-            message: Problem.from(error).title,
-            action: FilledButton.tonal(
-              onPressed: () => ref.invalidate(eligibilityProvider),
-              child: const Text('Retry'),
-            ),
-          ),
+          AsyncValue(:final error?) => ErrorRetryView(error: error, onRetry: () => ref.invalidate(eligibilityProvider)),
           _ => const Center(child: CircularProgressIndicator()),
         },
       ),
@@ -523,19 +518,21 @@ class _NeedsStep extends ConsumerWidget {
         loading(
           features,
           () => ref.invalidate(featuresProvider),
-          (list) => Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (final f in list)
-                FilterChip(
-                  key: Key('feature.${f.code}'),
-                  label: Text(f.name),
-                  selected: state.features.contains(f.code),
-                  onSelected: (_) => notifier.toggleFeature(f.code),
+          (list) => list.isEmpty
+              ? const Text(NewRequestScreen.noFeatures)
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final f in list)
+                      FilterChip(
+                        key: Key('feature.${f.code}'),
+                        label: Text(f.name),
+                        selected: state.features.contains(f.code),
+                        onSelected: (_) => notifier.toggleFeature(f.code),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
         if (featuresError != null) Text(featuresError!, style: errorStyle),
         const SizedBox(height: 16),
@@ -543,7 +540,9 @@ class _NeedsStep extends ConsumerWidget {
         loading(
           types,
           () => ref.invalidate(equipmentTypesProvider),
-          (list) => _EquipmentList(types: list, quantities: state.equipment),
+          (list) => list.isEmpty
+              ? const Text(NewRequestScreen.noEquipment)
+              : _EquipmentList(types: list, quantities: state.equipment),
         ),
         if (equipmentError != null) Text(equipmentError!, style: errorStyle),
       ],

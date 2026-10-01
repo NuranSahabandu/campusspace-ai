@@ -268,6 +268,24 @@ void main() {
       expect(lateWarning, findsNothing);
     });
 
+    testWidgets('a policy that fails to load says the deadline is unknown, with Retry', (tester) async {
+      when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Approved'));
+      var calls = 0;
+      when(() => repository.getPolicy()).thenAnswer((_) async {
+        if (calls++ == 0) throw httpError('/api/policy-settings/public', 503, body: {'title': 'Service unavailable'});
+        return livePolicy;
+      });
+      await pumpDetail(tester, now: lateBoundary.add(const Duration(minutes: 1)));
+      await openDialog(tester);
+      expect(find.text(CancelRequestDialog.policyFailed), findsOneWidget);
+      expect(lateWarning, findsNothing);
+
+      await tester.tap(find.descendant(of: find.byKey(const Key('cancel.policyError')), matching: find.text('Retry')));
+      await tester.pumpAndSettle();
+      expect(find.text(CancelRequestDialog.policyFailed), findsNothing);
+      expect(lateWarning, findsOneWidget);
+    });
+
     testWidgets('the snackbar reports the server\'s late flag', (tester) async {
       when(() => repository.getRequest(2)).thenAnswer((_) async => _lecturerRequestIn('Approved'));
       when(() => repository.cancel(2, reason: any(named: 'reason')))

@@ -1,3 +1,5 @@
+import 'package:campusspace_mobile/core/ui/error_retry_view.dart';
+import 'package:dio/dio.dart';
 import 'package:campusspace_mobile/core/api/paged_result.dart';
 import 'package:campusspace_mobile/features/requests/models.dart';
 import 'package:campusspace_mobile/features/requests/my_requests_screen.dart';
@@ -171,5 +173,24 @@ void main() {
 
     await tester.pump(const Duration(minutes: 2));
     expect(calls, 3);
+  });
+
+  testWidgets('API unreachable: the offline message with Retry, no exception text', (tester) async {
+    var calls = 0;
+    stubPages((_, _) async {
+      if (calls++ == 0) {
+        throw DioException.connectionError(
+            requestOptions: RequestOptions(path: '/api/booking-requests'), reason: 'Connection refused');
+      }
+      return requestsPage(1, 1);
+    });
+    await pumpRequestsScreens(tester, repository);
+
+    expect(find.text(ErrorRetryView.offlineTitle), findsOneWidget);
+    expect(find.text(ErrorRetryView.offlineHint), findsOneWidget);
+    expect(find.textContaining('Connection refused'), findsNothing);
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request 1'), findsOneWidget);
   });
 }

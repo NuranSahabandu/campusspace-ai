@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 
+export '../../core/ui/message_view.dart';
+
 /// Small read-only chips for a room's features.
 class FeatureChips extends StatelessWidget {
   const FeatureChips(this.features, {super.key});
@@ -41,30 +43,5 @@ class CapacityLabel extends StatelessWidget {
           const SizedBox(width: 4),
           Text('$capacity', semanticsLabel: 'Capacity $capacity'),
         ],
-      );
-}
-
-/// A centred message with an optional action, for empty and error states.
-class MessageView extends StatelessWidget {
-  const MessageView({super.key, required this.icon, required this.message, this.action});
-
-  final IconData icon;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48),
-              const SizedBox(height: 12),
-              Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
-              if (action != null) ...[const SizedBox(height: 16), action!],
-            ],
-          ),
-        ),
       );
 }
