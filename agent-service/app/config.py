@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from psycopg import conninfo
 from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -49,7 +50,12 @@ class Settings(BaseSettings):
     agent_tools_key: SecretStr = Field(validation_alias="AgentTools__Key")
     google_api_key: SecretStr | None = Field(default=None, validation_alias="GOOGLE_API_KEY")
     api_base_url: str = Field(default="http://localhost:5080", validation_alias="API_BASE_URL")
-    # SqliteSaver file. Never InMemorySaver outside tests: a restart would lose paused approvals.
+    # Postgres checkpointer (Task 6.D2): a postgresql:// URL for the agent's OWN role and database,
+    # which can't see any business table. Required unless AGENT_ENV=development (_checkpoint_rule).
+    # Secret: it carries a password.
+    checkpoint_url: SecretStr | None = Field(default=None, validation_alias="AGENT_CHECKPOINT_URL")
+    # SqliteSaver file: the development fallback when AGENT_CHECKPOINT_URL is unset. Never
+    # InMemorySaver outside tests: a restart would lose paused approvals.
     checkpoint_path: Path = Field(
         default=DEFAULT_CHECKPOINT_PATH, validation_alias="AGENT_CHECKPOINT_PATH"
     )
@@ -87,6 +93,30 @@ class Settings(BaseSettings):
     def _empty_path_means_default(cls, value: object) -> object:
         # .env.example lists AGENT_CHECKPOINT_PATH= empty; that must not become Path(".").
         return DEFAULT_CHECKPOINT_PATH if value in (None, "") else value
+
+    @field_validator("checkpoint_url", mode="before")
+    @classmethod
+    def _empty_url_means_unset(cls, value: object) -> object:
+        # .env.example lists AGENT_CHECKPOINT_URL= empty; that is "not configured".
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("checkpoint_url")
+    @classmethod
+    def _postgres_url(cls, value: SecretStr | None) -> SecretStr | None:
+        # Messages never contain the value (it carries the password); libpq's own parse errors can
+        # quote it, so they are replaced, not chained.
+        if value is None:
+            return None
+        url = value.get_secret_value()
+        if not url.startswith(("postgresql://", "postgres://")):
+            raise ValueError("AGENT_CHECKPOINT_URL must be a postgresql:// URL")
+        try:
+            conninfo.conninfo_to_dict(url)
+        except Exception:
+            raise ValueError("AGENT_CHECKPOINT_URL is not a valid PostgreSQL URL") from None
+        return value
 
     @field_validator("planner_model", "worker_model", mode="before")
     @classmethod
@@ -189,6 +219,22 @@ class Settings(BaseSettings):
                 "add them to AGENT_LLM_AGENTS"
             )
         return self
+
+    @model_validator(mode="after")
+    def _checkpoint_rule(self) -> "Settings":
+        # Fail closed like R2 in D1: AGENT_ENV defaults to production, and Render's disk is wiped on
+        # every deploy, so only an explicit development run may keep paused approvals in SQLite.
+        if self.checkpoint_url is None and self.agent_env != "development":
+            raise ValueError(
+                "AGENT_CHECKPOINT_URL is required outside development (a postgresql:// URL for "
+                "the agent's checkpoint database; locally run ./scripts/dev-agent-db.sh). Only "
+                "AGENT_ENV=development may fall back to the SQLite file"
+            )
+        return self
+
+    @property
+    def checkpointer_kind(self) -> str:
+        return "postgres" if self.checkpoint_url is not None else "sqlite"
 
     @property
     def fault_agents(self) -> frozenset[str]:

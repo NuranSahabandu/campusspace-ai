@@ -14,7 +14,7 @@ from uuid import uuid4
 import pytest
 from pydantic import SecretStr
 
-from app.checkpoint import open_checkpointer
+from app.checkpoint import open_sqlite
 from app.graph import build_graph
 from app.runner import WorkflowRunner
 from app.tools import ToolClient, build_tools
@@ -34,9 +34,10 @@ def test_a_real_request_pauses_or_fails_with_a_reason(tmp_path: Path) -> None:
     client = ToolClient(
         os.environ["LIVE_API_BASE_URL"], SecretStr(os.environ["LIVE_AGENT_TOOLS_KEY"])
     )
-    saver = open_checkpointer(tmp_path / "live.sqlite")
+    checkpointer = open_sqlite(tmp_path / "live.sqlite")
     clock = lambda: datetime.now(UTC)  # noqa: E731
-    runner = WorkflowRunner(build_graph(saver, build_tools(client), clock), clock, "stub")
+    graph = build_graph(checkpointer.saver, build_tools(client), clock)
+    runner = WorkflowRunner(graph, clock, "stub")
     thread_id = str(uuid4())
     try:
         runner.claim_start(thread_id)
@@ -54,4 +55,4 @@ def test_a_real_request_pauses_or_fails_with_a_reason(tmp_path: Path) -> None:
             assert runner.view(thread_id).status in ("completed", "failed")
     finally:
         client.close()
-        saver.conn.close()
+        checkpointer.close()

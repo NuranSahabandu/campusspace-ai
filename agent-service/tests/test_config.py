@@ -107,6 +107,66 @@ def test_empty_checkpoint_path_means_the_default(monkeypatch: pytest.MonkeyPatch
     )
 
 
+# ---------- AGENT_CHECKPOINT_URL (Task 6.D2) ----------
+
+SENTINEL_DB_PASSWORD = "sentinel-db-password-" + "p" * 16
+CHECKPOINT_URL = f"postgresql://campusspace_agent:{SENTINEL_DB_PASSWORD}@db.test:5432/agent"
+
+
+@pytest.mark.parametrize("env", ["", "production", "Staging"])
+def test_outside_development_a_missing_checkpoint_url_refuses_startup(
+    monkeypatch: pytest.MonkeyPatch, env: str
+) -> None:
+    with pytest.raises(ValidationError, match="AGENT_CHECKPOINT_URL is required outside"):
+        make_settings(monkeypatch, AGENT_ENV=env)
+
+
+def test_production_is_the_default_so_no_url_refuses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGENT_ENV")
+
+    with pytest.raises(ValidationError, match="AGENT_CHECKPOINT_URL is required outside"):
+        make_settings(monkeypatch)
+
+
+def test_development_without_a_url_falls_back_to_sqlite(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = make_settings(monkeypatch, AGENT_ENV="development", AGENT_CHECKPOINT_URL="  ")
+
+    assert settings.checkpoint_url is None
+    assert settings.checkpointer_kind == "sqlite"
+
+
+@pytest.mark.parametrize("env", ["production", "development"])
+def test_a_checkpoint_url_selects_postgres_in_any_env(
+    monkeypatch: pytest.MonkeyPatch, env: str
+) -> None:
+    settings = make_settings(monkeypatch, AGENT_ENV=env, AGENT_CHECKPOINT_URL=CHECKPOINT_URL)
+
+    assert settings.checkpointer_kind == "postgres"
+    assert settings.checkpoint_url is not None
+    assert settings.checkpoint_url.get_secret_value() == CHECKPOINT_URL
+    assert SENTINEL_DB_PASSWORD not in repr(settings)
+    assert SENTINEL_DB_PASSWORD not in str(settings)
+
+
+@pytest.mark.parametrize(
+    ("url", "message"),
+    [
+        (f"mysql://u:{SENTINEL_DB_PASSWORD}@db.test/agent", "must be a postgresql:// URL"),
+        (f"host=db.test password={SENTINEL_DB_PASSWORD}", "must be a postgresql:// URL"),
+        (f"postgresql://u:{SENTINEL_DB_PASSWORD}@db.test/agent?bogus_option=1", "not a valid"),
+    ],
+)
+def test_a_bad_checkpoint_url_is_refused_without_echoing_it(
+    monkeypatch: pytest.MonkeyPatch, url: str, message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message) as exc:
+        make_settings(monkeypatch, AGENT_CHECKPOINT_URL=url)
+
+    assert SENTINEL_DB_PASSWORD not in str(exc.value)
+    assert SENTINEL_DB_PASSWORD not in repr(exc.value)
+    assert "db.test" not in str(exc.value)
+
+
 # ---------- AGENT_LLM_AGENTS and the Gemini key ----------
 
 FAKE_GOOGLE_KEY = "fake-google-key-" + "g" * 24
