@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -14,6 +15,10 @@ import 'package:campusspace_mobile/features/loans/loans_repository.dart';
 import 'package:campusspace_mobile/features/loans/models.dart';
 import 'package:campusspace_mobile/features/loans/overdue_screen.dart';
 import 'package:campusspace_mobile/features/loans/photo_picker.dart';
+import 'package:campusspace_mobile/features/notifications/notification_permission.dart';
+import 'package:campusspace_mobile/features/notifications/status_notices.dart';
+import 'package:campusspace_mobile/features/notifications/status_notifier.dart';
+import 'package:campusspace_mobile/features/notifications/status_watcher.dart';
 import 'package:campusspace_mobile/features/requests/models.dart';
 import 'package:campusspace_mobile/features/requests/my_requests_screen.dart';
 import 'package:campusspace_mobile/features/requests/new_request_screen.dart';
@@ -92,11 +97,68 @@ List<Override> authOverrides(FakeTokenStorage storage, AuthRepository repository
       authRepositoryProvider.overrideWithValue(repository),
     ];
 
-/// Pumps the whole app (router included) with fake auth dependencies.
+/// Records notices instead of showing them; [enabled] and [grant] stand for the device's permission state.
+class FakeStatusNotifier implements StatusNotifier {
+  FakeStatusNotifier({this.enabled = false, this.grant = false});
+
+  bool enabled;
+  bool grant;
+  final shown = <StatusNotice>[];
+  int cancelAllCalls = 0;
+  int permissionRequests = 0;
+  final _taps = StreamController<int>.broadcast();
+
+  /// Simulates the user tapping the notice for [requestId].
+  void tap(int requestId) => _taps.add(requestId);
+
+  @override
+  Stream<int> get taps => _taps.stream;
+
+  @override
+  Future<void> show(StatusNotice notice) async => shown.add(notice);
+
+  @override
+  Future<void> cancelAll() async {
+    cancelAllCalls++;
+    shown.clear();
+  }
+
+  @override
+  Future<bool> isEnabled() async => enabled;
+
+  @override
+  Future<bool> requestPermission() async {
+    permissionRequests++;
+    enabled = grant;
+    return grant;
+  }
+}
+
+/// The "permission asked" flag in memory instead of flutter_secure_storage.
+class FakePermissionFlagStore implements PermissionFlagStore {
+  FakePermissionFlagStore({this.asked = false});
+
+  bool asked;
+
+  @override
+  Future<bool> wasAsked() async => asked;
+
+  @override
+  Future<void> markAsked() async => asked = true;
+}
+
+/// Pumps the whole app (router included) with fake auth dependencies and a [FakeStatusNotifier]. The status watcher
+/// is off unless [statusWatcher] is set (it would poll the requests repository).
 Future<void> pumpApp(WidgetTester tester, FakeTokenStorage storage, AuthRepository repository,
-    {List<Override> overrides = const []}) async {
+    {List<Override> overrides = const [], FakeStatusNotifier? notifier, bool statusWatcher = false}) async {
   await tester.pumpWidget(ProviderScope(
-    overrides: [...authOverrides(storage, repository), ...overrides],
+    overrides: [
+      ...authOverrides(storage, repository),
+      statusNotifierProvider.overrideWithValue(notifier ?? FakeStatusNotifier()),
+      permissionFlagStoreProvider.overrideWithValue(FakePermissionFlagStore()),
+      if (!statusWatcher) statusWatcherProvider.overrideWithValue(null),
+      ...overrides,
+    ],
     child: const CampusSpaceApp(),
   ));
   await tester.pumpAndSettle();
@@ -228,6 +290,8 @@ Future<GoRouter> pumpRequestsScreens(
   String role = Roles.student,
   int userId = kavindiId,
   DateTime? now,
+  FakeStatusNotifier? notifier,
+  FakePermissionFlagStore? permissionFlags,
 }) async {
   tester.view.physicalSize = const Size(900, 2400);
   tester.view.devicePixelRatio = 1;
@@ -257,6 +321,8 @@ Future<GoRouter> pumpRequestsScreens(
       requesterRoleProvider.overrideWithValue(role),
       currentUserIdProvider.overrideWithValue(userId),
       clockProvider.overrideWithValue(() => now ?? testNow),
+      statusNotifierProvider.overrideWithValue(notifier ?? FakeStatusNotifier()),
+      permissionFlagStoreProvider.overrideWithValue(permissionFlags ?? FakePermissionFlagStore()),
     ],
     child: MaterialApp.router(routerConfig: router),
   ));

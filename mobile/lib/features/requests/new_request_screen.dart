@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../../core/campus_time.dart';
 import '../../core/format.dart';
 import '../../core/router.dart';
 import '../../core/validators.dart';
+import '../notifications/notification_permission.dart';
 import '../rooms/room_widgets.dart';
 import '../rooms/rooms_providers.dart';
 import 'models.dart';
@@ -52,6 +55,8 @@ class _NewRequestScreenState extends ConsumerState<NewRequestScreen> {
       case SubmitSucceeded(:final request):
         ref.invalidate(myRequestsProvider);
         ref.invalidate(eligibilityProvider);
+        // The moment a status notice becomes useful: ask once per install (never at launch).
+        unawaited(ref.read(notificationPermissionProvider).askOnce());
         messenger.showSnackBar(const SnackBar(content: Text(NewRequestScreen.submitted)));
         // Replace the stepper, so Back from the detail does not return to a sent form.
         context.pushReplacement(AppRoutes.request(request.id));

@@ -31,10 +31,18 @@ void main() {
     facilities = MockFacilitiesRepository();
   });
 
-  Future<GoRouter> pump(WidgetTester tester, {Eligibility? eligibility, String role = Roles.student}) {
+  Future<GoRouter> pump(WidgetTester tester,
+      {Eligibility? eligibility,
+      String role = Roles.student,
+      FakeStatusNotifier? notifier,
+      FakePermissionFlagStore? permissionFlags}) {
     stubRequestsReferenceData(requests, facilities, eligibility: eligibility);
     return pumpRequestsScreens(tester, requests,
-        facilities: facilities, initialLocation: '/requests/new', role: role);
+        facilities: facilities,
+        initialLocation: '/requests/new',
+        role: role,
+        notifier: notifier,
+        permissionFlags: permissionFlags);
   }
 
   NewRequestNotifier notifier(WidgetTester tester) => ProviderScope.containerOf(tester.element(find.byType(NewRequestScreen)))
@@ -190,6 +198,54 @@ void main() {
     router.pop();
     await tester.pumpAndSettle();
     expect(router.routerDelegate.currentConfiguration.last.matchedLocation, '/requests');
+  });
+
+  group('notification permission (UC08)', () {
+    testWidgets('is asked after the first successful submit, not before', (tester) async {
+      when(() => requests.create(any())).thenAnswer((_) async => lecturerRequest);
+      when(() => requests.getRequest(any())).thenAnswer((_) async => lecturerRequest);
+      final notifier = FakeStatusNotifier(grant: true);
+      final flags = FakePermissionFlagStore();
+      await pump(tester, notifier: notifier, permissionFlags: flags);
+      await fillDemoRequest(tester);
+      expect(notifier.permissionRequests, 0, reason: 'never at launch or while filling the form');
+
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(notifier.permissionRequests, 1);
+      expect(flags.asked, isTrue);
+    });
+
+    testWidgets('denied: the app carries on and never asks again', (tester) async {
+      when(() => requests.create(any())).thenAnswer((_) async => lecturerRequest);
+      when(() => requests.getRequest(any())).thenAnswer((_) async => lecturerRequest);
+      final notifier = FakeStatusNotifier(grant: false);
+      final flags = FakePermissionFlagStore();
+      await pump(tester, notifier: notifier, permissionFlags: flags);
+      await fillDemoRequest(tester);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(find.byType(RequestDetailScreen), findsOneWidget);
+
+      // A second submit later (a fresh form) does not ask again.
+      await tester.pumpWidget(const SizedBox());
+      await pump(tester, notifier: notifier, permissionFlags: flags);
+      await fillDemoRequest(tester);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(notifier.permissionRequests, 1);
+    });
+
+    testWidgets('a rejected submit (409) does not ask', (tester) async {
+      when(() => requests.create(any())).thenThrow(httpError('/api/booking-requests', 409,
+          body: {'title': 'You already have 3 open requests (the limit is 3)', 'status': 409}));
+      final notifier = FakeStatusNotifier();
+      await pump(tester, notifier: notifier);
+      await fillDemoRequest(tester);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(notifier.permissionRequests, 0);
+    });
   });
 
   testWidgets('a lecturer sends clubId null', (tester) async {
