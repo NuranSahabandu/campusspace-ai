@@ -1,4 +1,5 @@
 import {
+  campusAddDays,
   campusDayBounds,
   campusLocalToIso,
   campusToday,
@@ -103,5 +104,14 @@ describe('formatCampusTimeRange', () => {
     vi.stubEnv('TZ', 'America/Los_Angeles')
     expect(new Date('2026-10-20T08:30:00Z').getHours()).toBe(1)
     expect(formatCampusTimeRange('2026-10-20T08:30:00Z', '2026-10-20T11:30:00Z')).toBe('Tue 20 Oct 2026, 14:00–17:00')
+  })
+})
+
+describe('campusAddDays', () => {
+  it('moves across month and year ends, both ways', () => {
+    expect(campusAddDays('2026-10-01', -6)).toBe('2026-09-25')
+    expect(campusAddDays('2026-12-31', 1)).toBe('2027-01-01')
+    expect(campusAddDays('2028-03-01', -1)).toBe('2028-02-29')
+    expect(campusAddDays('2026-09-25', 0)).toBe('2026-09-25')
   })
 })
