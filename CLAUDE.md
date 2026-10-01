@@ -275,6 +275,11 @@ requester's or technician's stored session lands there once instead of looping);
 Auth conventions: the fallback policy denies anonymous access, so only mark `[AllowAnonymous]` when you mean it. Use
 `[Authorize(Roles = Roles.X)]` (never string literals), `User.GetUserId()` for the caller's id, `ConflictException`
 for 409s from services, and `PageQuery`/`PagedResult<T>`/`ToPagedResultAsync` for list endpoints.
+Contains searches go only through `query.WhereContains(search, x => x.Col, ...)` (`QueryableExtensions`; trims, blank =
+no filter, case-insensitive, `%`, `_` and `\` literal, any column matches); never call `EF.Functions.ILike`/`Like`
+yourself: the two-argument ILike is translated with `ESCAPE ''`, so the escaped pattern is matched literally and a
+search for "50%" or "a_b" finds nothing. `SearchHelperGuardTests` (a source scan) fails on any other call, and on an
+upper-case LIKE/ILIKE in a string literal (raw SQL). Endpoint tests use `SearchCases` (`SearchEscapingTests`).
 Tests get tokens from `TestAuth.CreateClient(factory, Roles.X)`. For writes, use
 `TestAuth.CreateUserClientAsync(factory, Roles.X)`: it inserts a real user, because audit rows store the caller's id as an FK.
 
@@ -689,9 +694,7 @@ jsonb `@>` via `EF.Functions.JsonContains`), `search` (purpose) and sort `create
 (null last) | `status`; items carry step/tool-call counts, `totalTokens` (summed in SQL for the page's runs only; null
 without usage), `anyFallback` and `failureReason` cut to 200 + "…". `durationMs` is the stored wall time, which for a
 decided run INCLUDES the officer's wait, so the UI labels it "Wall time (incl. officer wait)" and no metric uses it.
-Search uses `ToContainsPattern` with `EF.Functions.ILike(x, pattern, QueryableExtensions.LikeEscape)`: the two-argument
-ILike is translated with `ESCAPE ''`, so the backslashes would be literal (the older ILike searches still use it; see
-the follow-up). Metrics (two `SqlQueryRaw` queries; only code constants are spliced, the range is a parameter; omitted
+Search uses `WhereContains` on the purpose. Metrics (two `SqlQueryRaw` queries; only code constants are spliced, the range is a parameter; omitted
 from/to = unbounded): every rate and average comes with its integer denominator and is null when that is 0 (the UI shows
 "— (0 of 0)", never 0%); rates are fractions to 4 dp, ms whole (float noise dropped before rounding), p95 is
 `percentile_cont(0.95)`. Each step has exactly one mode: `fallback` (worker_fallback or planner_fallback true), `llm`
