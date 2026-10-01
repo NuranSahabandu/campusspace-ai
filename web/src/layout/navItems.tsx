@@ -6,6 +6,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import FactCheckIcon from '@mui/icons-material/FactCheck'
 import GroupsIcon from '@mui/icons-material/Groups'
 import HistoryIcon from '@mui/icons-material/History'
+import InsightsIcon from '@mui/icons-material/Insights'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
 import MeetingRoomIcon from '@mui/icons-material/MeetingRoom'
 import PeopleIcon from '@mui/icons-material/People'
@@ -36,6 +37,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/policy', label: 'Booking policy', icon: <PolicyIcon />, roles: ROUTE_ROLES['/policy'] },
   { path: '/approvals', label: 'Approvals', icon: <FactCheckIcon />, roles: ROUTE_ROLES['/approvals'] },
   { path: '/agent-runs', label: 'Agent runs', icon: <PsychologyIcon />, roles: ROUTE_ROLES['/agent-runs'] },
+  { path: '/reports', label: 'Reports', icon: <InsightsIcon />, roles: ROUTE_ROLES['/reports'] },
   { path: '/users', label: 'Users', icon: <PeopleIcon />, roles: ROUTE_ROLES['/users'] },
   { path: '/clubs', label: 'Clubs', icon: <GroupsIcon />, roles: ROUTE_ROLES['/clubs'] },
   { path: '/audit-logs', label: 'Audit log', icon: <HistoryIcon />, roles: ROUTE_ROLES['/audit-logs'] },

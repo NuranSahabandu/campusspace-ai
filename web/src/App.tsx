@@ -45,6 +45,7 @@ const ApprovalDetailPage = lazy(() =>
 const AgentRunsPage = lazy(() =>
   import('./features/agentRuns/AgentRunsPage').then((m) => ({ default: m.AgentRunsPage })),
 )
+const ReportsPage = lazy(() => import('./features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const AgentRunDetailPage = lazy(() =>
   import('./features/agentRuns/AgentRunDetailPage').then((m) => ({ default: m.AgentRunDetailPage })),
 )
@@ -85,6 +86,7 @@ export function AppRoutes() {
             <Route path="approvals/:requestId" element={<GuardedPage path="/approvals/:requestId"><ApprovalDetailPage /></GuardedPage>} />
             <Route path="agent-runs" element={<GuardedPage path="/agent-runs"><AgentRunsPage /></GuardedPage>} />
             <Route path="agent-runs/:runId" element={<GuardedPage path="/agent-runs/:runId"><AgentRunDetailPage /></GuardedPage>} />
+            <Route path="reports" element={<GuardedPage path="/reports"><ReportsPage /></GuardedPage>} />
             <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
             <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
             <Route path="clubs/:id" element={<GuardedPage path="/clubs/:id"><ClubDetailPage /></GuardedPage>} />
