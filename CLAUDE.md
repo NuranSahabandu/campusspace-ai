@@ -242,8 +242,14 @@ flutter analyze                                     # must report no issues
 flutter test                                        # fakes + provider overrides; no network, no emulator
 flutter emulators --launch Pixel_10                 # then `flutter devices` for the emulator id
 flutter run -d <emulator-id> --dart-define=API_URL=http://10.0.2.2:5080   # needs the API on :5080
+flutter build apk --release --dart-define=API_URL=https://campusspace-api.onrender.com   # universal APK (Task 6.D4)
 ```
 
+Release APK (Task 6.D4): a release build needs an https `API_URL`; `android/app/build.gradle.kts` fails
+`compileFlutterBuildRelease` without one, and `resolveApiUrl` (`lib/core/config.dart`) throws in release mode (`main`
+then shows `ConfigErrorApp`); never reintroduce a release default. Release is signed with the debug key on purpose
+(no keystore passwords; another machine's build needs an uninstall first). Universal APK, never `--split-per-abi`.
+The version is pubspec's `version`, shown on the login screen via `appVersionLabel()` (FLUTTER_BUILD_NAME/NUMBER).
 Mobile conventions: call the API only through `dioProvider` (`lib/core/api/dio_client.dart`) inside a feature
 repository. One plain `AsyncNotifier` per feature (ADR-2); no code generation (no freezed, riverpod_generator or
 build_runner) and hand-written `fromJson`. The session lives in `authControllerProvider` and only in
