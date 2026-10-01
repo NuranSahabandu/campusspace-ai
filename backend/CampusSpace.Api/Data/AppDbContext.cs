@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using CampusSpace.Api.Auth;
+using CampusSpace.Api.Background;
 using CampusSpace.Api.Models;
 using CampusSpace.Api.Notifications;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,10 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 namespace CampusSpace.Api.Data;
 
 /// <param name="currentUser">Who is making the change, for AuditLogs.UserId. Null outside a request (seeding, tests).</param>
-public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? currentUser = null) : DbContext(options)
+/// <param name="signals">Wakes the idle background loops after a save that created work for them. Null outside the API
+/// host (seeding, tests that build a context by hand).</param>
+public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? currentUser = null, WorkSignals? signals = null)
+    : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<Club> Clubs => Set<Club>();
@@ -51,15 +55,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     {
         NotificationOutbox.EnqueueAsync(this, async: false, CancellationToken.None).GetAwaiter().GetResult();
         ApplyTimestamps();
+        var work = CaptureWork();
         var pending = CaptureAuditEntries();
         if (pending.Count == 0)
-            return base.SaveChanges(acceptAllChangesOnSuccess);
+        {
+            var saved = base.SaveChanges(acceptAllChangesOnSuccess);
+            SignalWork(work);
+            return saved;
+        }
 
         using var transaction = Database.CurrentTransaction is null ? Database.BeginTransaction() : null;
         var result = base.SaveChanges(acceptAllChangesOnSuccess: true);
         AuditLogs.AddRange(BuildAuditLogs(pending));
         base.SaveChanges(acceptAllChangesOnSuccess: true);
         transaction?.Commit();
+        SignalWork(work);
         return result;
     }
 
@@ -75,9 +85,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
         // The outbox (Task 5.2): an email row for each new status change that needs one, saved with it.
         await NotificationOutbox.EnqueueAsync(this, async: true, cancellationToken);
         ApplyTimestamps();
+        var work = CaptureWork();
         var pending = CaptureAuditEntries();
         if (pending.Count == 0)
-            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        {
+            var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            SignalWork(work);
+            return saved;
+        }
 
         await using var transaction = Database.CurrentTransaction is null
             ? await Database.BeginTransactionAsync(cancellationToken)
@@ -87,7 +102,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
         await base.SaveChangesAsync(acceptAllChangesOnSuccess: true, cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
+        SignalWork(work);
         return result;
+    }
+
+    private readonly record struct PendingWork(bool Agent, bool Email);
+
+    /// <summary>
+    /// Runs before saving (afterwards every entry is Unchanged): a run added or moved to a status the AgentRunPoller
+    /// processes (submit, retry-agent, approve, revise, a failed approval's new run), and any new outbox row (every
+    /// email path). Every such change goes through tracked entities, so this one place covers them all.
+    /// </summary>
+    private PendingWork CaptureWork()
+    {
+        if (signals is null)
+            return default;
+        var agent = false;
+        var email = false;
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            switch (entry.Entity)
+            {
+                case AgentRun run when AgentRunStatuses.Polled.Contains(run.Status)
+                    && (entry.State == EntityState.Added
+                        || (entry.State == EntityState.Modified && entry.Property(nameof(AgentRun.Status)).IsModified)):
+                    agent = true;
+                    break;
+                case NotificationLog when entry.State == EntityState.Added:
+                    email = true;
+                    break;
+            }
+        }
+        return new PendingWork(agent, email);
+    }
+
+    /// <summary>
+    /// After a successful save. Inside a caller's transaction the rows may not be committed yet; the loops keep polling
+    /// fast for PollingSchedule.ActiveGrace after a signal, so they still see them.
+    /// </summary>
+    private void SignalWork(PendingWork work)
+    {
+        if (work.Agent)
+            signals!.Agent.Notify();
+        if (work.Email)
+            signals!.Email.Notify();
     }
 
     /// <summary>Never named in DetailsJson. Timestamps change on every save, so they would only add noise.</summary>

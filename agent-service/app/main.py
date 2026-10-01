@@ -25,7 +25,20 @@ from app.workers.policy_llm import LlmPolicyWorker
 from app.workers.venue_llm import LlmVenueWorker
 
 SERVICE_NAME = "agent-service"
+LIVE_PATH = "/health/live"
 log = logging.getLogger("agent_service.main")
+
+
+class _SkipLivenessPings(logging.Filter):
+    """Drops uvicorn's access line for the liveness pings (every few seconds on Render)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        # uvicorn.access: (client, method, path, http_version, status)
+        return not (isinstance(args, tuple) and len(args) >= 3 and args[2] == LIVE_PATH)
+
+
+LIVENESS_LOG_FILTER = _SkipLivenessPings()
 
 
 def _utc_now() -> datetime:
@@ -105,8 +118,15 @@ def create_app(
             "fault_injection": s.fault_summary(),
         }
 
+    @app.get(LIVE_PATH)
+    def live() -> dict:
+        """The platform's health check: no settings, no checkpointer or other outbound call, so a
+        ping never wakes the database. /health (with checkpointer_ok) stays the evidence URL."""
+        return {"status": "ok"}
+
     app.include_router(workflows.router)
     return app
 
 
+logging.getLogger("uvicorn.access").addFilter(LIVENESS_LOG_FILTER)
 app = create_app()

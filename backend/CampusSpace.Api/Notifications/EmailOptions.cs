@@ -28,6 +28,12 @@ public sealed class EmailOptions : IValidatableObject
     /// <summary>Seconds between dispatcher ticks.</summary>
     [Range(1, 3600)] public int PollSeconds { get; set; } = 5;
 
+    /// <summary>
+    /// With nothing due the dispatcher makes no database query except this sweep (and wakes at once when this process
+    /// queues an email), so Neon can scale to zero. Aligned to the clock, like AgentService:IdleSweepMinutes.
+    /// </summary>
+    [Range(1, 1440)] public int IdleSweepMinutes { get; set; } = 30;
+
     /// <summary>Off in Testing, where tests call NotificationDispatcher.ProcessOnceAsync themselves.</summary>
     public bool DispatcherEnabled { get; set; } = true;
 

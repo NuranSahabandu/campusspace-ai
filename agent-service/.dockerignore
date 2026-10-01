@@ -1,0 +1,11 @@
+# Only pyproject.toml, uv.lock and app/ are copied; keep the rest (and anything secret) out of the build context.
+.venv/
+data/
+tests/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+.DS_Store

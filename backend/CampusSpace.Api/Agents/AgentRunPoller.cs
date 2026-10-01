@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using CampusSpace.Api.Background;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Models;
 using CampusSpace.Api.Options;
@@ -9,11 +10,14 @@ namespace CampusSpace.Api.Agents;
 
 /// <summary>
 /// Tracks agent runs in the background (§7.1 rule 6): every AgentService:PollSeconds it processes the Queued, Running
-/// and Resuming runs, oldest first, each in its own scope, so one bad run is logged and never stops the others. Off when
+/// and Resuming runs, oldest first, each in its own scope, so one bad run is logged and never stops the others. With no
+/// such run it goes idle (no database query) until a new run is signalled (<see cref="WorkSignals.Agent"/>) or the next
+/// AgentService:IdleSweepMinutes sweep, so Neon can scale to zero (<see cref="PollingSchedule"/>). Off when
 /// AgentService:PollerEnabled is false (Testing); tests call <see cref="PollOnceAsync"/> directly.
 /// </summary>
 public sealed class AgentRunPoller(
-    IServiceScopeFactory scopes, IOptions<AgentServiceOptions> options, TimeProvider clock, ILogger<AgentRunPoller> logger)
+    IServiceScopeFactory scopes, IOptions<AgentServiceOptions> options, WorkSignals signals, TimeProvider clock,
+    ILogger<AgentRunPoller> logger)
     : BackgroundService
 {
     public const int BatchSize = 50;
@@ -29,21 +33,15 @@ public sealed class AgentRunPoller(
             return;
         }
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(options.Value.PollSeconds), clock);
+        var o = options.Value;
+        logger.LogInformation("Agent run poller: every {PollSeconds} s while runs are live, else idle with a sweep every {SweepMinutes} min",
+            o.PollSeconds, o.IdleSweepMinutes);
         try
         {
-            do
-            {
-                try
-                {
-                    await PollOnceAsync(stoppingToken);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
-                {
-                    logger.LogError(ex, "Agent run poll failed; retrying on the next tick");
-                }
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
+            await SignalledPollingLoop.RunAsync(
+                async ct => new TickResult(await PollOnceAsync(ct) > 0), signals.Agent,
+                TimeSpan.FromSeconds(o.PollSeconds), TimeSpan.FromMinutes(o.IdleSweepMinutes), clock, logger,
+                "Agent run poll", stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -58,8 +56,7 @@ public sealed class AgentRunPoller(
         await using (var scope = scopes.CreateAsyncScope())
         {
             ids = await scope.ServiceProvider.GetRequiredService<AppDbContext>().AgentRuns.AsNoTracking()
-                .Where(r => r.Status == AgentRunStatuses.Queued || r.Status == AgentRunStatuses.Running
-                    || r.Status == AgentRunStatuses.Resuming)
+                .Where(r => AgentRunStatuses.Polled.Contains(r.Status))
                 .OrderBy(r => r.CreatedAt).ThenBy(r => r.Id)
                 .Select(r => r.Id)
                 .Take(BatchSize)

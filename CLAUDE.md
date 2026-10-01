@@ -172,6 +172,15 @@ uv run pytest -q                                    # never reads the real .env
 curl -s localhost:8000/health                       # the API's /health shows it as check "agent-service"
 ```
 
+Deployment (from the repo root; docs/deploy/RUNBOOK.md; every script asks for secrets with a hidden prompt):
+
+```bash
+docker build --platform linux/amd64 -t campusspace-api backend          # the images Render builds
+docker build --platform linux/amd64 -t campusspace-agent agent-service
+./scripts/neon-db.sh roles | password <role> | migrate | check           # Neon, as the owner, DIRECT endpoint
+./scripts/verify-deploy.sh --api <url> --agent <url> --web <url>         # checks a deployment end to end
+```
+
 Web (run from `web/`; Node 24 per `.nvmrc`; `VITE_API_URL` comes from the repo-root `.env`):
 
 ```bash
@@ -922,6 +931,44 @@ Swagger is on when Development or `Swagger:Enabled` (Production), Bearer scheme,
 (`https_port` 443) skips `/health`; `PORT` sets `http://0.0.0.0:{PORT}`. Production logs are a readable console
 template. Tests: `ProductionApi` (Production environment, fake R2 values + `FakePhotoStore`, RequireSsl off because
 Testcontainers has no TLS, seed off unless a test turns it on) and `fixture.CreateDatabaseAsync(migrate: false)`.
+
+Deployment (Task 6.D3, runbook `docs/deploy/RUNBOOK.md`): Neon (PostgreSQL 16, `aws-ap-southeast-1`) + Render (free,
+`singapore`, `render.yaml` Blueprint: both services from Dockerfiles) + Vercel (root `web/`, `web/vercel.json` SPA
+rewrite only). Topology: clients → API (HTTPS + JWT); API ↔ agent service over their PUBLIC https URLs
+(`AgentService__BaseUrl`, `API_BASE_URL`; free Render services can't receive private-network traffic) with the two
+keys; API → Neon DIRECT endpoint as `campusspace_app` (CONNECT on `campusspace`, DML + sequences only; it takes only
+transaction-scoped locks, so pooling would work too, but one process with its own Npgsql pool needs no pgbouncer);
+agent → Neon POOLED endpoint as `campusspace_agent` (its own database only); migrations and roles from a Mac as the
+Neon owner through `scripts/neon-db.sh` (`roles` = `docs/deploy/neon-roles.sql`, `password <role>` = psql `\password`,
+`migrate` = the idempotent EF script, `check` = `docs/deploy/neon-check.sql`; the owner URL is read with a hidden prompt
+into PG* variables; psql runs from `postgres:16`). Roles are created by SQL, never in the Neon console (console roles
+join `neon_superuser`). Health: `/health/live` on both services runs no check (no DB, no outbound call; exempt from
+HTTPS redirection; request log at Verbose / filtered from uvicorn's access log) and is Render's `healthCheckPath`;
+`/health` (dependencies) stays the evidence URL. Blueprint rules: no secret value in `render.yaml`; secrets are
+`sync: false` (asked once in the dashboard) or `generateValue` (the two service keys in the env group
+`campusspace-service-keys`, read under the same names by both services; `Jwt__Key` on the API only, never in the group);
+`autoDeployTrigger: checksPass` + `buildFilter` per service; keep the URLs in `render.yaml` equal to the real service
+URLs (a Blueprint sync rewrites dashboard edits of `value:` keys). Images: `backend/Dockerfile` (context `backend/`,
+cross-compiled SDK stage, `aspnet:8.0-noble-chiseled-extra`, non-root, `PORT`) and `agent-service/Dockerfile` (context
+`agent-service/`, `uv sync --locked --no-dev`, non-root, uvicorn `--log-config app/logging.json`, which keeps httpx,
+psycopg and google_genai at WARNING). Production `AgentService:StartTimeoutMinutes` is 4 (a sleeping free agent takes
+~1 min to wake; the poller retries the start with the same thread_id meanwhile). No keep-alive pings (750 Render hours
+are shared by both services). `scripts/verify-deploy.sh --api --agent --web` checks a deployment (the demo password
+via a hidden prompt and stdin only; `--local` adds X-Forwarded-Proto for a rehearsal against local containers).
+
+Idle-friendly background loops (Task 6.D3, `Background/`): a loop that polls the database must not query it every
+few seconds while idle, or Neon never scales to zero (free plan: 100 CU-hours). `AgentRunPoller` and
+`NotificationDispatcher` run `SignalledPollingLoop`: their fast rate (`PollSeconds`) only while a tick found work, for
+`PollingSchedule.ActiveGrace` (60 s) after a signal (a save inside a transaction may commit a moment later), or when
+something is due; otherwise they wait for the next known due time (a Pending email's `NextAttemptAt`, a stale Sending
+row; `NotificationDispatcher.NextDueAsync`), a `WorkSignal`, or the clock-aligned sweep (`IdleSweepMinutes`, 30, the
+same boundaries for both loops). The first tick runs at startup (picks up leftovers). Signals come only from
+`AppDbContext.SaveChanges[Async]` (`WorkSignals`, an optional constructor parameter like `ICurrentUser`): an `AgentRun`
+added or moved to `AgentRunStatuses.Polled` (Queued, Running, Resuming) wakes the poller, a new `NotificationLog` wakes
+the dispatcher. So work must be created through tracked entities (as the state machine already requires); a new
+background loop uses `SignalledPollingLoop` and a signal, never a bare `PeriodicTimer` on the database. Tests:
+`PollingScheduleTests`, `SignalledPollingLoopTests` (`FakeTimeProvider`, Microsoft.Extensions.TimeProvider.Testing
+8.x, test project only), `BackgroundIdleTests` (signals from real endpoints, hosted loops woken at once).
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
