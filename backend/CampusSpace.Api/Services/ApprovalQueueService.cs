@@ -13,15 +13,8 @@ public sealed class ApprovalQueueService(AppDbContext db) : IApprovalQueueServic
     public async Task<PagedResult<ApprovalQueueItemDto>> ListAsync(ApprovalQueueQuery query, CancellationToken ct = default)
     {
         var requests = db.BookingRequests.AsNoTracking().Where(r => r.Status == RequestStatuses.PendingApproval);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            requests = requests.Where(r =>
-                EF.Functions.ILike(r.Purpose, pattern)
-                || EF.Functions.ILike(r.Requester.FullName, pattern)
-                || EF.Functions.ILike(r.Requester.Email, pattern)
-                || (r.Club != null && EF.Functions.ILike(r.Club.Name, pattern)));
-        }
+        requests = requests.WhereContains(query.Search,
+            r => r.Purpose, r => r.Requester.FullName, r => r.Requester.Email, r => r.Club!.Name);
 
         var rows = requests.Select(r => new QueueRow
         {

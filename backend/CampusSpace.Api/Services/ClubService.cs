@@ -23,8 +23,7 @@ public sealed class ClubService(AppDbContext db, ICurrentUser currentUser, TimeP
         if (!(query.IncludeInactive && IsAdmin))
             clubs = clubs.Where(c => c.IsActive);
 
-        if (!string.IsNullOrWhiteSpace(query.Search))
-            clubs = clubs.Where(c => EF.Functions.ILike(c.Name, query.Search.ToContainsPattern()));
+        clubs = clubs.WhereContains(query.Search, c => c.Name);
 
         clubs = query.Sort switch
         {

@@ -81,11 +81,7 @@ public sealed class LoanService(
             loans = loans.Where(l => l.CheckedInAt != null || l.DueAt >= now);
         if (query.BookingId is { } bookingId)
             loans = loans.Where(l => l.BookingId == bookingId);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            loans = loans.Where(l => EF.Functions.ILike(l.Item.AssetTag, pattern) || EF.Functions.ILike(l.Item.Type.Code, pattern));
-        }
+        loans = loans.WhereContains(query.Search, l => l.Item.AssetTag, l => l.Item.Type.Code);
 
         loans = query.Sort == "dueAt"
             ? loans.OrderBy(l => l.DueAt).ThenBy(l => l.Id)

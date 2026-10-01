@@ -15,11 +15,7 @@ public sealed class UserService(AppDbContext db, ICurrentUser currentUser) : IUs
     {
         var users = db.Users.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            users = users.Where(u => EF.Functions.ILike(u.FullName, pattern) || EF.Functions.ILike(u.Email, pattern));
-        }
+        users = users.WhereContains(query.Search, u => u.FullName, u => u.Email);
 
         if (query.Role is not null)
             users = users.Where(u => u.Role == query.Role);

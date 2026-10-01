@@ -47,12 +47,7 @@ public sealed class AuditService(AppDbContext db, ICurrentUser currentUser) : IA
             logs = logs.Where(a => a.At >= from.UtcDateTime);
         if (query.To is { } to)
             logs = logs.Where(a => a.At <= to.UtcDateTime);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            logs = logs.Where(a => EF.Functions.ILike(a.EntityId!, pattern)
-                || (a.User != null && EF.Functions.ILike(a.User.FullName, pattern)));
-        }
+        logs = logs.WhereContains(query.Search, a => a.EntityId, a => a.User!.FullName);
 
         // Id breaks ties between rows written in the same save (same At).
         logs = query.Sort == "at"

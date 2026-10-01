@@ -149,16 +149,10 @@ public sealed class BookingRequestService(
         }
         if (query.ClubId is { } clubId)
             requests = requests.Where(r => r.ClubId == clubId);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            requests = CallerIsOfficer
-                ? requests.Where(r => EF.Functions.ILike(r.Purpose, pattern)
-                    || EF.Functions.ILike(r.Requester.FullName, pattern)
-                    || EF.Functions.ILike(r.Requester.Email, pattern)
-                    || (r.Club != null && EF.Functions.ILike(r.Club.Name, pattern)))
-                : requests.Where(r => EF.Functions.ILike(r.Purpose, pattern));
-        }
+        requests = CallerIsOfficer
+            ? requests.WhereContains(query.Search,
+                r => r.Purpose, r => r.Requester.FullName, r => r.Requester.Email, r => r.Club!.Name)
+            : requests.WhereContains(query.Search, r => r.Purpose);
 
         requests = query.Sort switch
         {
