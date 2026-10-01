@@ -1,9 +1,10 @@
 """The Gemini client factory (Labs 05–07 settings) and token bookkeeping. No model call."""
 
+import httpx
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.llm import add_usage, build_chat_model, usage_from
+from app.llm import add_usage, build_chat_model, llm_error_reason, usage_from
 from tests.conftest import make_settings
 
 FAKE_GOOGLE_KEY = "fake-google-key-" + "g" * 24
@@ -70,3 +71,52 @@ def test_add_usage_sums_calls_and_keeps_the_estimated_flag() -> None:
         "estimated": True,
     }
     assert add_usage(total, None) == total
+
+
+# ---------- LLM error reasons (Task 5.5: fixed texts, never a provider message) ----------
+
+
+def _client_error(code: int, status: str, reason: str | None = None) -> Exception:
+    from google.genai import errors
+
+    message = "provider text that must never be shown"
+    body = {"error": {"code": code, "status": status, "message": message}}
+    if reason:
+        body["error"]["details"] = [{"reason": reason}]
+    return errors.ClientError(code, body) if code < 500 else errors.ServerError(code, body)
+
+
+@pytest.mark.parametrize(
+    ("code", "status", "reason", "text"),
+    [
+        (429, "RESOURCE_EXHAUSTED", None, "rate limited (HTTP 429)"),
+        (400, "INVALID_ARGUMENT", "API_KEY_INVALID", "API key rejected (HTTP 400)"),
+        (400, "INVALID_ARGUMENT", None, "invalid request (HTTP 400)"),
+        (401, "UNAUTHENTICATED", None, "not authorised (HTTP 401)"),
+        (403, "PERMISSION_DENIED", None, "not authorised (HTTP 403)"),
+        (404, "NOT_FOUND", None, "model not found (HTTP 404)"),
+        (408, "DEADLINE_EXCEEDED", None, "timeout (HTTP 408)"),
+        (503, "UNAVAILABLE", None, "server error (HTTP 503)"),
+        (409, "ABORTED", None, "HTTP 409"),
+    ],
+)
+def test_provider_errors_become_fixed_texts(code, status, reason, text) -> None:
+    from langchain_google_genai.chat_models import GoogleRateLimitError
+
+    error = _client_error(code, status, reason)
+    try:  # langchain-google-genai wraps the google-genai error ("raise ... from e")
+        raise GoogleRateLimitError(f"Error calling model: {error}") from error
+    except GoogleRateLimitError as wrapped:
+        assert llm_error_reason(wrapped) == text
+    assert llm_error_reason(error) == text
+
+
+def test_transport_errors_and_others_never_carry_their_message() -> None:
+    request = httpx.Request("POST", "https://generativelanguage.googleapis.com/x")
+
+    refused = httpx.ConnectError("refused to x.y", request=request)
+
+    assert llm_error_reason(refused) == "connection error"
+    assert llm_error_reason(httpx.ReadTimeout("slow", request=request)) == "timeout"
+    assert llm_error_reason(TimeoutError("read timed out")) == "timeout"
+    assert llm_error_reason(RuntimeError("detail with notes")) == "RuntimeError"

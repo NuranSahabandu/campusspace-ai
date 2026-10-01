@@ -188,7 +188,7 @@ def test_a_429_storm_is_retried_by_the_client_then_the_planner_falls_back(
     out = steps_of(view, "supervisor")[0]["output"]
     assert view.status == "awaiting_approval"
     assert out["planner"] == "fallback" and out["planner_fallback"] is True
-    assert "429" in out["fallback_reason"]
+    assert out["fallback_reason"] == "Planner LLM error: rate limited (HTTP 429)"
     # max_retries=3 is google-genai HttpRetryOptions(attempts=3): three calls in all.
     injected = [r for r in caplog.records if "rate_limit on supervisor" in r.getMessage()]
     assert len(injected) == 3
@@ -246,3 +246,38 @@ def test_the_fault_is_logged_at_startup_and_shown_on_health_by_name_only(
                                          "times": 0}  # fmt: skip
     assert "FAULT INJECTION ACTIVE: fault=slow agents=supervisor,policy_cost" in caplog.text
     assert FAKE_GOOGLE_KEY not in caplog.text
+
+
+def test_malformed_planner_output_reason_never_quotes_the_completion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    s = fault_settings(monkeypatch, "malformed", "supervisor")
+    planner = LlmPlanner(lambda: build_chat_model("planner", s, "supervisor"), s.planner_model)
+    h = Harness(tmp_path / "cp.sqlite", planner=planner)
+    try:
+        view = h.view(h.start())
+    finally:
+        h.close()
+
+    reason = steps_of(view, "supervisor")[0]["output"]["fallback_reason"]
+    assert reason.startswith("Planner output invalid twice: ")
+    assert "not-a-list" not in reason and "bogus" not in reason
+    assert reason.endswith("Field required")
+
+
+def test_provider_error_text_never_reaches_the_trace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_backoff
+) -> None:
+    s = fault_settings(monkeypatch, "rate_limit", "venue_matching")
+    worker = LlmVenueWorker(lambda: build_chat_model("worker", s, "venue_matching"),
+                            s.worker_model)  # fmt: skip
+    h = Harness(tmp_path / "cp.sqlite", workers={"venue_matching": worker})
+    try:
+        tid = h.start()
+        view, state = h.view(tid), h.state_json(tid)
+    finally:
+        h.close()
+
+    out = steps_of(view, "venue_matching")[0]["output"]
+    assert out["fallback_reason"] == "Venue LLM error: rate limited (HTTP 429)"
+    assert "RESOURCE_EXHAUSTED" not in state and "{'error'" not in state

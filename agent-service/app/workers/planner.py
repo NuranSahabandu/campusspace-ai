@@ -22,10 +22,10 @@ from pydantic import ValidationError
 from app.budget import BUDGET_EXHAUSTED, UNLIMITED, LlmBudget
 from app.guardrails import wrap_officer_notes
 from app.limits import LLM_MIN_BUDGET_S, MAX_PLANNER_ATTEMPTS, PLANNER_DEADLINE_S
-from app.llm import add_usage, usage_from
+from app.llm import add_usage, llm_error_reason, usage_from
 from app.schemas import Plan
 from app.tools import current_recorder
-from app.workers.deadline import describe_error, submit
+from app.workers.deadline import submit
 from app.workers.supervisor import INSTRUCTIONS, OFFICER_REVISION, ORDER, stub_planner
 
 log = logging.getLogger("agent_service.planner")
@@ -142,12 +142,16 @@ def build_planner_message(inp: PlannerInput) -> str:
 
 
 def _describe_parse(error: Any) -> str:
+    """The first schema error, or a fixed text: a parser's message quotes the model's output."""
+    if isinstance(error, BaseException) and not isinstance(error, ValidationError):
+        cause = error.__cause__ or error.__context__
+        error = cause if isinstance(cause, ValidationError) else error
     if isinstance(error, ValidationError):
         first = error.errors()[0]
         return f"{'.'.join(str(p) for p in first['loc'])}: {first['msg']}"
     if error is None:
         return "no structured output"
-    return describe_error(error) if isinstance(error, BaseException) else str(error)[:200]
+    return f"not a valid Plan ({type(error).__name__})"
 
 
 def _text_of(message: Any) -> str:
@@ -210,7 +214,7 @@ class LlmPlanner:
         try:
             runnable = self._structured()
         except Exception as exc:  # noqa: BLE001 - a broken client must not stop the run
-            return fallback(f"Planner LLM error: {describe_error(exc)}")
+            return fallback(f"Planner LLM error: {llm_error_reason(exc)}")
 
         problem = "no structured output"
         for attempt in range(MAX_PLANNER_ATTEMPTS):
@@ -230,7 +234,7 @@ class LlmPlanner:
             try:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - timeouts, 429s after retries, API errors
-                return fallback(f"Planner LLM error: {describe_error(exc)}")
+                return fallback(f"Planner LLM error: {llm_error_reason(exc)}")
 
             raw, parsed, error = (
                 result.get("raw"),

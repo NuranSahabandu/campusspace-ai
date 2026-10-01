@@ -426,8 +426,8 @@ def test_no_room_needs_no_model_call() -> None:
 @pytest.mark.parametrize(
     ("error", "reason"),
     [
-        (RuntimeError("429 quota"), "Policy LLM error: RuntimeError: 429 quota"),
-        (TimeoutError("read timed out"), "Policy LLM error: TimeoutError: read timed out"),
+        (RuntimeError("429 quota"), "Policy LLM error: RuntimeError"),
+        (TimeoutError("read timed out"), "Policy LLM error: timeout"),
     ],
 )
 def test_an_llm_exception_falls_back_to_the_stub(run, error: Exception, reason: str) -> None:

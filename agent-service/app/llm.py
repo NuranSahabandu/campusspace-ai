@@ -5,6 +5,7 @@ stub mode (the default, and CI) never touches Gemini or the key. The key is pass
 explicitly: pydantic-settings reads the repo-root .env without exporting it to os.environ.
 """
 
+import json
 from typing import Any, Literal
 
 from app.config import Settings
@@ -40,6 +41,50 @@ def build_chat_model(role: Role, settings: Settings, agent: str | None = None) -
         thinking_level=settings.planner_thinking if planner else settings.worker_thinking,
         **extra,
     )
+
+
+def _chain(exc: BaseException) -> list[BaseException]:
+    seen: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in seen:
+        seen.append(current)
+        current = current.__cause__ or current.__context__
+    return seen
+
+
+def _http_reason(code: int, details: Any) -> str:
+    if code == 429:
+        return "rate limited (HTTP 429)"
+    if code == 400:
+        if "API_KEY_INVALID" in json.dumps(details, default=str):
+            return "API key rejected (HTTP 400)"
+        return "invalid request (HTTP 400)"
+    if code in (401, 403):
+        return f"not authorised (HTTP {code})"
+    if code == 404:
+        return "model not found (HTTP 404)"
+    if code == 408:
+        return "timeout (HTTP 408)"
+    if code >= 500:
+        return f"server error (HTTP {code})"
+    return f"HTTP {code}"
+
+
+def llm_error_reason(exc: BaseException) -> str:
+    """A fixed text for a failed model call (Task 5.5 drills). Never the provider's message or body
+    (langchain-google-genai's str() carries Google's whole error JSON) and never an exception
+    message, which can quote model output: it reaches the officer's trace and the logs."""
+    import httpx
+    from google.genai import errors
+
+    for error in _chain(exc):
+        if isinstance(error, errors.APIError) and isinstance(error.code, int):
+            return _http_reason(error.code, error.details)
+        if isinstance(error, httpx.TimeoutException | TimeoutError):
+            return "timeout"
+        if isinstance(error, httpx.TransportError):
+            return "connection error"
+    return type(exc).__name__
 
 
 def usage_from(message: Any, prompt_chars: int, output_chars: int) -> dict[str, Any]:

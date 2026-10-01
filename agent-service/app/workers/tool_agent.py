@@ -37,10 +37,10 @@ from app.limits import (
     WORKER_DEADLINE_S,
     WORKER_RECURSION_LIMIT,
 )
-from app.llm import add_usage, usage_from
+from app.llm import add_usage, llm_error_reason, usage_from
 from app.tools import WORKER_TOOLS, ToolRecorder, current_recorder, recording
 from app.workers.common import LlmAttempt, parse_brief
-from app.workers.deadline import describe_error, submit
+from app.workers.deadline import submit
 
 
 @dataclass
@@ -96,7 +96,7 @@ def _schema_problem(exc: StructuredOutputValidationError, schema: str) -> str:
     if isinstance(error, ValidationError):
         first = error.errors()[0]
         return f"{schema} {'.'.join(str(p) for p in first['loc'])}: {first['msg']}"
-    return f"{schema} invalid: {describe_error(exc.source)}"
+    return f"{schema} invalid ({type(exc.source).__name__})"
 
 
 class ToolAgentWorker:
@@ -205,7 +205,7 @@ class ToolAgentWorker:
         try:
             agent = self._build(tools, self.local_tools(brief))
         except Exception as exc:  # noqa: BLE001 - a broken client must not stop the run
-            return fallback(f"{label} LLM error: {describe_error(exc)}")
+            return fallback(f"{label} LLM error: {llm_error_reason(exc)}")
 
         problem = f"no {schema} was returned"
         for attempt in range(MAX_WORKER_ATTEMPTS):
@@ -235,7 +235,7 @@ class ToolAgentWorker:
                 continue
             except Exception as exc:  # noqa: BLE001 - API errors, recursion limit, 429s
                 meta["usage"] = add_usage(meta["usage"], _usage(messages, self.prompt))
-                return fallback(f"{label} LLM error: {describe_error(exc)}")
+                return fallback(f"{label} LLM error: {llm_error_reason(exc)}")
             meta["usage"] = add_usage(meta["usage"], _usage(messages, self.prompt))
             unavailable = run.recorder.unavailable_errors() if run.recorder else []
             if unavailable:
