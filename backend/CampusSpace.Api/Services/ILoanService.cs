@@ -1,5 +1,6 @@
 using CampusSpace.Api.Dtos.Common;
 using CampusSpace.Api.Dtos.Loans;
+using CampusSpace.Api.Photos;
 
 namespace CampusSpace.Api.Services;
 
@@ -24,10 +25,11 @@ public interface ILoanService
 
     /// <summary>
     /// Closes an open loan and returns the item (Damaged → UnderRepair). Null when the loan does not exist. The photo is
-    /// written only after every check passes and is deleted again if the transaction fails.
+    /// uploaded after the input checks and before the transaction (no row lock is held during the upload), and deleted
+    /// again (best effort) if anything after the upload fails.
     /// </summary>
     Task<LoanDto?> CheckInAsync(long id, CheckInRequest request, CancellationToken ct = default);
 
-    /// <summary>The loan's photo, or null when the loan, its photo or the file is missing.</summary>
+    /// <summary>The loan's photo with its stored content type, or null when the loan, its photo or the object is missing.</summary>
     Task<StoredPhoto?> GetPhotoAsync(long id, CancellationToken ct = default);
 }

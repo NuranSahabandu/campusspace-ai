@@ -7,6 +7,7 @@ using CampusSpace.Api.Dtos.Loans;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Photos;
 using Microsoft.EntityFrameworkCore;
 
 namespace CampusSpace.Api.Services;
@@ -14,9 +15,10 @@ namespace CampusSpace.Api.Services;
 public sealed class LoanService(
     AppDbContext db,
     IPolicySettingsService policy,
-    IDamagePhotoStore photos,
+    IPhotoStore photos,
     ICurrentUser currentUser,
-    TimeProvider clock) : ILoanService
+    TimeProvider clock,
+    ILogger<LoanService> logger) : ILoanService
 {
     public const string BookingMissingMessage = "Booking does not exist.";
     public const string ItemMissingMessage = "Equipment item does not exist.";
@@ -161,7 +163,7 @@ public sealed class LoanService(
     {
         var callerId = CallerId;
 
-        // Everything about the input is checked before the database or the disk is touched.
+        // Everything about the input is checked before the database or the photo store is touched.
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
         var damaged = request.Condition == EquipmentConditions.Damaged;
         if (damaged)
@@ -174,59 +176,105 @@ public sealed class LoanService(
             if (errors.Count > 0)
                 throw new BusinessRuleException(errors);
         }
-        var format = request.Photo is { } upload ? await photos.ValidateAsync(upload, ct) : null;
+        var format = request.Photo is { } upload ? await DamagePhotoRules.ValidateAsync(upload, ct) : null;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-        var loan = await db.EquipmentLoans
-            .FromSql($"""SELECT * FROM "EquipmentLoans" WHERE "Id" = {id} FOR UPDATE""")
-            .SingleOrDefaultAsync(ct);
-        if (loan is null)
+        // A cheap pre-check without locks, so a request that is bound to fail uploads nothing. Not the guarantee: the
+        // same rules are checked again under the row locks below.
+        var open = await db.EquipmentLoans.AsNoTracking().Where(l => l.Id == id)
+            .Select(l => new { Open = l.CheckedInAt == null }).SingleOrDefaultAsync(ct);
+        if (open is null)
             return null;
-        if (loan.CheckedInAt is not null)
+        if (!open.Open)
             throw new ConflictException(AlreadyCheckedInMessage);
-        var item = await db.EquipmentItems
-            .FromSql($"""SELECT * FROM "EquipmentItems" WHERE "Id" = {loan.ItemId} FOR UPDATE""")
-            .SingleAsync(ct);
 
-        string? photoName = null;
+        // Upload first, outside any transaction, so no row lock is held while the photo store is called (R2 can take
+        // seconds). A store failure is a 503/502 and nothing has been written.
+        string? key = null;
+        if (format is not null)
+        {
+            key = PhotoKeys.New(format);
+            await using var content = request.Photo!.OpenReadStream();
+            await photos.PutAsync(key, content, request.Photo.Length, format.ContentType, ct);
+        }
+
+        var committed = false;
+        var commitStarted = false;
         try
         {
-            if (format is not null)
-                photoName = await photos.SaveAsync(request.Photo!, format, ct);
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+            var loan = await db.EquipmentLoans
+                .FromSql($"""SELECT * FROM "EquipmentLoans" WHERE "Id" = {id} FOR UPDATE""")
+                .SingleOrDefaultAsync(ct);
+            if (loan is null)
+                return null;
+            if (loan.CheckedInAt is not null)
+                throw new ConflictException(AlreadyCheckedInMessage);
+            var item = await db.EquipmentItems
+                .FromSql($"""SELECT * FROM "EquipmentItems" WHERE "Id" = {loan.ItemId} FOR UPDATE""")
+                .SingleAsync(ct);
 
             var now = Now;
             loan.CheckedInAt = now;
             loan.CheckedInById = callerId;
             loan.ReturnCondition = request.Condition;
             loan.DamageNote = note;
-            loan.DamagePhotoPath = photoName;
+            loan.DamagePhotoKey = key;
+            loan.DamagePhotoContentType = format?.ContentType;
+            loan.DamagePhotoSizeBytes = key is null ? null : (int)request.Photo!.Length;
             loan.IsLateReturn = now > loan.DueAt;
 
             item.Condition = request.Condition;
             item.Status = damaged ? EquipmentItemStatuses.UnderRepair : EquipmentItemStatuses.Available;
 
             await db.SaveChangesAsync(ct);
+            commitStarted = true;
             await transaction.CommitAsync(ct);
+            committed = true;
         }
-        catch
+        finally
         {
-            // The row changes rolled back, so the file must not outlive them.
-            if (photoName is not null)
-                photos.Delete(photoName);
-            throw;
+            // Anything after the upload failed (a rule under the lock, SaveChanges or commit): the object must not
+            // outlive the row changes that rolled back.
+            if (key is not null && !committed)
+                await DiscardPhotoAsync(id, key, commitStarted);
         }
 
         return await GetAsync(id, ct);
     }
 
+    /// <summary>
+    /// Best-effort removal of an uploaded photo whose check-in did not commit. After a failed commit the outcome is
+    /// unknown, so a fresh query checks first: a row that did commit keeps its photo. If the check or the delete fails,
+    /// the object is left as an orphan and logged by its random key (no personal data); it is private and unreferenced.
+    /// </summary>
+    private async Task DiscardPhotoAsync(long loanId, string key, bool commitStarted)
+    {
+        try
+        {
+            if (commitStarted && await db.EquipmentLoans.AsNoTracking()
+                    .AnyAsync(l => l.Id == loanId && l.DamagePhotoKey == key, CancellationToken.None))
+                return;
+            await photos.DeleteAsync(key, CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            logger.LogWarning("Orphaned damage photo object {Key} ({Error})", key, e.GetType().Name);
+        }
+    }
+
     public async Task<StoredPhoto?> GetPhotoAsync(long id, CancellationToken ct = default)
     {
-        var name = await db.EquipmentLoans.AsNoTracking().Where(l => l.Id == id).Select(l => l.DamagePhotoPath).SingleOrDefaultAsync(ct);
-        return name is null ? null : photos.Open(name);
+        var photo = await db.EquipmentLoans.AsNoTracking()
+            .Where(l => l.Id == id && l.DamagePhotoKey != null)
+            .Select(l => new { Key = l.DamagePhotoKey!, l.DamagePhotoContentType })
+            .SingleOrDefaultAsync(ct);
+        if (photo is null || await photos.OpenAsync(photo.Key, ct) is not { } content)
+            return null;
+        return new StoredPhoto(content, photo.DamagePhotoContentType ?? PhotoKeys.ContentTypeOf(photo.Key));
     }
 
     private static IQueryable<LoanDto> ToDtos(IQueryable<EquipmentLoan> loans, DateTime now) => loans.Select(l => new LoanDto(
         l.Id, l.BookingId, l.Booking.Room.Code, l.ItemId, l.Item.AssetTag, l.Item.Type.Code,
         l.CheckedOutAt, l.CheckedOutBy.FullName, l.DueAt, l.CheckedInAt, l.CheckedInBy != null ? l.CheckedInBy.FullName : null,
-        l.ReturnCondition, l.DamageNote, l.IsLateReturn, l.CheckedInAt == null && l.DueAt < now, l.DamagePhotoPath != null));
+        l.ReturnCondition, l.DamageNote, l.IsLateReturn, l.CheckedInAt == null && l.DueAt < now, l.DamagePhotoKey != null));
 }

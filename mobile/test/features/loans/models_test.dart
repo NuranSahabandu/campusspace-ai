@@ -48,7 +48,7 @@ void main() {
     expect(items.every((i) => i.status == 'Available' && i.typeId == 1), isTrue);
   });
 
-  group('CheckInRules.photoError mirrors DamagePhotoStore', () {
+  group('CheckInRules.photoError mirrors DamagePhotoRules', () {
     test('accepts JPEG and PNG by their first bytes', () {
       expect(CheckInRules.photoError([0xFF, 0xD8, 0xFF, 0xE0, 0, 0]), isNull);
       expect(CheckInRules.photoError([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0]), isNull);

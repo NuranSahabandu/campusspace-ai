@@ -2,11 +2,13 @@ using System.Net;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Photos;
 using CampusSpace.Api.Services;
 using CampusSpace.Tests.Infrastructure;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using static CampusSpace.Tests.Infrastructure.LoanTestData;
 
 namespace CampusSpace.Tests.Integration;
@@ -75,7 +77,10 @@ public class LoansCheckInTests(PostgresFixture fixture)
         item.Status.Should().Be(EquipmentItemStatuses.UnderRepair);
         item.Condition.Should().Be(EquipmentConditions.Damaged);
         // The name is random and the extension comes from the magic bytes, not from "evidence.jpg".
-        (await LoanAsync(Factory, loanId)).DamagePhotoPath.Should().MatchRegex("^[0-9a-f]{32}\\.png$");
+        var loan = await LoanAsync(Factory, loanId);
+        loan.DamagePhotoKey.Should().MatchRegex("^[0-9a-f]{32}\\.png$");
+        loan.DamagePhotoContentType.Should().Be("image/png");
+        loan.DamagePhotoSizeBytes.Should().Be(PngBytes.Length);
 
         var (officer, _) = await TestAuth.CreateUserClientAsync(Factory, Roles.FacilitiesOfficer);
         foreach (var client in new[] { tech, officer })
@@ -84,6 +89,8 @@ public class LoansCheckInTests(PostgresFixture fixture)
             photo.StatusCode.Should().Be(HttpStatusCode.OK);
             photo.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
             photo.Headers.GetValues("X-Content-Type-Options").Should().Equal("nosniff");
+            photo.Headers.CacheControl!.ToString().Should().Be("no-store, private");
+            photo.Content.Headers.ContentDisposition!.DispositionType.Should().Be("inline");
             (await photo.Content.ReadAsByteArrayAsync()).Should().Equal(PngBytes);
         }
     }
@@ -124,7 +131,7 @@ public class LoansCheckInTests(PostgresFixture fixture)
         var errors = await FieldErrorsAsync(await CheckInAsync(tech, loanId, EquipmentConditions.Damaged, "Cracked",
             "this is not an image"u8.ToArray(), "photo.jpg", "image/jpeg"));
 
-        errors.Should().Equal(new Dictionary<string, string> { ["Photo"] = DamagePhotoStore.NotAnImageMessage });
+        errors.Should().Equal(new Dictionary<string, string> { ["Photo"] = DamagePhotoRules.NotAnImageMessage });
         (await LoanAsync(Factory, loanId)).CheckedInAt.Should().BeNull();
     }
 
@@ -132,12 +139,12 @@ public class LoansCheckInTests(PostgresFixture fixture)
     public async Task A_photo_over_5_MB_is_rejected()
     {
         var (tech, loanId, _) = await OnLoanAsync(Factory);
-        var big = new byte[DamagePhotoStore.MaxBytes + 1];
+        var big = new byte[DamagePhotoRules.MaxBytes + 1];
         PngBytes.CopyTo(big, 0);
 
         var errors = await FieldErrorsAsync(await CheckInAsync(tech, loanId, EquipmentConditions.Damaged, "Cracked", big));
 
-        errors.Should().Equal(new Dictionary<string, string> { ["Photo"] = DamagePhotoStore.TooLargeMessage });
+        errors.Should().Equal(new Dictionary<string, string> { ["Photo"] = DamagePhotoRules.TooLargeMessage });
     }
 
     [Fact]
@@ -153,7 +160,7 @@ public class LoansCheckInTests(PostgresFixture fixture)
             .Should().Contain("Failed to read the request form"); // Kestrel: body size limit; TestServer: multipart limit
         (await LoanAsync(Factory, loanId)).CheckedInAt.Should().BeNull();
         (await ItemAsync(Factory, itemId)).Status.Should().Be(EquipmentItemStatuses.OnLoan);
-        (await LoanAsync(Factory, loanId)).DamagePhotoPath.Should().BeNull();
+        (await LoanAsync(Factory, loanId)).DamagePhotoKey.Should().BeNull();
     }
 
     [Fact]
@@ -175,7 +182,7 @@ public class LoansCheckInTests(PostgresFixture fixture)
         (await again.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be(LoanService.AlreadyCheckedInMessage);
         (await CheckInAsync(tech, long.MaxValue / 2, EquipmentConditions.Good)).StatusCode.Should().Be(HttpStatusCode.NotFound);
         // The refused check-in wrote no file.
-        (await LoanAsync(Factory, loanId)).DamagePhotoPath.Should().BeNull();
+        (await LoanAsync(Factory, loanId)).DamagePhotoKey.Should().BeNull();
     }
 
     [Fact]
@@ -247,12 +254,181 @@ public class LoansCheckInTests(PostgresFixture fixture)
     public async Task The_photo_endpoint_is_staff_only_and_404_without_a_photo()
     {
         var (tech, loanId, _) = await OnLoanAsync(Factory);
-        var (student, _) = await TestAuth.CreateUserClientAsync(Factory, Roles.Student);
 
         (await tech.GetAsync(PhotoUrl(loanId))).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await CheckInAsync(tech, loanId, EquipmentConditions.Damaged, "Cracked", JpegBytes)).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await student.GetAsync(PhotoUrl(loanId))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        foreach (var role in new[] { Roles.Student, Roles.Lecturer, Roles.Admin })
+            (await TestAuth.CreateClient(Factory, role).GetAsync(PhotoUrl(loanId))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await Factory.CreateClient().GetAsync(PhotoUrl(loanId))).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await tech.GetAsync(PhotoUrl(long.MaxValue / 2))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // ---- The photo store (FakePhotoStore: in memory, no network) ----
+
+    [Fact]
+    public async Task The_photo_goes_to_the_active_store_and_comes_back_byte_for_byte_with_the_stored_type()
+    {
+        var store = new FakePhotoStore();
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, _) = await OnLoanAsync(Factory);
+        var client = api.SameUser(tech);
+        var photoBytes = JpegBytes.Concat(Enumerable.Range(0, 4000).Select(i => (byte)i)).ToArray();
+
+        (await CheckInAsync(client, loanId, EquipmentConditions.Damaged, "Bent", photoBytes, "a.png", "image/png"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var loan = await LoanAsync(Factory, loanId);
+        store.Objects.Should().ContainSingle().Which.Key.Should().Be(loan.DamagePhotoKey);
+        store.Objects[loan.DamagePhotoKey!].ContentType.Should().Be("image/jpeg");
+        loan.DamagePhotoSizeBytes.Should().Be(photoBytes.Length);
+        StoredPhotos(Factory).Should().NotContain(f => f.EndsWith(loan.DamagePhotoKey!)); // not the local folder
+        var photo = await client.GetAsync(PhotoUrl(loanId));
+        photo.Content.Headers.ContentType!.MediaType.Should().Be("image/jpeg");
+        (await photo.Content.ReadAsByteArrayAsync()).Should().Equal(photoBytes);
+    }
+
+    [Fact]
+    public async Task A_photo_whose_object_is_gone_is_a_404()
+    {
+        var store = new FakePhotoStore();
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, _) = await OnLoanAsync(Factory);
+        var client = api.SameUser(tech);
+        (await CheckInAsync(client, loanId, EquipmentConditions.Damaged, "Bent", PngBytes)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        store.Objects.Clear();
+
+        (await client.GetAsync(PhotoUrl(loanId))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Theory]
+    [InlineData(PhotoStoreFailure.Unreachable, 503, PhotoStoreUnavailableException.UnreachableMessage)]
+    [InlineData(PhotoStoreFailure.Failed, 502, PhotoStoreUnavailableException.FailedMessage)]
+    public async Task A_store_failure_on_read_is_a_clean_problem(PhotoStoreFailure failure, int status, string title)
+    {
+        var store = new FakePhotoStore();
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, _) = await OnLoanAsync(Factory);
+        var client = api.SameUser(tech);
+        (await CheckInAsync(client, loanId, EquipmentConditions.Damaged, "Bent", PngBytes)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        store.FailWith = failure;
+        var response = await client.GetAsync(PhotoUrl(loanId));
+
+        var problem = await response.ShouldBeProblemAsync(status);
+        problem.GetProperty("title").GetString().Should().Be(title);
+        problem.TryGetProperty("detail", out _).Should().BeFalse();
+        problem.GetProperty("traceId").GetString().Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task A_store_failure_on_check_in_is_a_503_and_changes_nothing()
+    {
+        var store = new FakePhotoStore { FailWith = PhotoStoreFailure.Unreachable };
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, itemId) = await OnLoanAsync(Factory);
+
+        var response = await CheckInAsync(api.SameUser(tech), loanId, EquipmentConditions.Damaged, "Bent", PngBytes);
+
+        (await response.ShouldBeProblemAsync(503)).GetProperty("title").GetString()
+            .Should().Be(PhotoStoreUnavailableException.UnreachableMessage);
+        var loan = await LoanAsync(Factory, loanId);
+        loan.CheckedInAt.Should().BeNull();
+        loan.DamagePhotoKey.Should().BeNull();
+        (await ItemAsync(Factory, itemId)).Status.Should().Be(EquipmentItemStatuses.OnLoan);
+    }
+
+    [Fact]
+    public async Task A_rule_failing_under_the_lock_deletes_the_uploaded_object()
+    {
+        // The pre-check passes; while the photo is "uploading", another technician checks the same loan in. The first
+        // request then finds the loan closed under its row lock: 409, and its uploaded object is removed.
+        var store = new FakePhotoStore();
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, itemId) = await OnLoanAsync(Factory);
+        var client = api.SameUser(tech);
+        var uploaded = new List<string>();
+        store.DuringPut = async key =>
+        {
+            uploaded.Add(key);
+            (await CheckInAsync(client, loanId, EquipmentConditions.Good)).StatusCode.Should().Be(HttpStatusCode.OK);
+        };
+
+        var response = await CheckInAsync(client, loanId, EquipmentConditions.Damaged, "Bent", PngBytes);
+
+        (await response.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be(LoanService.AlreadyCheckedInMessage);
+        uploaded.Should().ContainSingle();
+        store.Objects.Should().BeEmpty();
+        var loan = await LoanAsync(Factory, loanId);
+        loan.ReturnCondition.Should().Be(EquipmentConditions.Good);
+        loan.DamagePhotoKey.Should().BeNull();
+        (await ItemAsync(Factory, itemId)).Status.Should().Be(EquipmentItemStatuses.Available);
+    }
+
+    [Fact]
+    public async Task If_the_cleanup_delete_also_fails_the_request_still_answers_and_the_orphan_is_left()
+    {
+        var store = new FakePhotoStore { FailDelete = true };
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, _) = await OnLoanAsync(Factory);
+        var client = api.SameUser(tech);
+        store.DuringPut = async _ => await CheckInAsync(client, loanId, EquipmentConditions.Good);
+
+        var response = await CheckInAsync(client, loanId, EquipmentConditions.Damaged, "Bent", PngBytes);
+
+        // The original 409 is what the client sees; the orphan (private, unreferenced, random key) is only logged.
+        (await response.ShouldBeProblemAsync(409)).GetProperty("title").GetString().Should().Be(LoanService.AlreadyCheckedInMessage);
+        store.Objects.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_check_in_on_a_closed_or_unknown_loan_uploads_nothing()
+    {
+        var store = new FakePhotoStore();
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, _) = await OnLoanAsync(Factory);
+        var client = api.SameUser(tech);
+        (await CheckInAsync(client, loanId, EquipmentConditions.Good)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await CheckInAsync(client, loanId, EquipmentConditions.Damaged, "Bent", PngBytes)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await CheckInAsync(client, long.MaxValue / 2, EquipmentConditions.Damaged, "Bent", PngBytes)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        store.Objects.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_slow_store_holds_no_loan_or_item_lock()
+    {
+        var store = new FakePhotoStore();
+        await using var api = Factory.WithPhotoStore(store);
+        var (tech, loanId, itemId) = await OnLoanAsync(Factory);
+        var uploading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        store.DuringPut = async _ =>
+        {
+            uploading.SetResult();
+            await release.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        };
+
+        var checkIn = CheckInAsync(api.SameUser(tech), loanId, EquipmentConditions.Damaged, "Bent", PngBytes);
+        await uploading.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // NOWAIT fails at once (55P03) if anyone holds the row lock. Both rows are free while the upload is in flight.
+        await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var transaction = await connection.BeginTransactionAsync();
+            foreach (var (table, id) in new[] { ("EquipmentLoans", loanId), ("EquipmentItems", itemId) })
+            {
+                await using var command = new NpgsqlCommand($"""SELECT 1 FROM "{table}" WHERE "Id" = @id FOR UPDATE NOWAIT""", connection, transaction);
+                command.Parameters.AddWithValue("id", id);
+                (await command.ExecuteScalarAsync()).Should().Be(1);
+            }
+            await transaction.RollbackAsync();
+        }
+        release.SetResult();
+
+        (await checkIn).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await LoanAsync(Factory, loanId)).DamagePhotoKey.Should().NotBeNull();
     }
 }

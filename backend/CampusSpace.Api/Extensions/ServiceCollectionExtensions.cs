@@ -4,6 +4,7 @@ using CampusSpace.Api.Data;
 using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Options;
+using CampusSpace.Api.Photos;
 using CampusSpace.Api.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -57,7 +58,7 @@ public static class ServiceCollectionExtensions
             .BindConfiguration(StorageOptions.SectionName)
             .ValidateDataAnnotations()
             .ValidateOnStart();
-        services.AddSingleton<IDamagePhotoStore>(sp => new DamagePhotoStore(Path.Combine(
+        services.AddSingleton<IPhotoStore>(sp => new LocalPhotoStore(Path.Combine(
             sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
             sp.GetRequiredService<IOptions<StorageOptions>>().Value.DamagePhotosPath)));
         services.AddScoped<IPricingRuleService, PricingRuleService>();

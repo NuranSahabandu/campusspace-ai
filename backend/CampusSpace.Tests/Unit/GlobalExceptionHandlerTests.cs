@@ -2,6 +2,7 @@ using System.Text.Json;
 using CampusSpace.Api.Data.Configurations;
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Middleware;
+using CampusSpace.Api.Photos;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -41,6 +42,19 @@ public class GlobalExceptionHandlerTests
         status.Should().Be(StatusCodes.Status403Forbidden);
         body.GetProperty("status").GetInt32().Should().Be(403);
         body.GetProperty("title").GetString().Should().Be("You can't view this request");
+        body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
+    }
+
+    [Theory]
+    [InlineData(PhotoStoreFailure.Unreachable, 503, PhotoStoreUnavailableException.UnreachableMessage)]
+    [InlineData(PhotoStoreFailure.Failed, 502, PhotoStoreUnavailableException.FailedMessage)]
+    public async Task Photo_store_failures_map_to_503_or_502_with_a_fixed_title(PhotoStoreFailure failure, int expected, string title)
+    {
+        var (status, body) = await HandleAsync(new PhotoStoreUnavailableException(failure));
+
+        status.Should().Be(expected);
+        body.GetProperty("title").GetString().Should().Be(title);
+        body.TryGetProperty("detail", out _).Should().BeFalse();
         body.GetProperty("traceId").GetString().Should().Be("test-trace-id");
     }
 
