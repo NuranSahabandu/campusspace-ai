@@ -66,6 +66,18 @@ Local ports: API `5080`, agent service `8000`, React `5173`, PostgreSQL `5432`.
    dotnet test backend
    ```
 
+### Email (Brevo)
+
+Approvals, rejections, automatic closes, re-plans and officer cancellations email the requester (plan §14); an approval
+also carries a `booking.ics`. Set `Email__BrevoApiKey` and `Email__FromAddress` (a sender verified in Brevo) in `.env`,
+plus `Email__RedirectAllTo` to send every email to one inbox while testing, then re-run `./scripts/dev-secrets.sh`.
+Without a key nothing is sent: each email is recorded as Skipped. Officers see each email's status on the request and
+approval screens.
+
+Environment variables override user-secrets, so you can change a setting for one run without touching `.env`, for
+example `Email__BrevoApiKey=invalid dotnet run --project backend/CampusSpace.Api` (a failure drill: Brevo answers 401,
+the email is Failed, the approval is untouched). Never print the real key.
+
 ## Run the agent service
 
 The API's `/health` includes an `agent-service` check. When the agent service is down, the overall status is
