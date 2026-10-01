@@ -3,8 +3,8 @@
 # role (e.g. neondb_owner) on the DIRECT endpoint (Neon console > Connect > "Connection pooling" OFF).
 #
 #   ./scripts/neon-db.sh roles                    # databases, roles, grants (docs/deploy/neon-roles.sql), then check
-#   ./scripts/neon-db.sh password <role>          # set campusspace_app's or campusspace_agent's password (hidden prompt)
-#   ./scripts/neon-db.sh password-sql <role>      # fallback only if Neon refuses `password` (see RUNBOOK step 1.5)
+#   ./scripts/neon-db.sh password-sql <role>      # set campusspace_app's or campusspace_agent's password (hidden prompt)
+#   ./scripts/neon-db.sh password <role>          # psql \password (hashed); Neon refuses it, self-hosted PostgreSQL only
 #   ./scripts/neon-db.sh migrate                  # apply the EF migrations (idempotent script), then check
 #   ./scripts/neon-db.sh check                    # read-only report (docs/deploy/neon-check.sql)
 #
@@ -106,7 +106,7 @@ case "$command" in
   roles)
     read_owner_url
     run_psql -q < "$repo_root/docs/deploy/neon-roles.sql"
-    echo "roles and databases ready. Next: ./scripts/neon-db.sh password campusspace_app (and campusspace_agent)" >&2
+    echo "roles and databases ready. Next: ./scripts/neon-db.sh password-sql campusspace_app (and campusspace_agent)" >&2
     check
     ;;
   password)
@@ -126,8 +126,8 @@ case "$command" in
     echo "password set for $role" >&2
     ;;
   password-sql)
-    # Fallback: if Neon rejects the SCRAM verifier that `password` sends (its password-strength check needs the clear
-    # text), send ALTER ROLE with the clear text instead: over TLS, through psql's stdin (never a command line), and only
+    # Neon rejects the SCRAM verifier that `password` sends ("Neon only supports being given plaintext passwords": its
+    # strength check needs the clear text), so send ALTER ROLE with the clear text: over TLS, through psql's stdin (never a command line), and only
     # for a hex password of at least 32 characters (nothing in it can break out of the SQL literal).
     role="${1:-}"
     if [[ ! " ${roles[*]} " == *" $role "* ]]; then

@@ -177,7 +177,7 @@ Deployment (from the repo root; docs/deploy/RUNBOOK.md; every script asks for se
 ```bash
 docker build --platform linux/amd64 -t campusspace-api backend          # the images Render builds
 docker build --platform linux/amd64 -t campusspace-agent agent-service
-./scripts/neon-db.sh roles | password <role> | migrate | check           # Neon, as the owner, DIRECT endpoint
+./scripts/neon-db.sh roles | password-sql <role> | migrate | check        # Neon, as the owner, DIRECT endpoint
 ./scripts/verify-deploy.sh --api <url> --agent <url> --web <url>         # checks a deployment end to end
 ```
 
@@ -945,7 +945,7 @@ rewrite only). Topology: clients → API (HTTPS + JWT); API ↔ agent service ov
 keys; API → Neon DIRECT endpoint as `campusspace_app` (CONNECT on `campusspace`, DML + sequences only; it takes only
 transaction-scoped locks, so pooling would work too, but one process with its own Npgsql pool needs no pgbouncer);
 agent → Neon POOLED endpoint as `campusspace_agent` (its own database only); migrations and roles from a Mac as the
-Neon owner through `scripts/neon-db.sh` (`roles` = `docs/deploy/neon-roles.sql`, `password <role>` = psql `\password`,
+Neon owner through `scripts/neon-db.sh` (`roles` = `docs/deploy/neon-roles.sql`, `password-sql <role>` = ALTER ROLE via stdin (Neon refuses the hashed `\password` form),
 `migrate` = the idempotent EF script, `check` = `docs/deploy/neon-check.sql`; the owner URL is read with a hidden prompt
 into PG* variables; psql runs from `postgres:16`). Roles are created by SQL, never in the Neon console (console roles
 join `neon_superuser`). Health: `/health/live` on both services runs no check (no DB, no outbound call; exempt from
