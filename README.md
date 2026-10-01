@@ -78,6 +78,25 @@ Environment variables override user-secrets, so you can change a setting for one
 example `Email__BrevoApiKey=invalid dotnet run --project backend/CampusSpace.Api` (a failure drill: Brevo answers 401,
 the email is Failed, the approval is untouched). Never print the real key.
 
+### Damage photos (Cloudflare R2)
+
+Damage photos from check-in go to a **private** Cloudflare R2 bucket when all four `R2__AccountId`, `R2__AccessKeyId`,
+`R2__SecretAccessKey` and `R2__Bucket` are set in `.env` (then re-run `./scripts/dev-secrets.sh`). With none of them set,
+Development keeps photos in the git-ignored `backend/CampusSpace.Api/App_Data/damage-photos` folder; setting only some is
+a startup error, and Production refuses to start without R2. The startup log says which store is used (`Photo store: R2`
+or `Photo store: local folder`), never a key or bucket.
+
+- The bucket is never public and no photo URL exists: `GET /api/loans/{id}/photo` (Lab Technician, Facilities Officer)
+  streams the photo through the API with `Cache-Control: private, no-store`. If R2 can't be reached it answers 503
+  (502 if R2 answers with an error), and a check-in with a photo is refused the same way with nothing saved.
+- Object keys are random (`<32 hex>.jpg|png`) with no names or ids; the database stores the key, content type and size.
+- With R2 configured, startup copies any photos left in the local folder into the bucket once (it logs the count and
+  leaves the folder; delete it yourself once the count looks right).
+- A rare orphan (an uploaded photo whose check-in failed and whose clean-up delete also failed) is logged as
+  `Orphaned damage photo object <key>`. It is private and unreferenced. To clean up, compare the bucket's objects in the
+  Cloudflare dashboard with the keys in use (read-only):
+  `select "DamagePhotoKey" from "EquipmentLoans" where "DamagePhotoKey" is not null;`
+
 ## Run the agent service
 
 The API's `/health` includes an `agent-service` check. When the agent service is down, the overall status is
@@ -186,6 +205,8 @@ Facilities Officers manage them and `/api/rooms/{id}/blackouts`. Errors, includi
 In Development, the API seeds any of these accounts whose email is missing, plus three clubs when the `Clubs` table
 is empty. They are public demo credentials,
 not secrets. All of them use the password **`CampusSpace#2026`** (`Seed:DemoPassword` in `appsettings.Development.json`).
+The deployed (Production) API seeds the same accounts with a different password from the `Seed__DemoPassword`
+environment variable; it is given in the submitted report, never in this public repository.
 
 | Email | Role | Name |
 |-------|------|------|
@@ -207,3 +228,74 @@ projector, ac, whiteboard), **A305** (MB, 50, no projector) and **N201** (NB, 60
 One "Projector maintenance" blackout on **A101** next Monday 08:00–12:00 (campus time) is added when there are no blackouts.
 
 To re-seed, wipe the database (`docker compose down -v`) and run the API again.
+
+## Deploy (production configuration)
+
+Hosting itself (Render, Neon, Vercel, the Dockerfiles and the agent service's Postgres checkpointer) is set up in a later
+task. This section is the API's production contract.
+
+### Environment variables
+
+Set these on the host, never in Git. `appsettings.Production.json` holds no secrets. The API's names are in environment
+variable form (`__` stands for the `:` in its configuration keys).
+
+| Component | Variable | Secret | Required in Production | Notes |
+|-----------|----------|--------|------------------------|-------|
+| API | `ASPNETCORE_ENVIRONMENT` | no | yes | `Production` |
+| API | `PORT` | no | set by Render | the API listens on `http://0.0.0.0:$PORT`; TLS ends at Render's proxy |
+| API | `ConnectionStrings__Default` | **yes** | yes | the restricted app role, with `SslMode=Require` (startup refuses less) |
+| API | `Jwt__Key` | **yes** | yes | ≥ 32 bytes (`openssl rand -hex 32`) |
+| API | `Jwt__Issuer`, `Jwt__Audience` | no | yes | `campusspace-api`, `campusspace-clients` |
+| API | `AgentService__BaseUrl` | no | yes | the agent service's URL |
+| API | `AgentService__ServiceKey` | **yes** | yes | X-Service-Key, ≥ 32 chars, differs from `AgentTools__Key` |
+| API | `AgentTools__Key` | **yes** | yes | X-Agent-Key, ≥ 32 bytes |
+| API | `Cors__AllowedOrigins__0` | no | yes | the Vercel URL, e.g. `https://<app>.vercel.app` (https, no path) |
+| API | `Cors__AllowedOrigins__1` | no | optional | `http://localhost:5173` (local React against the deployed API) |
+| API | `R2__AccountId`, `R2__AccessKeyId`, `R2__SecretAccessKey`, `R2__Bucket` | **yes** (the key pair) | yes | the production bucket (private) |
+| API | `Seed__DemoPassword` | **yes** | yes | demo accounts' password, ≥ 12 characters, not the Development one |
+| API | `Email__BrevoApiKey` | **yes** | optional | without it every email is Skipped |
+| API | `Email__FromAddress` | no | with a Brevo key | a sender verified in Brevo |
+| API | `Email__RedirectAllTo` | no | **yes** with a Brevo key | the seeded addresses are fake (`@campusspace.local`); every email goes here (startup warns otherwise) |
+| Agent service | `AgentService__ServiceKey`, `AgentTools__Key` | **yes** | yes | the same values as the API's |
+| Agent service | `API_BASE_URL` | no | yes | the API's URL (for `/internal/agent-tools`) |
+| Agent service | `GOOGLE_API_KEY` | **yes** | with LLM agents | Gemini key |
+| Agent service | `AGENT_LLM_AGENTS` | no | optional | e.g. `supervisor,venue_matching,equipment_allocation,policy_cost` |
+| Agent service | `PLANNER_MODEL`, `WORKER_MODEL`, `PLANNER_THINKING`, `WORKER_THINKING` | no | optional | model ids and thinking levels |
+| Agent service | `AGENT_CHECKPOINT_PATH` | no | optional | SqliteSaver file (a persistent disk only) |
+| Agent service | `AGENT_ENV`, `AGENT_FAULT*` | no | **never** | development-only failure drills |
+| Web (Vercel) | `VITE_API_URL` | no (public in the bundle) | yes | the API's https URL, read at **build** time; never put a secret in a `VITE_` variable |
+| Mobile (APK) | `API_URL` (`--dart-define`) | no | yes | the API's https URL; a release build allows HTTPS only |
+
+### What Production changes (`appsettings.Production.json`)
+
+- **Migrations never run on startup** (`Database:MigrateOnStartup` false): the app role has no DDL rights. If a migration
+  is pending, the API refuses to start with this instruction. Apply migrations with the database **owner** role:
+  ```bash
+  dotnet ef migrations script --idempotent -o /tmp/migrate.sql --project backend/CampusSpace.Api
+  psql "<owner connection URL, sslmode=require>" -v ON_ERROR_STOP=1 -f /tmp/migrate.sql
+  ```
+  (or `ConnectionStrings__Default='<owner connection string>;SslMode=Require' dotnet ef database update --project backend/CampusSpace.Api`).
+  The app role needs DML only, for example:
+  ```sql
+  grant usage on schema public to campusspace_app;
+  grant select, insert, update, delete on all tables in schema public to campusspace_app;
+  grant usage, select on all sequences in schema public to campusspace_app;
+  alter default privileges for role <owner> in schema public grant select, insert, update, delete on tables to campusspace_app;
+  alter default privileges for role <owner> in schema public grant usage, select on sequences to campusspace_app;
+  ```
+- **The seed runs on startup with reference data only** (`Seed:OnStartup`): demo accounts, clubs, buildings, rooms,
+  features, equipment types and items, pricing rules and policy. No requests, bookings or blackouts. It only selects
+  and inserts (DML rights), adds missing rows and never overwrites, so it is safe on every start.
+- **TLS to the database is required** (`Database:RequireSsl`): a connection string below `SslMode=Require` stops startup.
+  For a local Production smoke run against Docker Postgres (no TLS), override it for that run only:
+  `Database__RequireSsl=false`.
+- **Swagger is on** at `/swagger` (Bearer scheme; the internal agent-tool routes stay hidden).
+- **Behind Render's proxy**: `X-Forwarded-For`/`X-Forwarded-Proto` are honoured (only the proxy's last entry), so the API
+  sees HTTPS and redirects plain HTTP to it, except `/health`, which Render's health check calls over HTTP.
+- **CORS**: only the configured origins; startup refuses an empty list, `*`, a path or plain `http` other than localhost.
+- **Logs**: readable console lines (time, level, trace id, source), no request bodies, no secrets.
+- `/health` checks the database and the agent service. It does not check R2: every ping would spend R2 operations,
+  and an R2 outage only affects damage photos (503 on those requests), which a restart would not fix.
+
+Startup order: PostgreSQL → migrations (owner role) → agent service → API (seeds) → React → Flutter.
+
