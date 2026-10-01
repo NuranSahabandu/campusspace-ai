@@ -4,6 +4,7 @@
 #
 #   ./scripts/neon-db.sh roles                    # databases, roles, grants (docs/deploy/neon-roles.sql), then check
 #   ./scripts/neon-db.sh password <role>          # set campusspace_app's or campusspace_agent's password (hidden prompt)
+#   ./scripts/neon-db.sh password-sql <role>      # fallback only if Neon refuses `password` (see RUNBOOK step 1.5)
 #   ./scripts/neon-db.sh migrate                  # apply the EF migrations (idempotent script), then check
 #   ./scripts/neon-db.sh check                    # read-only report (docs/deploy/neon-check.sql)
 #
@@ -20,7 +21,7 @@ psql_image=postgres:16
 roles=(campusspace_app campusspace_agent)
 
 usage() {
-  sed -n '2,8p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+  sed -n '2,9p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -122,6 +123,32 @@ case "$command" in
     printf '%s\n' "Paste the new password for $role twice (hidden). Generate it first:" \
       "  openssl rand -hex 32 | tr -d '\n' | pbcopy" >&2
     run_psql --tty -d "$business_db" -c "\\password $role"
+    echo "password set for $role" >&2
+    ;;
+  password-sql)
+    # Fallback: if Neon rejects the SCRAM verifier that `password` sends (its password-strength check needs the clear
+    # text), send ALTER ROLE with the clear text instead: over TLS, through psql's stdin (never a command line), and only
+    # for a hex password of at least 32 characters (nothing in it can break out of the SQL literal).
+    role="${1:-}"
+    if [[ ! " ${roles[*]} " == *" $role "* ]]; then
+      echo "error: give one of: ${roles[*]}" >&2
+      exit 2
+    fi
+    read_owner_url
+    printf 'New password for %s (hex, >= 32 characters; input hidden): ' "$role" >&2
+    IFS= read -rs new_password; printf '\n' >&2
+    printf 'Again: ' >&2
+    IFS= read -rs again; printf '\n' >&2
+    if [[ "$new_password" != "$again" ]]; then
+      echo "error: the two entries differ" >&2
+      exit 1
+    fi
+    if [[ ! "$new_password" =~ ^[0-9a-fA-F]{32,}$ ]]; then
+      echo "error: use a hex password of at least 32 characters (openssl rand -hex 32)" >&2
+      exit 1
+    fi
+    printf "ALTER ROLE %s PASSWORD '%s';\n" "$role" "$new_password" | run_psql -q -d "$business_db"
+    unset new_password again
     echo "password set for $role" >&2
     ;;
   migrate)
