@@ -17,6 +17,13 @@ keys=(
   AgentService__ServiceKey
   AgentTools__Key
 )
+# Optional: copied when set in .env, removed from user-secrets when empty (so a key deleted from .env doesn't linger).
+# Without Email__BrevoApiKey the API records every email as Skipped.
+optional_keys=(
+  Email__BrevoApiKey
+  Email__FromAddress
+  Email__RedirectAllTo
+)
 
 if [[ ! -f "$env_file" ]]; then
   echo "error: $env_file not found. Run: cp .env.example .env" >&2
@@ -63,4 +70,18 @@ for key in "${keys[@]}"; do
   dotnet user-secrets set "${key//__/:}" "$value" --project "$project" >/dev/null
 done
 
+set_optional=()
+removed_optional=()
+for key in "${optional_keys[@]}"; do
+  value="$(lookup "$key" || true)"
+  if [[ -n "$value" ]]; then
+    dotnet user-secrets set "${key//__/:}" "$value" --project "$project" >/dev/null
+    set_optional+=("${key//__/:}")
+  else
+    dotnet user-secrets remove "${key//__/:}" --project "$project" >/dev/null 2>&1 || true
+    removed_optional+=("${key//__/:}")
+  fi
+done
+
 echo "set ${#keys[@]} secrets: ${keys[*]//__/:}"
+echo "optional set: ${set_optional[*]:-none}; optional not set: ${removed_optional[*]:-none}"
