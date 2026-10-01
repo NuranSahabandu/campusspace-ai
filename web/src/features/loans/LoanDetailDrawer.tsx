@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
 import CloseIcon from '@mui/icons-material/Close'
-import { Alert, Box, Button, Drawer, IconButton, LinearProgress, Skeleton, Stack, Typography } from '@mui/material'
+import { Alert, Box, Drawer, IconButton, LinearProgress, Skeleton, Stack, Typography } from '@mui/material'
 import { parseProblem } from '../../api/problem'
 import type { LoanDto } from '../../api/types'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { LoanFlags } from './LoanFlags'
 import { useBlobImageRef, useLoan, useLoanPhoto } from './useLoans'
 
@@ -24,17 +25,10 @@ export function LoanDetailDrawer({ id, onClose }: { id: number; onClose: () => v
         </Stack>
         {isPending ? (
           <LinearProgress aria-label="Loading loan" />
+        ) : isError && parseProblem(error).status === 404 ? (
+          <Alert severity="warning">Loan not found.</Alert>
         ) : isError ? (
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={() => refetch()}>
-                Retry
-              </Button>
-            }
-          >
-            Could not load the loan: {parseProblem(error).title}
-          </Alert>
+          <QueryErrorAlert error={error} what="the loan" onRetry={() => refetch()} />
         ) : (
           <LoanDetails loan={loan} />
         )}
@@ -88,16 +82,7 @@ function LoanPhoto({ loan }: { loan: LoanDto }) {
         Damage photo
       </Typography>
       {isError ? (
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={() => refetch()}>
-              Retry
-            </Button>
-          }
-        >
-          Could not load the photo: {parseProblem(error).title}
-        </Alert>
+        <QueryErrorAlert error={error} what="the photo" onRetry={() => refetch()} />
       ) : blob ? (
         <Box
           component="img"

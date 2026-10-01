@@ -18,11 +18,11 @@ import {
   Typography,
 } from '@mui/material'
 import { api } from '../../api/client'
-import { parseProblem } from '../../api/problem'
 import type { PolicySettingDto, PolicySettingsUpdateRequest } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { OpeningHoursEditor } from './OpeningHoursEditor'
 import {
   changedKeys,
@@ -178,16 +178,7 @@ export function PolicyPage() {
   let content
   if (isError) {
     content = (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load the booking policy: {parseProblem(error).title}
-      </Alert>
+      <QueryErrorAlert error={error} what="the booking policy" onRetry={() => refetch()} />
     )
   } else if (isPending) {
     content = <Skeleton variant="rectangular" height={400} aria-label="Loading booking policy" />

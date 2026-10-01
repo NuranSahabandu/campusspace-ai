@@ -137,4 +137,22 @@ void main() {
     expect(find.byType(RoomDetailScreen), findsOneWidget);
     expect(find.text('Room 2'), findsOneWidget);
   });
+
+  testWidgets('filter options that fail to load say so with Retry; the rooms still show', (tester) async {
+    var calls = 0;
+    when(() => repository.getFeatures()).thenAnswer((_) async {
+      if (calls++ == 0) throw httpError('/api/features', 503, body: {'title': 'Service unavailable'});
+      return const [Feature(id: 2, code: 'projector', name: 'Projector')];
+    });
+    stubRooms((_, _) async => roomsPage(1, 2));
+    await pumpRoomsScreens(tester, repository);
+
+    expect(find.text('${RoomsScreen.filtersFailed}: Service unavailable'), findsOneWidget);
+    expect(find.byType(RoomCard), findsNWidgets(2));
+
+    await tester.tap(find.descendant(of: find.byKey(const Key('rooms.filtersError')), matching: find.text('Retry')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('rooms.filtersError')), findsNothing);
+    expect(find.widgetWithText(FilterChip, 'Projector'), findsOneWidget);
+  });
 }

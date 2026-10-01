@@ -1,7 +1,7 @@
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, Typography } from '@mui/material'
-import { parseProblem } from '../../api/problem'
 import type { BlackoutDto } from '../../api/types'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { ClashList } from './ClashList'
 import { useBlackoutClashes } from './useFacilities'
 
@@ -20,17 +20,7 @@ export function BlackoutClashesDialog({ blackout, onClose }: { blackout: Blackou
         {isPending ? (
           <LinearProgress aria-label="Loading clashes" sx={{ mt: 2 }} />
         ) : isError ? (
-          <Alert
-            severity="error"
-            sx={{ mt: 2 }}
-            action={
-              <Button color="inherit" size="small" onClick={() => refetch()}>
-                Retry
-              </Button>
-            }
-          >
-            Could not load the clashes: {parseProblem(error).title}
-          </Alert>
+          <QueryErrorAlert error={error} what="the clashes" onRetry={() => refetch()} sx={{ mt: 2 }} />
         ) : clashes.length === 0 ? (
           <Alert severity="success" sx={{ mt: 2 }}>
             No active bookings clash with this blackout.

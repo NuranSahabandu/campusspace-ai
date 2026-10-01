@@ -4,6 +4,7 @@ import { Alert, Box, Button, Chip, LinearProgress, Stack, Typography } from '@mu
 import { parseProblem } from '../../api/problem'
 import type { AgentRunDetailDto } from '../../api/types'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { AgentTimeline, JsonText } from '../approvals/AgentTimeline'
 import { RUN_STATUS_COLORS } from '../approvals/agentRuns'
 import { PolicyChangedBanner } from '../approvals/PolicyChangedBanner'
@@ -45,16 +46,7 @@ export function AgentRunDetailPage() {
     return (
       <>
         {back}
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={() => query.refetch()}>
-              Retry
-            </Button>
-          }
-        >
-          Could not load the agent run: {problem.title}
-        </Alert>
+        <QueryErrorAlert error={query.error} what="the agent run" onRetry={() => query.refetch()} />
       </>
     )
   }

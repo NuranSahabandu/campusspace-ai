@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { BlackoutClashDto, BlackoutDto, BuildingDto, FeatureDto, RoomDto } from '../../api/types'
 
@@ -39,13 +40,16 @@ export const ROOMS_SORT_FIELDS: Record<string, string> = {
 export const BLACKOUTS_SORT_FIELDS: Record<string, string> = { start: 'start' }
 
 export function useRooms(params: RoomsParams) {
-  return usePagedQuery<RoomDto>(roomsKeys.list(params), '/api/rooms', params)
+  return usePagedQuery<RoomDto>(roomsKeys.list(params), '/api/rooms', params, { meta: MAIN_QUERY_META })
 }
 
 export function useRoom(id: number) {
   return useQuery({
     queryKey: roomsKeys.detail(id),
     queryFn: async ({ signal }) => (await api.get<RoomDto>(`/api/rooms/${id}`, { signal })).data,
+    // A non-numeric URL (/rooms/abc) is "not found" without a request.
+    enabled: Number.isInteger(id) && id > 0,
+    meta: MAIN_QUERY_META,
   })
 }
 

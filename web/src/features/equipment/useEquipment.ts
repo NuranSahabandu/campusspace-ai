@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import type { EquipmentItemDto, EquipmentTypeDto, EquipmentTypeRefDto, PagedResult } from '../../api/types'
 
@@ -42,11 +43,15 @@ export const EQUIPMENT_ITEMS_SORT_FIELDS: Record<string, string> = {
 }
 
 export function useEquipmentTypes(params: EquipmentTypesParams) {
-  return usePagedQuery<EquipmentTypeDto>(equipmentTypesKeys.list(params), '/api/equipment-types', params)
+  return usePagedQuery<EquipmentTypeDto>(equipmentTypesKeys.list(params), '/api/equipment-types', params, {
+    meta: MAIN_QUERY_META,
+  })
 }
 
 export function useEquipmentItems(params: EquipmentItemsParams) {
-  return usePagedQuery<EquipmentItemDto>(equipmentItemsKeys.list(params), '/api/equipment-items', params)
+  return usePagedQuery<EquipmentItemDto>(equipmentItemsKeys.list(params), '/api/equipment-items', params, {
+    meta: MAIN_QUERY_META,
+  })
 }
 
 /** The fixed category list (EquipmentCategories on the server). */

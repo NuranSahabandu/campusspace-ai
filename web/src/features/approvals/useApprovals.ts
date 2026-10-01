@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { type ListParams, usePagedQuery } from '../../api/list'
 import { parseProblem } from '../../api/problem'
 import type { AgentRunDetailDto, AgentRunSummaryDto, ApprovalQueueItemDto, QuotationDto } from '../../api/types'
@@ -33,6 +34,7 @@ export const APPROVAL_QUEUE_SORT_FIELDS: Record<string, string> = {
 export function useApprovalQueue(params: ListParams) {
   return usePagedQuery<ApprovalQueueItemDto>(approvalsKeys.queue(params), '/api/approvals/queue', params, {
     refetchInterval: () => QUEUE_REFRESH_MS,
+    meta: MAIN_QUERY_META,
   })
 }
 

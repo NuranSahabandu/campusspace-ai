@@ -1,3 +1,4 @@
+import 'package:campusspace_mobile/core/ui/error_retry_view.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -215,5 +216,12 @@ void main() {
     expect(find.text('Mon 28 Sep 2026, 10:36 · by Sunil Jayasinghe'), findsOneWidget);
     expect(find.byType(CheckInForm), findsNothing);
     expect(find.byKey(const Key('checkIn.submit')), findsNothing);
+  });
+
+  testWidgets('403 shows access denied without Retry', (tester) async {
+    when(() => loans.getLoan(6)).thenThrow(httpError('/api/loans/6', 403, body: {'title': 'Forbidden'}));
+    await openCheckIn(tester);
+    expect(find.text(ErrorRetryView.forbidden), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
   });
 }

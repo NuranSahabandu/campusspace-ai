@@ -1,9 +1,9 @@
 import { Link as RouterLink } from 'react-router'
-import { Alert, Button, Chip, Link, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
+import { Chip, Link, Skeleton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { parseProblem } from '../../api/problem'
 import type { AgentRunSummaryDto } from '../../api/types'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { RUN_STATUS_COLORS } from './agentRuns'
 
 /** Every agent run of a request, newest first, with its status, timings, failure reason and a link to its trace. */
@@ -11,16 +11,7 @@ export function RunHistory({ query }: { query: UseQueryResult<AgentRunSummaryDto
   if (query.isPending) return <Skeleton variant="rectangular" height={80} aria-label="Loading agent runs" />
   if (query.isError)
     return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => query.refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load the agent runs: {parseProblem(query.error).title}
-      </Alert>
+      <QueryErrorAlert error={query.error} what="the agent runs" onRetry={() => query.refetch()} />
     )
   if (!query.data.length) return <Typography color="text.secondary">No agent runs yet</Typography>
   return (

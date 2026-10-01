@@ -4,6 +4,7 @@ import 'package:campusspace_mobile/core/campus_time.dart';
 import 'package:campusspace_mobile/features/rooms/models.dart';
 import 'package:campusspace_mobile/features/rooms/room_detail_screen.dart';
 import 'package:campusspace_mobile/features/rooms/room_schedule.dart';
+import 'package:campusspace_mobile/core/ui/error_retry_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -234,5 +235,13 @@ void main() {
 
       verify(() => repository.getSchedule(3, DateTime.utc(2026, 9, 29))).called(2);
     });
+  });
+
+  testWidgets('403 shows access denied without Retry', (tester) async {
+    when(() => repository.getRoom(5)).thenThrow(httpError('/api/rooms/5', 403, body: {'title': 'Forbidden'}));
+    await pumpRoomsScreens(tester, repository, initialLocation: '/rooms/5');
+
+    expect(find.text(ErrorRetryView.forbidden), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
   });
 }

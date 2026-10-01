@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Refreshable;
 
-import '../../core/api/problem.dart';
-import '../rooms/room_widgets.dart';
+import '../../core/ui/error_retry_view.dart';
 
 /// A small error-coloured flag, such as "Overdue" or "Late return".
 class FlagChip extends StatelessWidget {
@@ -26,7 +25,7 @@ class FlagChip extends StatelessWidget {
   }
 }
 
-/// The server's message for a failed load, with a Retry button.
+/// A failed load: the shared [ErrorRetryView] (offline, 403 or the server's message with Retry).
 class LoadErrorView extends StatelessWidget {
   const LoadErrorView({super.key, required this.error, required this.onRetry});
 
@@ -34,11 +33,7 @@ class LoadErrorView extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => MessageView(
-        icon: Icons.error_outline,
-        message: Problem.from(error).title,
-        action: FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
-      );
+  Widget build(BuildContext context) => ErrorRetryView(error: error, onRetry: onRetry);
 }
 
 /// Pull-to-refresh for a FutureProvider: waits for the reload, and leaves any error to the screen's error state.

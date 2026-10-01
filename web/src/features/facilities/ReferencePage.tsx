@@ -1,7 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import AddIcon from '@mui/icons-material/Add'
 import {
-  Alert,
   Button,
   Chip,
   LinearProgress,
@@ -17,10 +16,10 @@ import {
 } from '@mui/material'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { api } from '../../api/client'
-import { parseProblem } from '../../api/problem'
 import type { BuildingDto, FeatureDto } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { equipmentTypesKeys } from '../equipment/useEquipment'
 import { BuildingFormDialog } from './BuildingFormDialog'
 import { FEATURE_CODE_HINT, FeatureFormDialog } from './FeatureFormDialog'
@@ -72,16 +71,7 @@ function ReferenceSection<T extends { id: number; code: string }>({
       </Stack>
       {isPending && <LinearProgress aria-label={`Loading ${title.toLowerCase()}`} />}
       {isError && (
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={() => refetch()}>
-              Retry
-            </Button>
-          }
-        >
-          Could not load {title.toLowerCase()}: {parseProblem(error).title}
-        </Alert>
+        <QueryErrorAlert error={error} what={title.toLowerCase()} onRetry={() => refetch()} />
       )}
       {data && (
         <TableContainer component={Paper} variant="outlined">

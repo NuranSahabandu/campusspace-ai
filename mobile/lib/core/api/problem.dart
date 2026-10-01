@@ -2,7 +2,7 @@ import 'package:dio/dio.dart';
 
 /// RFC 9457 Problem Details, reduced to what the UI needs (mirrors web/src/api/problem.ts).
 class Problem {
-  const Problem({required this.title, this.status, this.traceId, this.fieldErrors = const {}});
+  const Problem({required this.title, this.status, this.traceId, this.fieldErrors = const {}, this.offline = false});
 
   /// Parses a Problem Details body. Anything that is not a JSON object gets a generic title.
   factory Problem.fromJson(Object? body, {int? status}) {
@@ -23,7 +23,8 @@ class Problem {
 
   factory Problem.fromDioException(DioException error) {
     final response = error.response;
-    if (response == null) return const Problem(title: 'Cannot reach the server');
+    // No response at all: connection refused, DNS failure or a timeout.
+    if (response == null) return const Problem(title: 'Cannot reach the server', offline: true);
     return Problem.fromJson(response.data, status: response.statusCode);
   }
 
@@ -35,6 +36,9 @@ class Problem {
   final String title;
   final int? status;
   final String? traceId;
+
+  /// True when the API could not be reached (no HTTP response), as opposed to an error answer.
+  final bool offline;
 
   /// camelCase field name → messages.
   final Map<String, List<String>> fieldErrors;

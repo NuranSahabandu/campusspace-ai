@@ -2,6 +2,9 @@
     <!-- The app calls the CampusSpace API. The template only grants INTERNET in the debug and
          profile manifests (for the Flutter tool), so without this a release APK has no network. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Request status notifications (UC08). A runtime permission on Android 13+, asked once after the first
+         successful submit, never at launch. The plugin merges it too; declared here so it is visible. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="CampusSpace"
         android:name="${applicationName}"

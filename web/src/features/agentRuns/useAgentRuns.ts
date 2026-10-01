@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '../../api/client'
+import { MAIN_QUERY_META } from '../../api/forbidden'
 import { compactParams, type ListParams, usePagedQuery } from '../../api/list'
 import type { AgentRunDetailDto, AgentRunListItemDto, AgentRunMetricsDto } from '../../api/types'
 import { isLiveRun } from '../approvals/agentRuns'
@@ -41,7 +42,10 @@ export const AGENT_RUNS_SORT_FIELDS: Record<string, string> = {
 }
 
 export function useAgentRunsList(params: AgentRunsParams, options: { enabled?: boolean } = {}) {
-  return usePagedQuery<AgentRunListItemDto>(agentRunsKeys.list(params), '/api/agent-runs', params, options)
+  return usePagedQuery<AgentRunListItemDto>(agentRunsKeys.list(params), '/api/agent-runs', params, {
+    ...options,
+    meta: MAIN_QUERY_META,
+  })
 }
 
 export function useAgentRunMetrics(range: MetricsRange, options: { enabled?: boolean } = {}) {
@@ -60,6 +64,7 @@ export function useAgentRunDetail(runId: string | undefined) {
     queryKey: agentRunsKeys.detail(runId ?? ''),
     queryFn: async ({ signal }) => (await api.get<AgentRunDetailDto>(`/api/agent-runs/${runId}`, { signal })).data,
     enabled: runId !== undefined,
+    meta: MAIN_QUERY_META,
     refetchInterval: (query) => (query.state.data && isLiveRun(query.state.data.status) ? LIVE_RUN_REFRESH_MS : false),
   })
 }

@@ -196,6 +196,15 @@ Show an API `DateOnly` ("yyyy-MM-dd") with `formatDateOnly` (never `new Date()`,
 `campusToday()` for a date input's `min` and past-date checks. Policy forms name their fields by the snake_case setting keys,
 because `parseProblem` only lower-cases the first letter (`max_duration_hours` stays as is). Put extra content in a
 `ConfirmDialog` (for example a list of changes) as its `children`.
+Errors and 403 (Task 5.4): a data view's error state is `QueryErrorAlert` ("Could not load {what}: {title}" + Retry;
+`ServerDataGrid` uses it). A page's MAIN query (its list, detail, report or settings) passes `meta: MAIN_QUERY_META`
+(`api/forbidden.ts`; `usePagedQuery` takes `meta`), and the QueryCache sends a 403 on it to `/forbidden` (full-page
+`browser.assign`, like a 401). Secondary widgets, pickers and polls leave the meta out and show "You don't have access
+to this." in place without Retry, never navigating (a hook shared by a page and a picker, like `useUsers`, opts in per
+caller). Mutation 403s stay in their dialogs. Booking request and approval detail keep 403 → "Request not found"
+(object-level check: never reveal that a request exists), so `useBookingRequest` has no meta. Queries don't retry a
+4xx other than 408/429 (`isPermanentClientError`). A detail page validates its id (`Number.isInteger(id) && id > 0`,
+query `enabled`) and shows its not-found message without a call.
 Request statuses, labels, chip colours and the All/Open/Approved/Closed groups live only in
 `features/requests/requestStatus.ts` (mirrors the mobile `request_status.dart`); show them with `RequestStatusChip`. Queries
 that show requests re-fetch while one is in `REFRESHING_STATUSES` (AgentProcessing, RevisionRequested; 3 s): pass
@@ -260,6 +269,32 @@ messages, so keep them in step with `LoanService`/`DamagePhotoStore`. Photos com
 (image_picker with maxWidth 1600, imageQuality 80) as bytes, and are uploaded as dio `FormData`. A loan that is already
 checked in opens read-only. Tests use `pumpLoansScreens`, `MockLoansRepository`, `FakePhotoPicker` and the
 `live*` models from `test/fixtures/loans.dart`.
+Status notifications (mobile, UC08, Task 5.4, `features/notifications/`): local notifications only (no FCM, no
+WorkManager), so they show ONLY while the app process is alive (foreground or recently backgrounded); README says so.
+One app-level `statusWatcherProvider` (watched in `CampusSpaceApp`) exists while a Student or Lecturer is signed in;
+never add a per-screen watcher. It polls `getRequests(watchedStatuses, page 1, pageSize 100)` (statuses that can still
+change) at `RequestStatuses.shortestRefreshInterval` (3 s / 15 s) or `idlePollInterval` 60 s, and looks up a request
+that left the list once by id (`fromDetail`: an actor-less Rejected = "closed automatically"). The baseline
+(`StatusBaseline`) is in memory only: the first poll after sign-in notifies NOTHING, then one notice per real change
+(never twice for the same change). Logout or a user switch disposes it: stop, clear the baseline, `cancelAll()`.
+Notified: Approved, Rejected (officer) / Closed (system), revision (RevisionRequested, or PendingApproval →
+AgentProcessing), AgentFailed, Cancelled by an officer. Not PendingApproval (not actionable, repeats after each revise)
+and not the owner's own cancel. Text comes only from `noticeText`: fixed templates plus `safePurpose` (control
+characters stripped, ≤ 40 chars); never ids, notes, reasons or agent output; `androidDetails()` uses the one channel
+`request_status`, the monochrome `ic_stat_campusspace` icon (kept by `res/raw/keep.xml`) and
+`NotificationVisibility.private`. The notification id and payload are the request id; a tap goes through
+`routerProvider.go(AppRoutes.request(id))` while the process runs (a cold-start tap just opens the app). The plugin
+sits behind `StatusNotifier` (`LocalStatusNotifier`, lazily initialised, never in `main`, every call guarded).
+POST_NOTIFICATIONS is asked once per install, only after a successful submit (`NotificationPermission.askOnce`, flag
+`notifications.permissionAsked` in flutter_secure_storage, not cleared at logout); denied = the app works normally,
+never ask again. flutter_local_notifications needs core library desugaring (`build.gradle.kts`). Tests: `pumpApp`
+fakes the notifier and turns the watcher off unless `statusWatcher: true`; `FakeStatusNotifier` (`tap(id)`,
+`enabled`/`grant`) and `FakePermissionFlagStore`; stop a `StatusWatcher` before a test ends (pending timer).
+State handling (both clients, every new data screen): a loading indicator, a specific empty message, and an error with
+Retry. Flutter: a full-screen failed load uses `ErrorRetryView` (`core/ui/`; offline = "Cannot reach the server" +
+"Check your connection and try again." + Retry, never exception text; 403 = "You don't have access to this." without
+Retry; else the Problem title + Retry), a section uses `InlineLoadError`; never hide a failed load with `.value ?? []`.
+`Problem.offline` is true when dio got no response. 401 stays the interceptor's job (logout → login).
 
 Auth smoke test (API running; demo accounts are seeded in Development, password in README "Test accounts"):
 

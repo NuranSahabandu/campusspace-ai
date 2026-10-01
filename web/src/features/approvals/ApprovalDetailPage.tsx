@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Alert, AlertTitle, Box, Button, LinearProgress, Skeleton, Stack, Typography } from '@mui/material'
 import { parseProblem } from '../../api/problem'
 import type { BookingRequestDetailDto } from '../../api/types'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { toast } from '../../ui/toastStore'
 import { QuoteTable } from '../quotations/QuoteTable'
 import { Card, RequestCards, Timeline } from '../requests/RequestCards'
@@ -84,20 +85,12 @@ export function ApprovalDetailPage() {
   if (requestQuery.isPending) return <LinearProgress aria-label="Loading request" />
   if (requestQuery.isError) {
     const problem = parseProblem(requestQuery.error)
+    // Like the request detail page: a 403 reads like a 404 and never redirects (useBookingRequest has no MAIN_QUERY_META).
     if (problem.status === 404 || problem.status === 403) return notFound
     return (
       <>
         {back}
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={() => requestQuery.refetch()}>
-              Retry
-            </Button>
-          }
-        >
-          Could not load the request: {problem.title}
-        </Alert>
+        <QueryErrorAlert error={requestQuery.error} what="the request" onRetry={() => requestQuery.refetch()} />
       </>
     )
   }
@@ -261,16 +254,7 @@ function Section<T>({
 }) {
   if (query.isError)
     return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={() => query.refetch()}>
-            Retry
-          </Button>
-        }
-      >
-        Could not load the {noun}: {parseProblem(query.error).title}
-      </Alert>
+      <QueryErrorAlert error={query.error} what={`the ${noun}`} onRetry={() => query.refetch()} />
     )
   if (query.loading && query.data === undefined)
     return <Skeleton variant="rectangular" height={120} aria-label={`Loading ${noun}`} />

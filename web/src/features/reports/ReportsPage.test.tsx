@@ -114,7 +114,7 @@ describe('Reports page', () => {
     reportsHandlers({ status: { utilization: 500 } })
     const { user } = renderApp(URL_RANGE, { role: Roles.FacilitiesOfficer })
 
-    expect(await screen.findByText('Could not load the utilization report.')).toBeInTheDocument()
+    expect(await screen.findByText('Could not load the utilization report: Something went wrong')).toBeInTheDocument()
     expect(await within(await screen.findByRole('region', { name: 'Approval rate' })).findByText('40.0% (4 of 10)')).toBeInTheDocument()
     reportsHandlers()
     await user.click(screen.getByRole('button', { name: 'Retry' }))

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { Alert, Box, Button, Skeleton, Stack, TextField, Typography } from '@mui/material'
+import { Box, Skeleton, Stack, TextField, Typography } from '@mui/material'
 import type { ApprovalOutcomesDto } from '../../api/types'
 import { campusAddDays, campusToday, formatDateOnly } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { formatRate } from '../agentRuns/format'
 import { MetricCard } from '../agentRuns/MetricsCards'
 import { BuildingUtilizationPanel } from './BuildingUtilizationPanel'
@@ -31,20 +32,6 @@ function rangeError(from: string, to: string): string | null {
   return null
 }
 
-function Failed({ what, retry }: { what: string; retry: () => void }) {
-  return (
-    <Alert
-      severity="error"
-      action={
-        <Button color="inherit" size="small" onClick={retry}>
-          Retry
-        </Button>
-      }
-    >
-      Could not load the {what}.
-    </Alert>
-  )
-}
 
 function Outcomes({ a }: { a: ApprovalOutcomesDto }) {
   const rows: [string, number][] = [
@@ -139,7 +126,7 @@ export function ReportsPage() {
         Utilization
       </Typography>
       {utilization.isError ? (
-        <Failed what="utilization report" retry={() => utilization.refetch()} />
+        <QueryErrorAlert error={utilization.error} what="the utilization report" onRetry={() => utilization.refetch()} />
       ) : !u ? (
         <Skeleton variant="rectangular" height={300} aria-label="Loading the utilization report" />
       ) : (
@@ -158,7 +145,7 @@ export function ReportsPage() {
         Demand
       </Typography>
       {demand.isError ? (
-        <Failed what="demand report" retry={() => demand.refetch()} />
+        <QueryErrorAlert error={demand.error} what="the demand report" onRetry={() => demand.refetch()} />
       ) : !d ? (
         <Skeleton variant="rectangular" height={300} aria-label="Loading the demand report" />
       ) : (

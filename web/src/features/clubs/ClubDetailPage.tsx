@@ -25,6 +25,7 @@ import type { ClubDetailDto, ClubMemberDto } from '../../api/types'
 import { useApiMutation } from '../../api/useApiMutation'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { formatDateTime } from '../../ui/formatDateTime'
+import { QueryErrorAlert } from '../../ui/QueryErrorAlert'
 import { AddMemberDialog } from './AddMemberDialog'
 import { clubsKeys, useClub } from './useClubs'
 
@@ -53,29 +54,21 @@ export function ClubDetailPage() {
     </Button>
   )
 
-  if (isPending) return <LinearProgress aria-label="Loading club" />
-  if (isError) {
-    const problem = parseProblem(error)
+  // A non-numeric id (/clubs/abc) never reaches the API (the query is disabled); it is not found, like a 404.
+  const validId = Number.isInteger(id) && id > 0
+  if (!validId || isError) {
     return (
       <>
         {back}
-        {problem.status === 404 ? (
+        {!validId || parseProblem(error).status === 404 ? (
           <Alert severity="warning">Club not found</Alert>
         ) : (
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={() => refetch()}>
-                Retry
-              </Button>
-            }
-          >
-            Could not load the club: {problem.title}
-          </Alert>
+          <QueryErrorAlert error={error} what="the club" onRetry={() => refetch()} />
         )}
       </>
     )
   }
+  if (isPending) return <LinearProgress aria-label="Loading club" />
 
   return (
     <>

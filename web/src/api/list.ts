@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, type QueryKey } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, type QueryKey, type QueryMeta } from '@tanstack/react-query'
 import { api } from './client'
 import type { PagedResult } from './types'
 
@@ -23,6 +23,8 @@ export function usePagedQuery<T>(
     enabled?: boolean
     /** Re-fetch every N ms while the loaded page needs it (false: don't). */
     refetchInterval?: (page: PagedResult<T> | undefined) => number | false
+    /** MAIN_QUERY_META when this list is the page's main query (a 403 then opens the access-denied page). */
+    meta?: QueryMeta
   } = {},
 ) {
   const { refetchInterval } = options
@@ -34,6 +36,7 @@ export function usePagedQuery<T>(
     },
     placeholderData: keepPreviousData,
     enabled: options.enabled,
+    meta: options.meta,
     refetchInterval: refetchInterval ? (query) => refetchInterval(query.state.data) : undefined,
   })
 }

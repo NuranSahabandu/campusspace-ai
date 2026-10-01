@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/problem.dart';
+import '../../core/ui/error_retry_view.dart';
 import 'models.dart';
 import 'room_schedule.dart';
 import 'room_widgets.dart';
@@ -28,14 +29,7 @@ class RoomDetailScreen extends ConsumerWidget {
           title: 'Room',
           child: switch (Problem.from(error)) {
             Problem(status: 404) => const MessageView(icon: Icons.search_off, message: notFound),
-            final problem => MessageView(
-                icon: Icons.error_outline,
-                message: problem.title,
-                action: FilledButton.tonal(
-                  onPressed: () => ref.invalidate(roomDetailProvider(id)),
-                  child: const Text('Retry'),
-                ),
-              ),
+            _ => ErrorRetryView(error: error, onRetry: () => ref.invalidate(roomDetailProvider(id))),
           },
         ),
       _ => const _Frame(title: 'Room', child: Center(child: CircularProgressIndicator())),

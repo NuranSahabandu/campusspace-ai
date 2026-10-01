@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/problem.dart';
+import '../../core/ui/error_retry_view.dart';
 import 'models.dart';
 import 'room_widgets.dart';
 import 'rooms_providers.dart';
@@ -12,6 +13,7 @@ class RoomsScreen extends ConsumerStatefulWidget {
   const RoomsScreen({super.key});
 
   static const noMatches = 'No rooms match your filters';
+  static const filtersFailed = "Couldn't load the filter options";
 
   @override
   ConsumerState<RoomsScreen> createState() => _RoomsScreenState();
@@ -66,14 +68,7 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
-          child: MessageView(
-            icon: Icons.error_outline,
-            message: Problem.from(error).title,
-            action: FilledButton.tonal(
-              onPressed: () => ref.invalidate(roomsListProvider),
-              child: const Text('Retry'),
-            ),
-          ),
+          child: ErrorRetryView(error: error, onRetry: () => ref.invalidate(roomsListProvider)),
         ),
       ];
     }
@@ -147,8 +142,13 @@ class _Filters extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(roomFilterProvider);
     final notifier = ref.read(roomFilterProvider.notifier);
-    final buildings = ref.watch(buildingsProvider).value ?? const [];
-    final features = ref.watch(featuresProvider).value ?? const [];
+    final buildingsValue = ref.watch(buildingsProvider);
+    final featuresValue = ref.watch(featuresProvider);
+    final buildings = buildingsValue.value ?? const [];
+    final features = featuresValue.value ?? const [];
+    // Rooms still load without the options; say so instead of showing empty pickers.
+    final optionsError = buildingsValue.error ?? featuresValue.error;
+    final optionsLoading = buildingsValue.isLoading || featuresValue.isLoading;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -199,6 +199,17 @@ class _Filters extends ConsumerWidget {
             ],
           ),
           _MinCapacitySlider(value: filter.minCapacity, onChanged: notifier.setMinCapacity),
+          if (optionsError != null)
+            InlineLoadError(
+              key: const Key('rooms.filtersError'),
+              error: optionsError,
+              message: '${RoomsScreen.filtersFailed}: ${Problem.from(optionsError).title}',
+              onRetry: () => ref
+                ..invalidate(buildingsProvider)
+                ..invalidate(featuresProvider),
+            )
+          else if (optionsLoading && features.isEmpty)
+            const LinearProgressIndicator(),
           if (features.isNotEmpty)
             Wrap(
               spacing: 8,

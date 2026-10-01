@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/problem.dart';
 import '../../core/campus_time.dart';
 import '../../core/format.dart';
+import '../../core/ui/error_retry_view.dart';
 import '../rooms/room_widgets.dart';
 import 'models.dart';
 import 'request_status.dart';
@@ -40,14 +41,7 @@ class RequestDetailScreen extends ConsumerWidget {
         AsyncValue(:final error?) => switch (Problem.from(error)) {
             // Someone else's request (403) and a missing one (404) look the same to the requester.
             Problem(status: 403 || 404) => notAvailable,
-            final problem => MessageView(
-                icon: Icons.error_outline,
-                message: problem.title,
-                action: FilledButton.tonal(
-                  onPressed: () => ref.invalidate(requestDetailProvider(id)),
-                  child: const Text('Retry'),
-                ),
-              ),
+            _ => ErrorRetryView(error: error, onRetry: () => ref.invalidate(requestDetailProvider(id))),
           },
         _ => const Center(child: CircularProgressIndicator()),
       },
@@ -416,6 +410,7 @@ class CancelRequestDialog extends ConsumerStatefulWidget {
   static const title = 'Cancel this request?';
   static const lateWarning = 'This is a late cancellation. It will be recorded as late.';
   static const keep = 'Keep request';
+  static const policyFailed = "Couldn't check the free-cancellation deadline";
 
   /// CancelBookingRequestRequest.Reason's [MaxLength].
   static const reasonMaxLength = 500;
@@ -440,7 +435,8 @@ class _CancelRequestDialogState extends ConsumerState<CancelRequestDialog> {
     final request = widget.request;
     final scheme = Theme.of(context).colorScheme;
     // Only an approved request can be late, so only then is the policy needed.
-    final policy = request.status == RequestStatuses.approved ? ref.watch(policyProvider).value : null;
+    final policyValue = request.status == RequestStatuses.approved ? ref.watch(policyProvider) : null;
+    final policy = policyValue?.value;
     final late = policy != null &&
         isLateCancellation(
           status: request.status,
@@ -457,6 +453,19 @@ class _CancelRequestDialogState extends ConsumerState<CancelRequestDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('${request.purpose}\n${formatCampusSlot(request.requestedStart, request.requestedEnd)}'),
+            // Without the policy the late warning can't be worked out: say so rather than show nothing.
+            if (policyValue != null && policy == null) ...[
+              const SizedBox(height: 12),
+              if (policyValue.error case final error?)
+                InlineLoadError(
+                  key: const Key('cancel.policyError'),
+                  error: error,
+                  message: CancelRequestDialog.policyFailed,
+                  onRetry: () => ref.invalidate(policyProvider),
+                )
+              else
+                const LinearProgressIndicator(),
+            ],
             if (late) ...[
               const SizedBox(height: 12),
               Container(
