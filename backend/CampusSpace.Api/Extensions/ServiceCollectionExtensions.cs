@@ -25,10 +25,15 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>CORS for the React app. Origins come from Cors:AllowedOrigins.</summary>
-    public static IServiceCollection AddFrontendCors(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// CORS for the React app. Origins come only from Cors:AllowedOrigins. Production refuses an empty list, a wildcard
+    /// or a non-https origin other than localhost (<see cref="HostingExtensions.CorsProblems"/>).
+    /// </summary>
+    public static IServiceCollection AddFrontendCors(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (environment.IsProduction() && HostingExtensions.CorsProblems(origins) is { Count: > 0 } problems)
+            throw new InvalidOperationException(string.Join(" ", problems));
         services.AddCors(options => options.AddPolicy(FrontendsCorsPolicy, policy =>
             policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod()));
         return services;

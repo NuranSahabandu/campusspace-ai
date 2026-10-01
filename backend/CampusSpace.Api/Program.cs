@@ -12,9 +12,13 @@ builder.Host.UseSerilog((context, services, logger) => logger
     .ReadFrom.Configuration(context.Configuration)
     .ReadFrom.Services(services));
 
+// Render sets PORT; TLS ends at its proxy.
+builder.UsePlatformPort();
+
 builder.Services.AddPersistence();
 builder.Services.AddErrorHandling();
-builder.Services.AddFrontendCors(builder.Configuration);
+builder.Services.AddProxySupport();
+builder.Services.AddFrontendCors(builder.Configuration, builder.Environment);
 builder.Services.AddApiHealthChecks();
 builder.Services.AddJwtAuth();
 builder.Services.AddApplicationServices();
@@ -30,23 +34,27 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// First, so it logs the final status of every agent-tool call, including 401s and handled exceptions.
+// Behind Render's proxy: the client's scheme and address, before anything reads them (HTTPS redirection, logs).
+if (app.Configuration.GetValue<bool>("ForwardedHeaders:Enabled"))
+    app.UseForwardedHeaders();
+// Then, so it logs the final status of every agent-tool call, including 401s and handled exceptions.
 app.UseAgentToolRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
 
-if (app.Environment.IsDevelopment())
+// The spec needs a public Swagger URL in Production (Swagger:Enabled); internal agent-tool routes stay hidden.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await app.MigrateAndSeedAsync();
 }
-else
-{
-    // Local dev is HTTP only (port 5080); TLS is enforced outside Development.
-    app.UseHttpsRedirection();
-}
+// Local dev is HTTP only (port 5080); TLS is enforced outside Development.
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirectionExceptHealth();
+
+// Migrations only where Database:MigrateOnStartup is on (Development); the seed where Seed:OnStartup is on.
+await app.PrepareDatabaseAsync();
 
 app.UseCors(ServiceCollectionExtensions.FrontendsCorsPolicy);
 app.UseAuthentication();

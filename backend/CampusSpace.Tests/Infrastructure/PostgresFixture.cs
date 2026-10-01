@@ -25,10 +25,11 @@ public sealed class PostgresFixture : IAsyncLifetime
     }
 
     /// <summary>
-    /// A new, migrated database on the shared container, for tests that need a table to themselves (seeding,
-    /// pricing statuses, policy changes). Returns its connection string.
+    /// A new database on the shared container, for tests that need a table to themselves (seeding, pricing statuses,
+    /// policy changes). Migrated unless <paramref name="migrate"/> is false (the migrate-on-startup tests). Returns its
+    /// connection string.
     /// </summary>
-    public async Task<string> CreateDatabaseAsync()
+    public async Task<string> CreateDatabaseAsync(bool migrate = true)
     {
         var name = $"test_{Guid.NewGuid():N}";
         await using (var connection = new NpgsqlConnection(ConnectionString))
@@ -39,6 +40,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         }
 
         var connectionString = new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name }.ToString();
+        if (!migrate)
+            return connectionString;
         await using var db = CreateDbContext(connectionString);
         await db.Database.MigrateAsync();
         return connectionString;

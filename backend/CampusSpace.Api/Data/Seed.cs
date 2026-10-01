@@ -7,7 +7,10 @@ using NpgsqlTypes;
 namespace CampusSpace.Api.Data;
 
 /// <summary>
-/// Development seed data. Each step checks its own table (users by email, clubs by "is the table empty",
+/// Seed data in two modes. <see cref="SeedReferenceAsync"/> (Production): the reference and demo data examiners need
+/// (demo accounts, clubs, features, buildings, rooms, equipment types, items and substitutes, pricing rules, policy
+/// settings) and nothing else. <see cref="SeedAsync"/> (Development): the same plus the demo blackout and the demo
+/// booking requests. Both only SELECT and INSERT (DML rights are enough). Each step checks its own table (users by email, clubs by "is the table empty",
 /// features, buildings, rooms and equipment types by code, equipment items by asset tag, substitutes by pair,
 /// blackouts by "is the table empty",
 /// pricing rules by (room type, role, start date), policy settings by key and never overwriting an edited value,
@@ -16,7 +19,10 @@ namespace CampusSpace.Api.Data;
 /// </summary>
 public static class Seed
 {
-    /// <summary>Demo accounts. All share the public demo password (config key Seed:DemoPassword).</summary>
+    /// <summary>
+    /// Demo accounts. All share the demo password (config key Seed:DemoPassword): the public one in
+    /// appsettings.Development.json, and in Production an environment variable that is never in Git.
+    /// </summary>
     public static readonly IReadOnlyList<(string Email, string FullName, string Role)> DemoUsers =
     [
         ("kavindi@campusspace.local", "Kavindi Perera", Roles.Student),
@@ -147,20 +153,30 @@ public static class Seed
         ("lecturer@campusspace.local", null, "Guest lecture: AI in agriculture", 120, ["projector", "sound_system"], [("MIC-WIRELESS", 2)], 0m),
     ];
 
+    /// <summary>Development: the reference data, plus the demo blackout and the demo booking requests.</summary>
     public static async Task SeedAsync(AppDbContext db, string demoPassword, CancellationToken ct = default)
+    {
+        await SeedReferenceAsync(db, demoPassword, ct);
+        await SeedBlackoutsAsync(db, ct);
+        await SeedBookingRequestsAsync(db, ct);
+    }
+
+    /// <summary>
+    /// Production: the reference and demo data only (no requests, bookings, blackouts, loans or agent runs). The demo
+    /// accounts' password comes from the environment (Seed__DemoPassword), never from Git.
+    /// </summary>
+    public static async Task SeedReferenceAsync(AppDbContext db, string demoPassword, CancellationToken ct = default)
     {
         await SeedUsersAsync(db, demoPassword, ct);
         await SeedClubsAsync(db, ct);
         await SeedFeaturesAsync(db, ct);
         await SeedBuildingsAsync(db, ct);
         await SeedRoomsAsync(db, ct);
-        await SeedBlackoutsAsync(db, ct);
         await SeedEquipmentTypesAsync(db, ct);
         await SeedEquipmentItemsAsync(db, ct);
         await SeedEquipmentSubstitutesAsync(db, ct);
         await SeedPricingRulesAsync(db, ct);
         await SeedPolicySettingsAsync(db, ct);
-        await SeedBookingRequestsAsync(db, ct);
     }
 
     /// <summary>
