@@ -7,7 +7,6 @@ import { LoginPage } from './features/auth/LoginPage'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { ForbiddenPage } from './features/errors/ForbiddenPage'
 import { NotFoundPage } from './features/errors/NotFoundPage'
-import { ComingSoonPage } from './features/placeholder/ComingSoonPage'
 import { AppLayout } from './layout/AppLayout'
 
 // The DataGrid is most of the bundle; load it only when a data page is opened.
@@ -42,6 +41,12 @@ const ApprovalQueuePage = lazy(() =>
 )
 const ApprovalDetailPage = lazy(() =>
   import('./features/approvals/ApprovalDetailPage').then((m) => ({ default: m.ApprovalDetailPage })),
+)
+const AgentRunsPage = lazy(() =>
+  import('./features/agentRuns/AgentRunsPage').then((m) => ({ default: m.AgentRunsPage })),
+)
+const AgentRunDetailPage = lazy(() =>
+  import('./features/agentRuns/AgentRunDetailPage').then((m) => ({ default: m.AgentRunDetailPage })),
 )
 
 /** A lazy page: the role guard for its path (ROUTE_ROLES) plus a Suspense boundary for the lazy chunk. */
@@ -78,7 +83,8 @@ export function AppRoutes() {
             <Route path="requests/:id" element={<GuardedPage path="/requests/:id"><BookingRequestDetailPage /></GuardedPage>} />
             <Route path="approvals" element={<GuardedPage path="/approvals"><ApprovalQueuePage /></GuardedPage>} />
             <Route path="approvals/:requestId" element={<GuardedPage path="/approvals/:requestId"><ApprovalDetailPage /></GuardedPage>} />
-            <Route path="agent-runs" element={<ComingSoonPage title="Agent runs" owner="C/D" />} />
+            <Route path="agent-runs" element={<GuardedPage path="/agent-runs"><AgentRunsPage /></GuardedPage>} />
+            <Route path="agent-runs/:runId" element={<GuardedPage path="/agent-runs/:runId"><AgentRunDetailPage /></GuardedPage>} />
             <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
             <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
             <Route path="clubs/:id" element={<GuardedPage path="/clubs/:id"><ClubDetailPage /></GuardedPage>} />

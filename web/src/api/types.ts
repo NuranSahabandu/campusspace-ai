@@ -444,6 +444,86 @@ export interface AgentRunSummaryDto {
   createdAt: string
 }
 
+/**
+ * GET /api/agent-runs (Facilities Officer, the runs monitor). durationMs is the stored wall time (it includes the
+ * officer's wait for a decided run). failureReason is cut to 200 characters plus "…". totalTokens is null when no
+ * step reported usage. anyFallback: an LLM step fell back to its stub.
+ */
+export interface AgentRunListItemDto {
+  id: string
+  requestId: number
+  purpose: string
+  revisionNo: number
+  status: string
+  model: string | null
+  startedAt: string | null
+  completedAt: string | null
+  durationMs: number | null
+  failureReason: string | null
+  stepCount: number
+  toolCallCount: number
+  totalTokens: number | null
+  anyFallback: boolean
+  createdAt: string
+}
+
+/**
+ * GET /api/agent-runs/metrics?from=&to= (campus dates). Every rate and average is null when its denominator is 0.
+ * Rates are fractions (0–1).
+ */
+export interface AgentRunMetricsDto {
+  from: string | null
+  to: string | null
+  runs: RunMetricsDto
+  agents: AgentMetricsDto[]
+}
+
+/** successRate = reachedGate ÷ finished; fallbackRate = fallbackRuns ÷ llmAttemptedRuns; avgTokensPerRun ÷ runsWithUsage. */
+export interface RunMetricsDto {
+  total: number
+  byStatus: Record<string, number>
+  inProgress: number
+  finished: number
+  reachedGate: number
+  failedBeforeGate: number
+  successRate: number | null
+  reachedGateProcessing: ProcessingTimeDto
+  failedBeforeGateProcessing: ProcessingTimeDto
+  runsWithUsage: number
+  totalTokens: number
+  avgTokensPerRun: number | null
+  llmAttemptedRuns: number
+  fallbackRuns: number
+  fallbackRate: number | null
+}
+
+/** Agent processing time (Σ step durations without finalize) of one bucket; runs is the denominator. */
+export interface ProcessingTimeDto {
+  runs: number
+  withoutSteps: number
+  avgMs: number | null
+  p95Ms: number | null
+}
+
+/** Latency, failureRate and llmShare divide by steps; fallbackRate by llmAttemptedSteps; avgTokensPerStep by stepsWithUsage. */
+export interface AgentMetricsDto {
+  agent: string
+  steps: number
+  avgMs: number | null
+  p95Ms: number | null
+  failedSteps: number
+  failureRate: number | null
+  llmSteps: number
+  llmShare: number | null
+  skippedSteps: number
+  llmAttemptedSteps: number
+  fallbackSteps: number
+  fallbackRate: number | null
+  stepsWithUsage: number
+  totalTokens: number
+  avgTokensPerStep: number | null
+}
+
 /** Any JSON value, as stored by the agent trace. Shown only as pretty-printed text. */
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
