@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using CampusSpace.Api.Auth;
 using CampusSpace.Api.Models;
+using CampusSpace.Api.Notifications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -37,6 +38,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     public DbSet<AgentToolCall> AgentToolCalls => Set<AgentToolCall>();
     public DbSet<AgentValidationResult> ValidationResults => Set<AgentValidationResult>();
     public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +49,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        NotificationOutbox.EnqueueAsync(this, async: false, CancellationToken.None).GetAwaiter().GetResult();
         ApplyTimestamps();
         var pending = CaptureAuditEntries();
         if (pending.Count == 0)
@@ -69,6 +72,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser? 
     /// </summary>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        // The outbox (Task 5.2): an email row for each new status change that needs one, saved with it.
+        await NotificationOutbox.EnqueueAsync(this, async: true, cancellationToken);
         ApplyTimestamps();
         var pending = CaptureAuditEntries();
         if (pending.Count == 0)

@@ -726,6 +726,48 @@ re-fetches every 3 s while live). Run status lists and chip colours live in `app
 (`agentRunsFixtures.ts`) are verbatim captures (`/tmp/checklist-5.1/capture.sh` + `make_fixtures.py`; recapture after a
 contract change); test empty metrics are hand-written in the test.
 
+Email notifications (Task 5.2, UC27, plan §14; `backend/CampusSpace.Api/Notifications/`): an outbox. `AppDbContext.
+SaveChanges[Async]` calls `NotificationOutbox.EnqueueAsync` first: every NEW `RequestStatusHistory` row that needs an email
+gets one Pending `NotificationLogs` row in the same SaveChanges (so it commits or rolls back with the status change, on
+every path: approve, the poller, FailApprovalAsync, the watchdog, reject, revise, cancel). That works only because every
+status change goes through IRequestStateMachine on a tracked request: never change a status or write history with
+ExecuteUpdate or raw SQL. Kinds (`NotificationKinds`, `NotificationOutbox.KindFor`): → Approved = Approved (with the .ics);
+→ Rejected whose reason starts with `ApprovalFinalizer.TimeClosedPrefix` = Closed (neutral, no reason); → Rejected by an
+officer = Rejected (with the officer's reason); any other system Rejected = Closed; → RevisionRequested (officer or a
+failed approval) = RevisionRequested ("being re-planned", never notes or reasons); → Cancelled with CancelledByOfficer =
+CancelledByOfficer (with the reason). Nothing else emails (submit, AgentProcessing, PendingApproval, AgentFailed, Completed,
+an owner's cancel). `StatusHistoryId` is UNIQUE (one email per change). Recipient = the requester's address at enqueue.
+`NotificationDispatcher` (BackgroundService, `Email:PollSeconds` 5, off when `Email:DispatcherEnabled` is false, as in
+Testing; tests call `ProcessOnceAsync()`): fails rows stuck in Sending > 2 min ("Interrupted while sending; not retried"),
+claims due Pending rows `FOR UPDATE SKIP LOCKED` → Sending + Attempts++ (committed BEFORE the call, so at most once), then
+`INotificationDelivery` renders and sends each outside any transaction and records Sent (SentAt, ProviderMessageId),
+Failed, Skipped or Pending + NextAttemptAt. An email never blocks, delays or rolls back a decision. The email is rendered
+at SEND time from current data (no body is stored); an Approved email whose request is no longer Approved is Skipped.
+Retry decision (§6 vs §14): `BrevoEmailSender` sends once (typed HttpClient, `api-key` header, 10 s, header logging
+redacted); a retry happens only where Brevo can't have accepted the email: 429 (Retry-After, default 60 s, cap 15 min) and
+HttpRequestError Connection/NameResolution/SecureConnection (backoff 30 s, 2 min). Timeouts, 5xx and everything else are
+Failed and never retried (Brevo has no idempotency key). At most 3 attempts (`NotificationLogConfiguration.MaxAttempts`),
+then "Gave up after 3 attempts: …"; Failed is final and shown to officers. Stored errors are fixed texts only ("HTTP 401
+(unauthorized)", "HTTP 403 (forbidden)", "HTTP 400 (<brevo code>)" when the code matches `^[a-z_]{1,40}$`, timeout,
+connection): never a provider body, message or exception text. Config (`EmailOptions`, section `Email`): `BrevoApiKey`
+(user-secrets/env only, never logged, printed or committed; check it by presence), `FromAddress` (required with a key),
+`FromName`, `RedirectAllTo`, `BaseUrl`, `PollSeconds`, `DispatcherEnabled`; blank values mean "not set". No key →
+`NoOpEmailSender` → Skipped "Email is not configured …" (CI and tests never call Brevo). `RedirectAllTo` set → every
+email goes there, `Recipient` keeps the original, `RedirectedTo` records the redirect and the subject starts
+"[Redirected] ". Data minimisation (`EmailTemplates`, fixed in .NET): requester name, purpose, campus-time slot, and
+for an approval room + building and the quote total; no ids, roles, notes, agent output or internal reasons; every value
+HTML-encoded, a plain-text part too, the subject one line with the purpose cut to 60. The .ics (`IcsCalendar`, hand-rolled,
+no package): VCALENDAR + METHOD:PUBLISH + one VEVENT, UID `booking-<bookingId>@campusspace.local`, DTSTAMP/DTSTART/DTEND
+in UTC (Z), SUMMARY = purpose cut to 60, LOCATION = "Room, Building", CRLF, TEXT escaping (\\ \; \, \n, other controls
+dropped). NO line folding: each line is cut to ≤ 74 UTF-8 octets, never inside a character or an escape pair; keep it
+minimal. Attached to the Approved email only. `GET /api/booking-requests/{id}/notifications` (FacilitiesOfficer,
+newest first, `redirected` as a flag only); there is no resend. React: `features/notifications/EmailStatusCard` on the
+request and approval detail pages (query under `bookingRequestsKeys.all`, keyed by updatedAt, re-fetch every 5 s while
+Pending/Sending, error as plain text); fixtures are captured responses (`notificationsFixtures.ts`). Tests:
+`NotificationOutboxTests` (one per email path), `FakeEmailSender` + `NotificationTestData.WithEmail(factory, sender,
+redirect)` (same API and database with a fake sender), `BrevoEmailSenderTests` (sentinel key never in logs or errors).
+Env vars override user-secrets, so a one-run override (`Email__BrevoApiKey=invalid dotnet run …`) never needs `.env` edits.
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 

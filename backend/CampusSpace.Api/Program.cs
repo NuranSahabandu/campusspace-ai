@@ -1,6 +1,7 @@
 using CampusSpace.Api.Extensions;
 using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
+using CampusSpace.Api.Notifications;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Serilog;
 
@@ -18,6 +19,7 @@ builder.Services.AddApiHealthChecks();
 builder.Services.AddJwtAuth();
 builder.Services.AddApplicationServices();
 builder.Services.AddAgentService();
+builder.Services.AddNotifications();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

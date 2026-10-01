@@ -4,6 +4,7 @@ import type {
   AgentRunSummaryDto,
   ApprovalQueueItemDto,
   BookingRequestDetailDto,
+  NotificationLogDto,
   PagedResult,
   QuotationDto,
 } from '../../api/types'
@@ -17,6 +18,8 @@ interface Options {
   detail?: BookingRequestDetailDto
   runs?: AgentRunSummaryDto[]
   run?: AgentRunDetailDto
+  /** The request's emails (none by default). */
+  notifications?: NotificationLogDto[]
   /** null: the request has no live quote (404). */
   quote?: QuotationDto | null
   /** The answer to a decision POST; it may change what the reads return next (state.detail = ...). */
@@ -56,6 +59,7 @@ export function approvalsHandlers(options: Options = {}) {
     }),
     http.get(`${API}/api/booking-requests/:id/agent-runs`, () => HttpResponse.json(runs)),
     http.get(`${API}/api/agent-runs/:runId`, () => HttpResponse.json(state.run)),
+    http.get(`${API}/api/booking-requests/:id/notifications`, () => HttpResponse.json(options.notifications ?? [])),
     http.get(`${API}/api/booking-requests/:id/quotation`, () =>
       state.quote
         ? HttpResponse.json(state.quote)

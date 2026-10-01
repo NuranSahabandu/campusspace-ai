@@ -9,6 +9,7 @@ import type { BookingRequestDetailDto, LatestProposalDto } from '../../api/types
 import { formatCampusTimeRange, formatDateTime } from '../../ui/formatDateTime'
 import { formatLkr } from '../../ui/formatLkr'
 import { RunHistory } from '../approvals/RunHistory'
+import { EmailStatusCard } from '../notifications/EmailStatusCard'
 import { useRequestRuns } from '../approvals/useApprovals'
 import type { FromListState } from './BookingRequestsPage'
 import { CancelRequestDialog } from './CancelRequestDialog'
@@ -115,6 +116,7 @@ export function BookingRequestDetailPage() {
         <Card title="Agent runs" wide>
           <RunHistory query={runs} />
         </Card>
+        <EmailStatusCard requestId={request.id} version={request.updatedAt} />
       </Box>
 
       {cancelling && (

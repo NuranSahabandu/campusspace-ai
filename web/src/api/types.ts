@@ -650,3 +650,22 @@ export interface LoanDto {
   isOverdue: boolean
   hasPhoto: boolean
 }
+
+/**
+ * GET /api/booking-requests/{id}/notifications (Facilities Officer, newest first): one email per status change (Task
+ * 5.2). redirected: Email:RedirectAllTo received it instead of the recipient. error is a fixed server text; render it as
+ * plain text.
+ */
+export interface NotificationLogDto {
+  id: number
+  kind: string
+  channel: string
+  status: string
+  recipient: string
+  redirected: boolean
+  attempts: number
+  createdAt: string
+  lastAttemptAt: string | null
+  sentAt: string | null
+  error: string | null
+}
