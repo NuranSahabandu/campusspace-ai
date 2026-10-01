@@ -81,10 +81,15 @@ describe('AgentRunsPage', () => {
     expect(requests.list.at(-1)?.get('sort')).toBe('-createdAt')
   })
 
-  it('sends the filters', async () => {
+  const loaded = async () => {
     const requests = agentRunsHandlers()
-    const { user } = renderApp('/agent-runs', { role: Roles.FacilitiesOfficer })
-    await screen.findByText(RUNS_PAGE.items[0].purpose, {}, { timeout: 3000 })
+    const app = renderApp('/agent-runs', { role: Roles.FacilitiesOfficer })
+    await screen.findByText(RUNS_PAGE.items[0].purpose)
+    return { requests, ...app }
+  }
+
+  it('sends the status and fallback filters', async () => {
+    const { requests, user } = await loaded()
 
     await user.click(screen.getByRole('combobox', { name: 'Status' }))
     await user.click(await screen.findByRole('option', { name: 'Failed' }))
@@ -95,23 +100,30 @@ describe('AgentRunsPage', () => {
     await waitFor(() => expect(requests.list.at(-1)?.get('fallback')).toBe('true'))
     await user.click(screen.getByRole('button', { name: 'No fallback' }))
     await waitFor(() => expect(requests.list.at(-1)?.get('fallback')).toBe('false'))
+    expect(requests.list.at(-1)?.getAll('status')).toEqual(['Failed'])
+  })
 
-    await user.type(screen.getByLabelText('Request number'), '12x')
+  it('sends the request number (digits only) and the purpose search', async () => {
+    const { requests } = await loaded()
+
+    fireEvent.change(screen.getByLabelText('Request number'), { target: { value: '12x' } })
     await waitFor(() => expect(requests.list.at(-1)?.get('requestId')).toBe('12'))
+    expect(screen.getByLabelText('Request number')).toHaveValue('12')
 
-    await user.type(screen.getByLabelText('Request purpose'), 'Robotics')
+    fireEvent.change(screen.getByLabelText('Request purpose'), { target: { value: 'Robotics' } })
     await waitFor(() => expect(requests.list.at(-1)?.get('search')).toBe('Robotics'))
+    expect(requests.list.at(-1)?.get('requestId')).toBe('12')
+  })
+
+  it('sends the date range to both the metrics and the list', async () => {
+    const { requests } = await loaded()
 
     fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-09-01' } })
     fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-09-30' } })
     await waitFor(() => expect(requests.metrics.at(-1)?.get('to')).toBe('2026-09-30'))
     expect(requests.metrics.at(-1)?.get('from')).toBe('2026-09-01')
-
-    const last = requests.list.at(-1)!
-    expect(last.get('to')).toBe('2026-09-30')
-    expect(last.getAll('status')).toEqual(['Failed'])
-    expect(last.get('fallback')).toBe('false')
-    expect(last.get('requestId')).toBe('12')
+    await waitFor(() => expect(requests.list.at(-1)?.get('to')).toBe('2026-09-30'))
+    expect(requests.list.at(-1)?.get('from')).toBe('2026-09-01')
   })
 
   it('shows "— (0 of 0)", never 0%, and the empty states', async () => {
