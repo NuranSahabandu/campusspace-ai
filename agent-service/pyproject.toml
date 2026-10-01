@@ -14,6 +14,11 @@ dependencies = [
     "langgraph>=1.0,<2.0",
     # Durable checkpointer (Lab 06 stretch goal 4); 3.x is the line that supports langgraph 1.x.
     "langgraph-checkpoint-sqlite>=3.1,<4",
+    # Production checkpointer (plan §10.9/§17.3: Postgres on an ephemeral host). 3.x needs
+    # langgraph-checkpoint 4.x, the line langgraph 1.x uses. psycopg[binary] bundles libpq.
+    "langgraph-checkpoint-postgres>=3.1.2,<4",
+    "psycopg[binary]>=3.3,<4",
+    "psycopg-pool>=3.3,<4",
     "pydantic>=2",
     "pydantic-settings>=2.15.0",
     "uvicorn[standard]>=0.54.0",
