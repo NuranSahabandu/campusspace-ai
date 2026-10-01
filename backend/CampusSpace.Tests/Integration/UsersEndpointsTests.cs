@@ -70,16 +70,6 @@ public class UsersEndpointsTests(PostgresFixture fixture)
         wrongRole.GetProperty("total").GetInt32().Should().Be(0);
     }
 
-    [Fact]
-    public async Task Wildcards_in_search_match_literally()
-    {
-        var admin = TestAuth.CreateClient(fixture.Factory, Roles.Admin);
-
-        var body = await (await admin.GetAsync("/api/users?search=%25")).ReadJsonAsync();
-
-        body.GetProperty("total").GetInt32().Should().Be(0);
-    }
-
     [Theory]
     [InlineData("pageSize=101", "PageSize")]
     [InlineData("page=0", "Page")]

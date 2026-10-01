@@ -197,17 +197,17 @@ public class AgentRunsMonitorTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task Search_matches_the_purpose_with_LIKE_wildcards_taken_literally()
+    public async Task Search_matches_percent_underscore_and_backslash_in_the_purpose_literally()
     {
         await using var env = await EnvAsync();
-        await env.RunAsync(AgentRunStatuses.Completed, At(Day, 9), purpose: "Robotics demo at 50% capacity");
-        await env.RunAsync(AgentRunStatuses.Completed, At(Day, 10), purpose: "Budget for 500 seats");
-        await env.RunAsync(AgentRunStatuses.Completed, At(Day, 11), purpose: "Club a_b night");
-        await env.RunAsync(AgentRunStatuses.Completed, At(Day, 12), purpose: "Club axb night");
+        var marker = SearchCases.Marker();
+        var hour = 8;
+        foreach (var purpose in SearchCases.Rows(marker))
+            await env.RunAsync(AgentRunStatuses.Completed, At(Day, hour++), purpose: purpose);
 
-        Purposes(await GetJsonAsync(env.Officer, $"{List}?search=50%25")).Should().Equal("Robotics demo at 50% capacity");
-        Purposes(await GetJsonAsync(env.Officer, $"{List}?search=a_b")).Should().Equal("Club a_b night");
-        Purposes(await GetJsonAsync(env.Officer, $"{List}?search=CLUB")).Should().Equal("Club axb night", "Club a_b night");
+        await SearchCases.AssertExactAsync(marker,
+            async term => Purposes(await GetJsonAsync(env.Officer, $"{List}?search={SearchCases.Q(term)}")),
+            "agent-runs");
     }
 
     [Fact]
