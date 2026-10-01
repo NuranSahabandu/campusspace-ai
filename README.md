@@ -105,14 +105,25 @@ The API's `/health` includes an `agent-service` check. When the agent service is
 1. Install [uv](https://docs.astral.sh/uv/). It installs Python 3.11 by itself.
 2. In `.env`, set `AgentService__ServiceKey` to at least 32 characters (`openssl rand -hex 32`). The service refuses to start otherwise.
    Re-run `./scripts/dev-secrets.sh` so the API has the same key.
-3. Run it and check it:
+3. Create the agent service's own checkpoint database. Paused approvals are stored there, so they survive a restart.
+   Set `AGENT_DB_PASSWORD` in `.env` (hex, at least 32 characters: `openssl rand -hex 16` or `-hex 32`), start the
+   database, and run the script. It is safe to re-run. It creates the role `campusspace_agent`, which can't reach any
+   business table, plus its database, and fills in `AGENT_CHECKPOINT_URL` in `.env` if that is empty. It never prints a
+   secret.
+   ```bash
+   ./scripts/dev-agent-db.sh
+   ```
+   Without `AGENT_CHECKPOINT_URL`, the service starts only with `AGENT_ENV=development`, which keeps checkpoints in a
+   SQLite file instead.
+4. Run it and check it (`/health` shows `"checkpointer": "postgres"` and `"checkpointer_ok": true`):
    ```bash
    cd agent-service
    uv sync
    uv run uvicorn app.main:app --reload --port 8000
    curl -s localhost:8000/health
    ```
-4. Lint and test. The tests set their own fake keys and never read `.env`:
+5. Lint and test. The tests set their own fake keys and never read `.env`. The Postgres checkpointer tests run only
+   when `AGENT_TEST_POSTGRES_URL` points at a throwaway database (CI provides one; see agent-service/README.md):
    ```bash
    uv run ruff check .
    uv run pytest -q
@@ -261,8 +272,10 @@ variable form (`__` stands for the `:` in its configuration keys).
 | Agent service | `GOOGLE_API_KEY` | **yes** | with LLM agents | Gemini key |
 | Agent service | `AGENT_LLM_AGENTS` | no | optional | e.g. `supervisor,venue_matching,equipment_allocation,policy_cost` |
 | Agent service | `PLANNER_MODEL`, `WORKER_MODEL`, `PLANNER_THINKING`, `WORKER_THINKING` | no | optional | model ids and thinking levels |
-| Agent service | `AGENT_CHECKPOINT_PATH` | no | optional | SqliteSaver file (a persistent disk only) |
-| Agent service | `AGENT_ENV`, `AGENT_FAULT*` | no | **never** | development-only failure drills |
+| Agent service | `AGENT_CHECKPOINT_URL` | **yes** | **yes** (startup refuses without it) | `postgresql://` URL of the agent's own checkpoint role and database/schema, which can't reach any business table; never logged or shown on `/health` |
+| Agent service | `AGENT_CHECKPOINT_PATH` | no | **never** | SqliteSaver file, the development fallback (`AGENT_ENV=development` without a URL) |
+| Agent service | `AGENT_ENV`, `AGENT_FAULT*` | no | **never** | development only: the SQLite fallback and the failure drills |
+| Local only | `AGENT_DB_PASSWORD` | **yes** | **never** | the agent role's password for `./scripts/dev-agent-db.sh` (hex, ≥ 32 chars) |
 | Web (Vercel) | `VITE_API_URL` | no (public in the bundle) | yes | the API's https URL, read at **build** time; never put a secret in a `VITE_` variable |
 | Mobile (APK) | `API_URL` (`--dart-define`) | no | yes | the API's https URL; a release build allows HTTPS only |
 

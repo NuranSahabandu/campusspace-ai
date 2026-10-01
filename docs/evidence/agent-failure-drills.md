@@ -59,6 +59,21 @@ D0–D12 ran on the code *before* the two fixes below, and D13 re-runs D2 and D6
 | D12 | restart while AwaitingApproval (D2's run), then approve | the SqliteSaver checkpoint survives; resume → finalize → Approved | approve → 200 Approved; run Completed, nodes end `human_gate, finalize`; the requester sees Approved, LKR 4,000.00 | ✅ | — | 0 (finalize is code) |
 | D13a | D2 again, after the fixes | reason is a fixed text; no raw JSON in the trace; 0 AFC lines | "Equipment LLM error: rate limited (HTTP 429)"; raw text in the trace 0; AFC lines 0 | ✅ | 15.4 s | 7,732 |
 | D13b | D6 again, after the fixes | the same | "Planner LLM error: model not found (HTTP 404)"; AFC lines 0 | ✅ | 9.7 s | 8,228 |
+| D14 | D12 on the **Postgres checkpointer** (Task 6.D2): restart while AwaitingApproval, then approve | the PostgresSaver checkpoint survives the restart; resume → finalize → Approved | 8 checkpoint rows for the run in `campusspace_agent` before the stop; agent service stopped (health unreachable) and started again (`checkpointer: postgres`, `checkpointer_ok: true`); approve → 200 Approved 5 s after the restart; run Completed, RevisionNo 1, nodes end `human_gate, finalize`, 12 rules; the requester's view (what Flutter renders) is Approved, E201, fee-exempt (Lecturer) | ✅ | — | — (stubs) |
+| D15 | switch SQLite → Postgres while a run waits on SQLite, then approve | Postgres doesn't know the thread (404), so the approval fails as a Proposal failure and a new proposal is prepared | resume 404 → poller GET 404 → `FailApprovalAsync`: run Failed "Agent run not found (agent service state lost)", request → RevisionRequested (same reason) → a new run (RevisionNo 2) on Postgres → PendingApproval 2 s later. Not the orphan path, nothing lost silently; the owner then cancelled it | ✅ | — | — (stubs) |
+
+**D14 and D15 (Task 6.D2, 2026-10-01).**
+- **Setup.** They ran with every agent as a stub (`AGENT_LLM_AGENTS=` on the command line, no Gemini call) and the
+  checkpointer in PostgreSQL 16 (the Docker dev database, `./scripts/dev-agent-db.sh`).
+- **Restarts.** Each agent-service restart stopped only the PID the drill had started.
+- **Requests.** Students and a Lecturer under the open-request cap. The D15 request was cancelled by its owner; the
+  D14 booking stays Approved.
+- **Leak scan.** The agent-service and API logs had 0 hits for the checkpoint URL or the agent role's credentials.
+- **Access check (read-only).** As the agent role:
+  - CONNECT on the business database: denied ("permission denied for database")
+  - business-table grants: 0
+  - superuser, createdb and createrole flags: none
+  - search_path: `agent_checkpoints`, which holds only the four LangGraph tables
 
 **Leaks over all drills.**
 - Google key pattern: 0 hits.
