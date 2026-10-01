@@ -8,6 +8,7 @@ explicitly: pydantic-settings reads the repo-root .env without exporting it to o
 from typing import Any, Literal
 
 from app.config import Settings
+from app.faults import FaultTransport
 from app.limits import LLM_MAX_RETRIES, LLM_TIMEOUT_S
 
 Role = Literal["planner", "worker"]
@@ -15,12 +16,20 @@ Role = Literal["planner", "worker"]
 CHARS_PER_TOKEN = 4  # Lab 07's estimate, used only when a response has no usage_metadata
 
 
-def build_chat_model(role: Role, settings: Settings) -> Any:
+def build_chat_model(role: Role, settings: Settings, agent: str | None = None) -> Any:
+    """agent names the caller ("supervisor", "venue_matching", ...) so a development fault
+    (app/faults.py) can be attached to that agent's client only."""
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     if settings.google_api_key is None:
         raise RuntimeError("GOOGLE_API_KEY is not configured")
     planner = role == "planner"
+    extra: dict[str, Any] = {}
+    fault = settings.fault_for(agent) if agent else None
+    if fault:
+        extra["client_args"] = {
+            "transport": FaultTransport(fault, agent or role, settings.agent_fault_times)
+        }
     return ChatGoogleGenerativeAI(
         model=settings.planner_model if planner else settings.worker_model,
         google_api_key=settings.google_api_key,
@@ -29,6 +38,7 @@ def build_chat_model(role: Role, settings: Settings) -> Any:
         max_retries=LLM_MAX_RETRIES,  # the free tier is metered per minute; back off and retry
         # Gemini 3 thinking cap (thinking_budget is deprecated for 3.x); thoughts are not returned.
         thinking_level=settings.planner_thinking if planner else settings.worker_thinking,
+        **extra,
     )
 
 

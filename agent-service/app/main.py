@@ -1,5 +1,6 @@
 """FastAPI entry point: uv run uvicorn app.main:app --reload --port 8000"""
 
+import logging
 import platform
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -24,6 +25,7 @@ from app.workers.policy_llm import LlmPolicyWorker
 from app.workers.venue_llm import LlmVenueWorker
 
 SERVICE_NAME = "agent-service"
+log = logging.getLogger("agent_service.main")
 
 
 def _utc_now() -> datetime:
@@ -47,7 +49,9 @@ def create_app(
         planner = None
         if s.agent_mode("supervisor") == "llm":
             # Lazy: the Gemini client is built on the first plan, never at startup.
-            planner = LlmPlanner(lambda: build_chat_model("planner", s), s.planner_model)
+            planner = LlmPlanner(
+                lambda: build_chat_model("planner", s, "supervisor"), s.planner_model
+            )
         workers = {}
         for name, worker_class in (
             ("venue_matching", LlmVenueWorker),
@@ -55,8 +59,15 @@ def create_app(
             ("policy_cost", LlmPolicyWorker),
         ):
             if s.agent_mode(name) == "llm":  # lazy: each builds its client on first use
-                workers[name] = worker_class(lambda: build_chat_model("worker", s), s.worker_model)
+                workers[name] = worker_class(
+                    lambda n=name: build_chat_model("worker", s, n), s.worker_model
+                )
         graph = build_graph(saver, build_tools(client), clock, planner, workers)
+        fault = s.fault_summary()
+        if fault:  # names only; never in production (Settings refuses it outside development)
+            times = fault["times"] or "every call"
+            log.warning("FAULT INJECTION ACTIVE: fault=%s agents=%s times=%s",
+                        fault["fault"], ",".join(fault["agents"]), times)  # fmt: skip
         app.state.settings = s
         app.state.checkpointer = saver
         app.state.runner = WorkflowRunner(graph, clock, s.model_label())
@@ -89,6 +100,7 @@ def create_app(
             "checkpointer": "sqlite",
             "checkpointer_ok": checkpointer_ok(request.app.state.checkpointer),
             "google_api_key_configured": s.google_api_key is not None,
+            "fault_injection": s.fault_summary(),
         }
 
     app.include_router(workflows.router)
