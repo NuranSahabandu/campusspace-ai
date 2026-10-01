@@ -120,6 +120,8 @@ because annotations cannot read `PolicySettings`.
 - Never add a package or upgrade a major version without saying why.
 - Keep commits small and use Conventional Commits (`feat(b): ...`, `fix(api): ...`).
 - Project rules go in CLAUDE.md, never only in personal memory.
+- Stop only processes you started, by the PID you recorded when you started them. Never use `pkill`/`killall`, and never
+  kill by name or by port: the user's own dev API, agent service or emulator may be running on the same port.
 - End every task with:
   1. Files changed
   2. How you verified
