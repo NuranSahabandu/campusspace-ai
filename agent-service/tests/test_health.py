@@ -1,10 +1,13 @@
 import json
+import logging
 import platform
 
 import pytest
 from fastapi.testclient import TestClient
+from langgraph.checkpoint.memory import InMemorySaver
 
 from app import __version__
+from app.checkpoint import CheckpointUnavailable
 from app.main import create_app
 from tests.conftest import TEST_SERVICE_KEY, TEST_TOOLS_KEY, make_settings
 
@@ -79,3 +82,54 @@ def test_health_shows_the_llm_supervisor_without_building_a_model(
     }
     assert body["models"] == {"planner": "gemini-3.5-flash", "worker": "gemini-3.5-flash-lite"}
     assert "fake-google-key-value-123" not in json.dumps(body)
+
+
+def test_health_names_the_postgres_checkpointer_without_its_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    password = "sentinel-db-password-" + "p" * 16
+    url = f"postgresql://campusspace_agent:{password}@db.test:5432/agent"
+    settings = make_settings(monkeypatch, AGENT_CHECKPOINT_URL=url)
+
+    class FakePostgres:  # no database in unit tests; the real one is in test_postgres_checkpointer
+        kind = "postgres"
+        saver = InMemorySaver()
+
+        @staticmethod
+        def ok() -> bool:
+            return True
+
+        @staticmethod
+        def close() -> None:
+            pass
+
+    monkeypatch.setattr("app.main.open_checkpointer", lambda _: FakePostgres)
+    with TestClient(create_app(settings)) as c:
+        response = c.get("/health")
+
+    body = response.json()
+    assert (body["checkpointer"], body["checkpointer_ok"]) == ("postgres", True)
+    for leak in (password, "db.test", "campusspace_agent", "postgresql://"):
+        assert leak not in response.text
+
+
+def test_an_unreachable_checkpoint_database_fails_startup_without_leaking_the_url(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    password = "sentinel-db-password-" + "p" * 16
+    # Port 1 on localhost refuses at once: a real psycopg pool against nothing.
+    url = f"postgresql://campusspace_agent:{password}@127.0.0.1:1/agent"
+    settings = make_settings(monkeypatch, AGENT_CHECKPOINT_URL=url)
+    monkeypatch.setattr("app.checkpoint.POOL_OPEN_TIMEOUT_S", 1.0)
+    caplog.set_level(logging.DEBUG)
+
+    with pytest.raises(CheckpointUnavailable) as exc, TestClient(create_app(settings)):
+        pass
+
+    assert str(exc.value) == (
+        "Checkpoint database unreachable (PoolTimeout); check AGENT_CHECKPOINT_URL"
+    )
+    assert exc.value.__cause__ is None and exc.value.__suppress_context__
+    for leak in (password, url):
+        assert leak not in str(exc.value)
+        assert leak not in caplog.text

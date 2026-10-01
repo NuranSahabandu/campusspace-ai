@@ -22,3 +22,20 @@ One file per decision, named `NNNN-short-title.md`.
   the upload can't share the database transaction, so check-in uploads first, outside any lock, and deletes the object
   if the commit fails (a failed delete leaves a logged, private, unreferenced orphan). R2's free tier has 10 GB and no
   egress fees, and its S3 API keeps the code portable (AWSSDK.S3).
+- Agent checkpoints (Task 6.D2): **PostgresSaver (langgraph-checkpoint-postgres 3.x, psycopg 3 pool)**. This is a
+  narrow, deliberate deviation from plan §7.1 rule 3 ("the agent service has no database credentials"), which §10.9
+  itself anticipates (a Postgres checkpointer "in a separate schema" on an ephemeral host).
+  - **Why.** SqliteSaver on Render's disk would lose every approval paused at the human gate on the next deploy or
+    restart.
+  - **Least privilege.** The agent service gets credentials ONLY for its own checkpoint storage: the role
+    `campusspace_agent`, which owns the database `campusspace_agent` (schema `agent_checkpoints`). CONNECT on the
+    business database is revoked from PUBLIC, so the role can't read or change any business table. Bookings,
+    reservations and emails still happen only in .NET after officer approval, and the agent still reads business data
+    only through `/internal/agent-tools`.
+  - **Considered.**
+    - SQLite on a persistent disk: Render's free plan has none.
+    - A schema inside the business database with the app role: it would hand the agent business credentials.
+  - **Consequences.**
+    - One more secret: `AGENT_CHECKPOINT_URL`.
+    - The service refuses to start without it outside `AGENT_ENV=development`.
+    - Switching stores loses in-flight threads, which .NET handles through its not-found and approval-failure paths.

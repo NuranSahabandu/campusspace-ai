@@ -1,4 +1,5 @@
-"""Builds the real graph (SqliteSaver on a temp file) over the fake .NET API, with a fixed clock."""
+"""Builds the real graph (SqliteSaver on a temp file, or a given Checkpointer such as Postgres)
+over the fake .NET API, with a fixed clock."""
 
 import json
 import time
@@ -10,7 +11,7 @@ from uuid import uuid4
 
 from pydantic import SecretStr
 
-from app.checkpoint import open_checkpointer
+from app.checkpoint import Checkpointer, open_sqlite
 from app.graph import build_graph
 from app.runner import WorkflowRunner
 from app.schemas import WorkflowView
@@ -34,7 +35,7 @@ HAPPY_NODES = [
 class Harness:
     def __init__(
         self,
-        db: Path,
+        db: Path | Checkpointer,
         api: FakeCampusApi | None = None,
         now: datetime = NOW,
         run_timeout_s: float = 180.0,
@@ -47,10 +48,10 @@ class Harness:
         self.client = ToolClient(
             "http://api.test", SecretStr(TEST_TOOLS_KEY), transport=self.api.transport()
         )
-        self.saver = open_checkpointer(db)
+        self.checkpointer = db if isinstance(db, Checkpointer) else open_sqlite(db)
         monotonic = monotonic or time.monotonic  # one clock for the runner and the LLM budget
-        self.graph = build_graph(self.saver, build_tools(self.client), lambda: now, planner,
-                                 workers, monotonic)  # fmt: skip
+        self.graph = build_graph(self.checkpointer.saver, build_tools(self.client), lambda: now,
+                                 planner, workers, monotonic)  # fmt: skip
         self.runner = WorkflowRunner(
             self.graph, lambda: now, model_label, run_timeout_s=run_timeout_s, monotonic=monotonic
         )
@@ -79,7 +80,7 @@ class Harness:
 
     def close(self) -> None:
         self.client.close()
-        self.saver.conn.close()
+        self.checkpointer.close()
 
 
 def latest(view: WorkflowView) -> list[dict[str, Any]]:

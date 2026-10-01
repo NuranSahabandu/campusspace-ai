@@ -120,6 +120,8 @@ because annotations cannot read `PolicySettings`.
 - Never add a package or upgrade a major version without saying why.
 - Keep commits small and use Conventional Commits (`feat(b): ...`, `fix(api): ...`).
 - Project rules go in CLAUDE.md, never only in personal memory.
+- Stop only processes you started, by the PID you recorded when you started them. Never use `pkill`/`killall`, and never
+  kill by name or by port: the user's own dev API, agent service or emulator may be running on the same port.
 - End every task with:
   1. Files changed
   2. How you verified
@@ -162,6 +164,7 @@ dotnet list backend package --include-transitive | grep -E " 9\.| 10\."   # must
 Agent service (run from `agent-service/`; reads the repo-root `.env`; `AgentService__ServiceKey` and `AgentTools__Key` must be ≥ 32 chars and differ):
 
 ```bash
+../scripts/dev-agent-db.sh                          # agent checkpoint role + DB in Docker Postgres; fills AGENT_CHECKPOINT_URL
 uv sync                                             # create .venv from uv.lock (Python 3.11)
 uv run uvicorn app.main:app --reload --port 8000    # http://localhost:8000 (/health, /docs)
 uv run ruff check .
@@ -472,8 +475,9 @@ check public holidays (not implemented). Requester notes are replaced by `wrap_n
 before anything reaches state, are never parsed into requirements or sent in a brief (only an LLM planner's
 `soft_preferences` may come from them; the officer's revise notes likewise reach the venue brief only as
 "Officer revision (see soft_preferences)"), and the tool trace keeps only
-whitelisted summaries (notes `"<omitted>"`). Checkpoints use SqliteSaver at `AGENT_CHECKPOINT_PATH` (default
-`agent-service/data/checkpoints.sqlite`, git-ignored); never InMemorySaver outside tests. The trace (nodes, steps with
+whitelisted summaries (notes `"<omitted>"`). Checkpoints use PostgresSaver at `AGENT_CHECKPOINT_URL` (see
+Checkpointer below); SqliteSaver at `AGENT_CHECKPOINT_PATH` (default `agent-service/data/checkpoints.sqlite`,
+git-ignored) is only the development fallback; never InMemorySaver outside tests. The trace (nodes, steps with
 tool calls, validation `{attempt, rule, passed, message}`) lives in append-only state and is summaries, inputs, outputs
 and timings only; step `sequence` and validation `attempt` never reset within a thread (one AgentRuns row per thread).
 Each node binds its own `recording()` so tool calls attach to the right step. Limits (`app/limits.py`): MAX_REPLANS = 2,
@@ -628,6 +632,34 @@ request (we send declarations only; our create_agent loop runs tools), which rem
 and the one-time AFC WARNING; never filter logs for it. Outcome (2026-10-01, 16 live runs): every fault ended in a
 fallback or a recorded failure, never a hang; budget exhaustion finished in 151 s; watchdog, restart and resume
 after a restart all worked; two leaks found and fixed. Evidence: `docs/evidence/agent-failure-drills.md`.
+
+Checkpointer (Task 6.D2, `app/checkpoint.py`): LangGraph's PostgresSaver (langgraph-checkpoint-postgres 3.x, psycopg 3
++ psycopg-pool), because Render's disk is wiped on every deploy and a SQLite file there would lose every approval
+paused at the human gate (plan §10.9/§17.3). Config: `AGENT_CHECKPOINT_URL` (a `postgresql://` URL, a `SecretStr`;
+it carries the password, so never print, log or commit it; errors and validation messages never contain it; check it
+by presence). Without it only `AGENT_ENV=development` falls back to SqliteSaver (`AGENT_CHECKPOINT_PATH`); anything
+else (and `AGENT_ENV` defaults to production) refuses to start, like R2 in D1. `open_checkpointer(settings)` returns a
+`Checkpointer` (`kind`, `saver`, `ok()`, `close()`); /health shows `checkpointer` (postgres|sqlite) and
+`checkpointer_ok` only, and startup logs the kind only. Pool (`ConnectionPool`): `autocommit` + `dict_row` (PostgresSaver
+requires both), `prepare_threshold=None` (Neon's pooled endpoint is pgbouncer in transaction mode, which can't keep
+prepared statements), `check=ConnectionPool.check_connection` (a connection dropped by Neon's autosuspend or a DB
+restart is replaced on checkout), `min_size=0` (no connection held open, so Neon can auto-suspend; the reconnect
+cost on the next call is accepted), `max_size=5`, `max_idle=240` s. `setup()` (idempotent migrations) runs once at
+startup; a failure there is `CheckpointUnavailable("Checkpoint database unreachable (<type>)…")`, never `str(exc)`
+(psycopg's text names the host and user). Narrow credentials, a deliberate deviation from §7.1 rule 3 that §10.9
+anticipates: the agent service gets ONE role, `campusspace_agent`, which owns only the database `campusspace_agent`
+(schema `agent_checkpoints`, the role's search_path), and CONNECT on the business database is revoked from PUBLIC, so
+it can't read or change any business table; business data still reaches it only through `/internal/agent-tools`.
+Locally `./scripts/dev-agent-db.sh` creates the role, database and schema idempotently from `AGENT_DB_PASSWORD` (hex,
+≥ 32 chars, ≠ `POSTGRES_PASSWORD`; the SQL goes through stdin, never a command line), self-checks the CONNECT rule
+and writes `AGENT_CHECKPOINT_URL` into `.env` only when it is empty or missing; it never prints a value. Switching
+checkpointers loses the old store's threads (no migration): the agent service answers 404, so a Running run fails
+"Agent run not found (agent service state lost)", and an approve on an AwaitingApproval run goes through
+`FailApprovalAsync` (see the D14 evidence row). Tests: unit tests stay on SQLite (`clean_env` sets
+`AGENT_ENV=development`); `tests/test_postgres_checkpointer.py` (marker `postgres`) runs against a real PostgreSQL
+only when `AGENT_TEST_POSTGRES_URL` is set (CI's agent job has a postgres:16 service; locally use a throwaway
+container, never the dev database): pause → rebuild pool and graph → approve → completed, setup() twice, a
+terminated connection is replaced, a wrong password never reaches the error or the logs.
 
 Agent integration (Phase 3.3, `backend/CampusSpace.Api/Agents/`): only `IAgentClient` (typed HttpClient, base URL
 `AgentService:BaseUrl`, X-Service-Key, 10 s timeout, snake_case JSON with string money read as decimal) calls the agent

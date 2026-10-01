@@ -17,6 +17,7 @@ ENV_NAMES = (
     "GOOGLE_API_KEY",
     "API_BASE_URL",
     "AGENT_CHECKPOINT_PATH",
+    "AGENT_CHECKPOINT_URL",
     "AGENT_LLM_AGENTS",
     "PLANNER_MODEL",
     "WORKER_MODEL",
@@ -33,10 +34,13 @@ ENV_NAMES = (
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Start every test from a known env; values from the developer's shell never leak in.
-    Every test gets its own checkpoint file, so nothing is written to agent-service/data."""
+    Every test gets its own checkpoint file, so nothing is written to agent-service/data.
+    AGENT_ENV=development is what allows that SQLite fallback without AGENT_CHECKPOINT_URL; tests
+    about production set AGENT_ENV themselves."""
     for name in ENV_NAMES:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("AGENT_CHECKPOINT_PATH", str(tmp_path / "checkpoints.sqlite"))
+    monkeypatch.setenv("AGENT_ENV", "development")
 
 
 def make_settings(monkeypatch: pytest.MonkeyPatch, **env: str) -> Settings:

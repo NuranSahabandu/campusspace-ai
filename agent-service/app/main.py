@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app import __version__
-from app.checkpoint import checkpointer_ok, open_checkpointer
+from app.checkpoint import open_checkpointer
 from app.config import LLM_AGENTS, Settings, get_settings
 from app.graph import build_graph
 from app.llm import build_chat_model
@@ -44,8 +44,9 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Loading settings here makes a missing or short key fail startup.
         s = settings or get_settings()
+        checkpointer = open_checkpointer(s)  # first: a failure here leaves nothing to close
+        log.info("checkpointer=%s", checkpointer.kind)  # the kind only, never the URL
         client = ToolClient(s.api_base_url, s.agent_tools_key, transport=transport)
-        saver = open_checkpointer(s.checkpoint_path)
         planner = None
         if s.agent_mode("supervisor") == "llm":
             # Lazy: the Gemini client is built on the first plan, never at startup.
@@ -62,20 +63,20 @@ def create_app(
                 workers[name] = worker_class(
                     lambda n=name: build_chat_model("worker", s, n), s.worker_model
                 )
-        graph = build_graph(saver, build_tools(client), clock, planner, workers)
+        graph = build_graph(checkpointer.saver, build_tools(client), clock, planner, workers)
         fault = s.fault_summary()
         if fault:  # names only; never in production (Settings refuses it outside development)
             times = fault["times"] or "every call"
             log.warning("FAULT INJECTION ACTIVE: fault=%s agents=%s times=%s",
                         fault["fault"], ",".join(fault["agents"]), times)  # fmt: skip
         app.state.settings = s
-        app.state.checkpointer = saver
+        app.state.checkpointer = checkpointer
         app.state.runner = WorkflowRunner(graph, clock, s.model_label())
         try:
             yield
         finally:
             client.close()
-            saver.conn.close()
+            checkpointer.close()
 
     app = FastAPI(title="CampusSpace AI Agent Service", version=__version__, lifespan=lifespan)
 
@@ -97,8 +98,9 @@ def create_app(
             "agents": {name: s.agent_mode(name) for name in LLM_AGENTS},
             "models": {"planner": s.planner_model, "worker": s.worker_model},
             "thinking": {"planner": s.planner_thinking, "worker": s.worker_thinking},
-            "checkpointer": "sqlite",
-            "checkpointer_ok": checkpointer_ok(request.app.state.checkpointer),
+            # The kind and a reachability bool only: never the URL, host, user or password.
+            "checkpointer": request.app.state.checkpointer.kind,
+            "checkpointer_ok": request.app.state.checkpointer.ok(),
             "google_api_key_configured": s.google_api_key is not None,
             "fault_injection": s.fault_summary(),
         }
