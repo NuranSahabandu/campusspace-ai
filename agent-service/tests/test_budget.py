@@ -111,6 +111,15 @@ def test_worst_case_with_the_planner_venue_and_equipment_llms_all_hanging() -> N
     assert elapsed == RUN_TIMEOUT_S - LLM_RESERVE_S
 
 
+def test_worst_case_with_all_four_llm_agents_hanging() -> None:
+    elapsed, allowed = simulate([PLANNER_DEADLINE_S] + [WORKER_DEADLINE_S] * 3)
+
+    # Task 4.4: 60 (plan) + 45 (venue) + 45 (equipment) = 150; the policy LLM and every LLM step of
+    # the re-plans are skipped (stubs), so the run still ends inside RUN_TIMEOUT_S.
+    assert allowed == [60.0, 45.0, 45.0] + [None] * 9
+    assert elapsed == RUN_TIMEOUT_S - LLM_RESERVE_S
+
+
 def dotnet_run_timeout_minutes() -> list[int]:
     """Every RunTimeoutMinutes .NET could use: the options default and any appsettings value."""
     options = (BACKEND / "Options" / "AgentServiceOptions.cs").read_text()

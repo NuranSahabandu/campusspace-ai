@@ -14,9 +14,9 @@ app/main.py               create_app(): FastAPI app, GET /health, lifespan build
 app/config.py             Settings (pydantic-settings), reads <repo>/.env anchored to this file
 app/limits.py             MAX_DELEGATIONS (derived), MAX_REPLANS, recursion limits, 10 s tool / 180 s run timeouts
 app/schemas.py            Pydantic contracts: agent outputs (extra="forbid"), tool args, trace rows, /workflows API
-app/guardrails.py         wrap_notes(): strips <requester_notes> tags from user text, then wraps it
+app/guardrails.py         wrap_notes(): strips <requester_notes> tags from user text, then wraps it; plain_text()
 app/tools.py              @tool functions over /internal/agent-tools (X-Agent-Key), TOOL_ERROR observations, ToolRecorder
-app/workers/              stub supervisor planner + venue / equipment / policy_cost workers, WORKERS, run_worker
+app/workers/              stub + LLM planner and venue / equipment / policy_cost workers (tool_agent.py loop), run_worker
 app/validation.py         V01–V12 as pure functions (policy snapshot + injected clock) and the re-query driver
 app/graph.py              State, nodes, routing, build_graph() (plan App. A.1) with interrupt() in human_gate
 app/checkpoint.py         SqliteSaver on one connection (check_same_thread=False; the saver locks)

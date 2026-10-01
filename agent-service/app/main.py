@@ -20,6 +20,7 @@ from app.runner import WorkflowRunner
 from app.tools import ToolClient, build_tools
 from app.workers.equipment_llm import LlmEquipmentWorker
 from app.workers.planner import LlmPlanner
+from app.workers.policy_llm import LlmPolicyWorker
 from app.workers.venue_llm import LlmVenueWorker
 
 SERVICE_NAME = "agent-service"
@@ -51,6 +52,7 @@ def create_app(
         for name, worker_class in (
             ("venue_matching", LlmVenueWorker),
             ("equipment_allocation", LlmEquipmentWorker),
+            ("policy_cost", LlmPolicyWorker),
         ):
             if s.agent_mode(name) == "llm":  # lazy: each builds its client on first use
                 workers[name] = worker_class(lambda: build_chat_model("worker", s), s.worker_model)

@@ -268,3 +268,44 @@ DEMO_ALLOCATION = (("MIC-WIRELESS", 2, "portable"), ("PROJ-PORTABLE", 0, "room_b
 def mic_substitute(reason: str = "only 1 MIC-WIRELESS available; 8 MIC-WIRED available") -> dict:
     return {"requested_code": "MIC-WIRELESS", "substitute_code": "MIC-WIRED", "qty": 2,
             "reason": reason}  # fmt: skip
+
+
+# ---------- policy worker turns ----------
+
+
+def quote(**override: Any) -> Callable[[list[BaseMessage]], AIMessage]:
+    """calculate_quote with exactly the brief's arguments, unless overridden."""
+
+    def turn(messages: list[BaseMessage]) -> AIMessage:
+        brief = brief_of(messages)
+        args = {
+            "room_id": brief["room_id"],
+            "start_iso": brief["start"],
+            "end_iso": brief["end"],
+            "requester_role": brief["requester_role"],
+            "equipment": brief["priced_lines"],
+        }
+        return call("calculate_quote", **(args | override))
+
+    return turn
+
+
+def check_policy() -> AIMessage:
+    return call("check_policy")
+
+
+DEMO_SUMMARY = (
+    "A301 fits the 45 attendees with computers and a projector. Two wireless mics are portable; "
+    "the room's projector covers the portable one. Total LKR 5,500.00 against a budget of "
+    "LKR 8,000.00: within budget. Free cancellation until 24 h before the start."
+)
+DEMO_FLAGS = ["Within budget: LKR 5,500.00 vs LKR 8,000.00", "PROJ-PORTABLE built into A301"]
+
+
+def policy_answer(summary: str = DEMO_SUMMARY, flags: list[str] | None = None) -> AIMessage:
+    """The PolicyAnswer structured-output call."""
+    return call(
+        "PolicyAnswer",
+        policy_flags=DEMO_FLAGS if flags is None else flags,
+        officer_summary=summary,
+    )

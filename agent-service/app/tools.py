@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 from langchain_core.tools import BaseTool, tool
 from pydantic import BaseModel, SecretStr, ValidationError
+from typing_extensions import TypedDict  # pydantic needs it on Python < 3.12
 
 from app.limits import TOOL_TIMEOUT_S
 from app.schemas import (
@@ -40,6 +41,15 @@ from app.schemas import (
     SubstitutesArgs,
     ToolCallTrace,
 )
+
+
+class QuoteLineInput(TypedDict):
+    """One calculate_quote line. Typed (not dict[str, Any]) so the model sees code and quantity:
+    Gemini drops additionalProperties, which left an untyped item with no fields at all."""
+
+    code: str
+    quantity: int
+
 
 PREFIX = "/internal/agent-tools"
 TOOL_ERROR = "TOOL_ERROR:"
@@ -420,7 +430,7 @@ def build_tools(client: ToolClient) -> dict[str, BaseTool]:
         start_iso: str,
         end_iso: str,
         requester_role: str,
-        equipment: list[dict[str, Any]],
+        equipment: list[QuoteLineInput],
     ) -> str:
         """Price a room slot and equipment lines [{code, quantity}] for the requester role
         (Student or Lecturer) with the official calculator. Calculates only; saves nothing.
@@ -453,8 +463,24 @@ def build_tools(client: ToolClient) -> dict[str, BaseTool]:
     return {t.name: t for t in tools}
 
 
+def make_check_policy(facts: dict[str, Any]) -> BaseTool:
+    """The Policy and Cost worker's check_policy tool, bound to ONE run's facts (addendum Open
+    question 2, option a). The facts come from the run-start policy snapshot in the brief; there is
+    no HTTP call, so the worker never reads a policy that differs from the one validation uses."""
+    text = json.dumps(facts, default=str, sort_keys=True)
+
+    @tool
+    def check_policy() -> str:
+        """Policy facts for this booking from the run's policy snapshot (no live call): limits,
+        the booking's duration and capacity checks, and the free-cancellation window."""
+        return _run_tool("check_policy", NoArgs, {}, lambda _: text, _sum_policy)
+
+    return check_policy
+
+
 # Per-agent allow-lists (plan §10.4). validate/finalize are plain code and re-query through the same
-# tools.
+# tools. LOCAL_TOOLS are built per run by their worker (no HTTP), not by build_tools.
+LOCAL_TOOLS = frozenset({"check_policy"})
 WORKER_TOOLS: dict[str, tuple[str, ...]] = {
     "supervisor": (
         "get_policy",
@@ -464,5 +490,5 @@ WORKER_TOOLS: dict[str, tuple[str, ...]] = {
     ),
     "venue_matching": ("search_available_rooms", "get_room_details"),
     "equipment_allocation": ("check_equipment_availability", "get_substitutes"),
-    "policy_cost": ("calculate_quote",),
+    "policy_cost": ("calculate_quote", "check_policy"),
 }

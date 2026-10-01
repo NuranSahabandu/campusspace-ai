@@ -11,7 +11,8 @@ ToolStrategy rather than the bare class: AutoStrategy would pick Gemini's native
 production but the tool strategy for a fake model, so the tests would not run the production path.
 handle_errors=False makes our retry (which includes the code checks) the only retry.
 
-Subclasses set name, label, prompt, schema and retry_hint, and implement check().
+Subclasses set name, label, prompt, schema and retry_hint, and implement check(); local_tools() adds
+tools bound to the brief (policy_llm.py's check_policy).
 """
 
 import json
@@ -123,6 +124,7 @@ class ToolAgentWorker:
         self._min_retry_s = min_retry_s
         self._monotonic = monotonic
         self._agent: Any = None
+        self._model: Any = None
         self._lock = threading.Lock()
 
     def check(self, answer: Any, brief: Mapping[str, Any], messages: list[Any]) -> Checked:
@@ -132,17 +134,33 @@ class ToolAgentWorker:
         """A result that needs no model call (for example nothing requested), or None."""
         return None
 
-    def _build(self, tools: Mapping[str, BaseTool]) -> Any:
+    def local_tools(self, brief: Mapping[str, Any]) -> list[BaseTool]:
+        """Tools bound to this task's brief (no HTTP), for example check_policy over the run's
+        policy snapshot. With any, the agent is built per run instead of once."""
+        return []
+
+    def _build(self, tools: Mapping[str, BaseTool], local: list[BaseTool]) -> Any:
         with self._lock:
-            if self._agent is None:
-                self._agent = create_agent(
-                    self._factory(),
-                    tools=[tools[name] for name in WORKER_TOOLS[self.name]],  # ONLY these
-                    system_prompt=self.prompt,
-                    response_format=ToolStrategy(self.schema, handle_errors=False),
-                    name=self.name,
-                )
-            return self._agent
+            if self._agent is not None and not local:
+                return self._agent
+            if self._model is None:
+                self._model = self._factory()
+            chosen = [tools[n] for n in WORKER_TOOLS[self.name] if n in tools] + local
+            # Least privilege: ONLY this worker's allow-list, in its order.
+            if sorted(t.name for t in chosen) != sorted(WORKER_TOOLS[self.name]):
+                raise RuntimeError(f"{self.name} tools {[t.name for t in chosen]} do not match its "
+                                   "allow-list")  # fmt: skip
+            by_name = {t.name: t for t in chosen}
+            agent = create_agent(
+                self._model,
+                tools=[by_name[n] for n in WORKER_TOOLS[self.name]],
+                system_prompt=self.prompt,
+                response_format=ToolStrategy(self.schema, handle_errors=False),
+                name=self.name,
+            )
+            if not local:
+                self._agent = agent
+            return agent
 
     @staticmethod
     def _invoke(agent: Any, message: str, run: _Run) -> Any:
@@ -185,7 +203,7 @@ class ToolAgentWorker:
         if limit is None:
             return fallback(BUDGET_EXHAUSTED)
         try:
-            agent = self._build(tools)
+            agent = self._build(tools, self.local_tools(brief))
         except Exception as exc:  # noqa: BLE001 - a broken client must not stop the run
             return fallback(f"{label} LLM error: {describe_error(exc)}")
 

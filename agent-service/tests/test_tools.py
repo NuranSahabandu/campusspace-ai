@@ -172,3 +172,15 @@ def test_tools_outside_a_recorder_are_not_recorded(tools) -> None:
     out = tools["list_feature_catalog"].invoke({})
 
     assert "projector" in out
+
+
+def test_the_quote_tool_schema_names_the_line_fields_for_the_model() -> None:
+    # Gemini ignores additionalProperties: an untyped dict item would reach the model with no
+    # fields, and it could only send {} (seen in the Task 4.4 live run).
+    from langchain_core.utils.function_calling import convert_to_openai_tool
+
+    tools = build_tools(ToolClient("http://api.test", SecretStr("k" * 32)))
+    params = convert_to_openai_tool(tools["calculate_quote"])["function"]["parameters"]
+    item = params["properties"]["equipment"]["items"]
+    assert set(item["properties"]) == {"code", "quantity"}
+    assert item["properties"]["quantity"]["type"] == "integer"

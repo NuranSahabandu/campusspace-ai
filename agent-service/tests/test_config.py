@@ -156,17 +156,43 @@ def test_unknown_llm_agent_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
         make_settings(monkeypatch, AGENT_LLM_AGENTS="planner", GOOGLE_API_KEY=FAKE_GOOGLE_KEY)
 
 
-def test_worker_without_an_llm_implementation_is_rejected(
+def test_all_four_agents_are_accepted_and_the_label_collapses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    with pytest.raises(
-        ValidationError, match=r"policy_cost has no LLM implementation yet \(Task 4.4\)"
-    ):
-        make_settings(
-            monkeypatch,
-            AGENT_LLM_AGENTS="venue_matching,equipment_allocation,policy_cost",
-            GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
-        )
+    settings = make_settings(
+        monkeypatch,
+        AGENT_LLM_AGENTS="policy_cost, equipment_allocation,venue_matching,SUPERVISOR",
+        GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
+    )
+
+    assert settings.agent_llm_agents == (
+        "supervisor,venue_matching,equipment_allocation,policy_cost"
+    )
+    assert all(settings.agent_mode(n) == "llm" for n in app.config.LLM_AGENTS)
+    label = settings.model_label()
+    assert label == "planner=gemini-3.5-flash; workers=gemini-3.5-flash-lite"
+    assert len(label) <= 100
+
+
+def test_three_llm_workers_with_a_stub_planner_fit_the_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(
+        monkeypatch,
+        AGENT_LLM_AGENTS="venue_matching,equipment_allocation,policy_cost",
+        GOOGLE_API_KEY=FAKE_GOOGLE_KEY,
+    )
+
+    assert settings.model_label() == "planner=stub; workers=gemini-3.5-flash-lite"
+
+
+def test_an_agent_without_an_llm_implementation_would_still_be_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Phase 4 implemented all four; the guard stays for any agent added later.
+    monkeypatch.setattr(app.config, "LLM_IMPLEMENTED", frozenset({"supervisor"}))
+    with pytest.raises(ValidationError, match="policy_cost has no LLM implementation yet"):
+        make_settings(monkeypatch, AGENT_LLM_AGENTS="policy_cost", GOOGLE_API_KEY=FAKE_GOOGLE_KEY)
 
 
 def test_llm_venue_matching_is_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
