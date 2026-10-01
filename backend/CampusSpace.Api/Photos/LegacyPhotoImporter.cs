@@ -22,7 +22,10 @@ public sealed class LegacyPhotoImporter(
     {
         var folder = PhotoStorageExtensions.LocalFolder(services);
         if (!Directory.Exists(folder))
+        {
+            logger.LogInformation("No legacy photo folder; nothing to import into {Store}", store.Name);
             return new LegacyImportResult(0, 0, 0, 0);
+        }
 
         var files = Directory.EnumerateFiles(folder).Select(Path.GetFileName).OfType<string>().ToList();
         var keys = files.Where(PhotoKeys.IsValid).ToList();
