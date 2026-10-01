@@ -73,6 +73,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApprovalQueueService, ApprovalQueueService>();
         services.AddScoped<IAgentRunReadService, AgentRunReadService>();
         services.AddScoped<IAgentRunMonitorService, AgentRunMonitorService>();
+        services.AddScoped<IReportService, ReportService>();
         return services;
     }
 
