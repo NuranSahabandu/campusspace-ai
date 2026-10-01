@@ -145,6 +145,22 @@ The Android emulator reaches your machine's `localhost` through `10.0.2.2`.
 Debug builds allow plain HTTP only to `10.0.2.2` and `localhost`; release builds are HTTPS-only. Building a release
 APK comes in Phase 6. See [mobile/README.md](mobile/README.md) for the structure.
 
+### Status notifications (UC08)
+
+While a student or lecturer is signed in, the app polls their requests and shows an Android notification when
+Facilities approves, rejects, re-plans or cancels one, when it is closed automatically, or when the agent could not
+prepare a proposal. Tapping it opens the request. The app asks for the notification permission (Android 13+) once,
+after the first successful submit; if you deny it, everything else works as before.
+
+**Limitation:** notifications are local, not push (no FCM). They appear only while the app process is alive: in the
+foreground, or shortly after it goes to the background until Android freezes or stops it. Nothing is shown for changes
+made while the app was closed, and nothing is notified at sign-in (the first poll only records the current statuses).
+A tap after the app was fully closed just opens the app.
+
+To try it on the emulator: sign in as a requester, submit a request (allow notifications when asked), approve it as the
+Facilities Officer in the web app, and wait up to 15 s (the PendingApproval poll interval). To see the prompt again,
+uninstall the app (the "asked once" flag lives in its secure storage).
+
 ## Authentication
 
 Every `/api/...` route needs a JWT unless it is marked anonymous. The anonymous routes are `POST /api/auth/register`,

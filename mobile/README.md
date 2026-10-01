@@ -29,10 +29,13 @@ lib/
     api/dio_client.dart        dioProvider: 15 s timeouts, Bearer token, 401 → session expiry signal
     api/problem.dart           RFC 9457 Problem Details → { title, status, traceId, fieldErrors (camelCase) }
     api/session_expiry.dart    signal from the interceptor to the auth controller (avoids a provider cycle)
+    ui/                        MessageView, ErrorRetryView (offline / 403 / error + Retry), InlineLoadError
   features/
     auth/                      models, token_storage (flutter_secure_storage), auth_repository, auth_controller,
                                login_screen, register_screen
     home/home_screen.dart      role-based Phase 0 placeholders
+    notifications/             app-level status watcher, local notifications and the permission ask (UC08; only
+                               while the app process is alive, see the root README)
 test/                          helpers.dart (FakeTokenStorage, MockAuthRepository, pumpApp), core/, features/
 ```
 
