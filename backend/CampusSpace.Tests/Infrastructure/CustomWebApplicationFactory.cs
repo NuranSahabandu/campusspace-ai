@@ -16,7 +16,8 @@ namespace CampusSpace.Tests.Infrastructure;
 /// Runs the real API in memory against the test container. Uses the "Testing" environment,
 /// so user-secrets, Swagger and the Development auto-migration are all off.
 /// The agent-service health check is stubbed to answer 200, IAgentClient is <see cref="AgentClient"/> (a fake) and the
-/// AgentRunPoller is off (tests call PollOnceAsync). Pass <paramref name="clock"/> to freeze the API's TimeProvider
+/// AgentRunPoller and the NotificationDispatcher are off (tests call PollOnceAsync / ProcessOnceAsync), and email has no
+/// key, so nothing calls Brevo. Pass <paramref name="clock"/> to freeze the API's TimeProvider
 /// (for rules about "now", such as lead time).
 /// </summary>
 public sealed class CustomWebApplicationFactory(string connectionString, TimeProvider? clock = null) : WebApplicationFactory<Program>
@@ -51,6 +52,12 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
         builder.UseSetting("AgentTools:Key", AgentToolsKey);
         builder.UseSetting("AgentService:ServiceKey", AgentServiceKey);
         builder.UseSetting("AgentService:PollerEnabled", "false");
+        // Email: no key (the no-op sender records Skipped, Brevo is never called), no redirect, and the dispatcher off
+        // (tests call NotificationDispatcher.ProcessOnceAsync). Set explicitly so a developer's environment can't leak in.
+        builder.UseSetting("Email:BrevoApiKey", "");
+        builder.UseSetting("Email:FromAddress", "");
+        builder.UseSetting("Email:RedirectAllTo", "");
+        builder.UseSetting("Email:DispatcherEnabled", "false");
         // Approve waits for the agent's finalize: short in tests, so a "slow agent" test answers 202 within a second.
         builder.UseSetting("AgentService:ApprovalWaitSeconds", "1");
         builder.UseSetting("AgentService:ApprovalPollMilliseconds", "50");
