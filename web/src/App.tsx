@@ -4,7 +4,7 @@ import { Navigate, Route, Routes } from 'react-router'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { type AppPath, ROUTE_ROLES } from './auth/routeAccess'
 import { LoginPage } from './features/auth/LoginPage'
-import { DashboardPage } from './features/dashboard/DashboardPage'
+import { HomePage } from './features/dashboard/HomePage'
 import { ForbiddenPage } from './features/errors/ForbiddenPage'
 import { NotFoundPage } from './features/errors/NotFoundPage'
 import { AppLayout } from './layout/AppLayout'
@@ -69,7 +69,7 @@ export function AppRoutes() {
           <Route path="forbidden" element={<ForbiddenPage />} />
           {/* Staff only; a signed-in non-staff user is sent to /forbidden above. */}
           <Route element={<ProtectedRoute roles={ROUTE_ROLES['/']} />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<HomePage />} />
             <Route path="rooms" element={<GuardedPage path="/rooms"><RoomsPage /></GuardedPage>} />
             <Route path="rooms/:id" element={<GuardedPage path="/rooms/:id"><RoomDetailPage /></GuardedPage>} />
             {/* Not a page of its own: the target's guard decides access. */}
