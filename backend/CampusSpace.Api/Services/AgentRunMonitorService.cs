@@ -39,11 +39,7 @@ public sealed class AgentRunMonitorService(AppDbContext db) : IAgentRunMonitorSe
             runs = runs.Where(r => r.Steps.Any(s =>
                 EF.Functions.JsonContains(s.OutputJson!, WorkerFallback)
                 || EF.Functions.JsonContains(s.OutputJson!, PlannerFallback)) == fallback);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            runs = runs.Where(r => EF.Functions.ILike(r.Request.Purpose, pattern, QueryableExtensions.LikeEscape));
-        }
+        runs = runs.WhereContains(query.Search, r => r.Request.Purpose);
 
         var rows = runs.Select(r => new ListRow
         {

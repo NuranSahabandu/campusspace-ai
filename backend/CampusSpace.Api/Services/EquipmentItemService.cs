@@ -22,8 +22,7 @@ public sealed class EquipmentItemService(AppDbContext db) : IEquipmentItemServic
             items = items.Where(i => i.Status == status);
         if (query.Condition is { } condition)
             items = items.Where(i => i.Condition == condition);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-            items = items.Where(i => EF.Functions.ILike(i.AssetTag, query.Search.ToContainsPattern()));
+        items = items.WhereContains(query.Search, i => i.AssetTag);
 
         items = query.Sort switch
         {

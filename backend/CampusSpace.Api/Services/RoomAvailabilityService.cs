@@ -40,11 +40,7 @@ public sealed class RoomAvailabilityService(
         if (codes.Count > 0)
             // Codes are distinct, so matching all of them means the count of matches equals the count of codes.
             rooms = rooms.Where(r => r.RoomFeatures.Count(rf => codes.Contains(rf.Feature.Code)) == codes.Count);
-        if (!string.IsNullOrWhiteSpace(page.Search))
-        {
-            var pattern = page.Search.ToContainsPattern();
-            rooms = rooms.Where(r => EF.Functions.ILike(r.Code, pattern) || EF.Functions.ILike(r.Name, pattern));
-        }
+        rooms = rooms.WhereContains(page.Search, r => r.Code, r => r.Name);
 
         // NOT EXISTS subqueries with the range && operator, served by the GiST indexes on (RoomId, TimeRange).
         var window = CampusTime.UtcRange(criteria.Start, criteria.End);

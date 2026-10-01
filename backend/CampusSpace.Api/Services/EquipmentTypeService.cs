@@ -20,11 +20,7 @@ public sealed class EquipmentTypeService(AppDbContext db) : IEquipmentTypeServic
         if (query.Category is { } category)
             types = types.Where(t => t.Category == category);
 
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            types = types.Where(t => EF.Functions.ILike(t.Code, pattern) || EF.Functions.ILike(t.Name, pattern));
-        }
+        types = types.WhereContains(query.Search, t => t.Code, t => t.Name);
 
         types = query.Sort switch
         {

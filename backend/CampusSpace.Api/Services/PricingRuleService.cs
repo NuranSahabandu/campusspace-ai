@@ -27,11 +27,7 @@ public sealed class PricingRuleService(AppDbContext db, TimeProvider clock) : IP
             rules = rules.Where(r => r.RoomType == roomType);
         if (query.RequesterRole is { } role)
             rules = rules.Where(r => r.RequesterRole == role);
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            rules = rules.Where(r => EF.Functions.ILike(r.RoomType, pattern) || EF.Functions.ILike(r.RequesterRole, pattern));
-        }
+        rules = rules.WhereContains(query.Search, r => r.RoomType, r => r.RequesterRole);
         // Superseded: in effect, but a later rule for the same pair is in effect too.
         if (!query.IncludeHistory)
             rules = rules.Where(r => r.ValidFrom > today || !db.PricingRules.Any(o =>

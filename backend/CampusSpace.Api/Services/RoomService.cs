@@ -31,11 +31,7 @@ public sealed class RoomService(AppDbContext db, ICurrentUser currentUser) : IRo
             // Codes are distinct, so matching all of them means the count of matches equals the count of codes.
             rooms = rooms.Where(r => r.RoomFeatures.Count(rf => codes.Contains(rf.Feature.Code)) == codes.Count);
 
-        if (!string.IsNullOrWhiteSpace(query.Search))
-        {
-            var pattern = query.Search.ToContainsPattern();
-            rooms = rooms.Where(r => EF.Functions.ILike(r.Code, pattern) || EF.Functions.ILike(r.Name, pattern));
-        }
+        rooms = rooms.WhereContains(query.Search, r => r.Code, r => r.Name);
 
         rooms = query.Sort switch
         {
