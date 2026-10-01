@@ -8,7 +8,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app import __version__
 from app.checkpoint import CheckpointUnavailable
-from app.main import create_app
+from app.main import LIVENESS_LOG_FILTER, create_app
 from tests.conftest import TEST_SERVICE_KEY, TEST_TOOLS_KEY, make_settings
 
 
@@ -133,3 +133,47 @@ def test_an_unreachable_checkpoint_database_fails_startup_without_leaking_the_ur
     for leak in (password, url):
         assert leak not in str(exc.value)
         assert leak not in caplog.text
+
+
+def test_health_live_answers_without_touching_the_checkpointer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"ok": 0}
+
+    class CountingCheckpointer:
+        kind = "postgres"
+        saver = InMemorySaver()
+
+        @staticmethod
+        def ok() -> bool:
+            calls["ok"] += 1
+            raise AssertionError("/health/live must not reach the checkpoint database")
+
+        @staticmethod
+        def close() -> None:
+            pass
+
+    monkeypatch.setattr("app.main.open_checkpointer", lambda _: CountingCheckpointer)
+    with TestClient(create_app(make_settings(monkeypatch))) as c:
+        response = c.get("/health/live")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert calls["ok"] == 0
+
+
+def test_liveness_pings_are_left_out_of_the_access_log() -> None:
+    def record(path: str) -> logging.LogRecord:
+        return logging.LogRecord(
+            "uvicorn.access",
+            logging.INFO,
+            __file__,
+            1,
+            '%s - "%s %s HTTP/%s" %d',
+            ("10.0.0.1:1234", "GET", path, "1.1", 200),
+            None,
+        )
+
+    assert LIVENESS_LOG_FILTER.filter(record("/health/live")) is False
+    assert LIVENESS_LOG_FILTER.filter(record("/health")) is True
+    assert LIVENESS_LOG_FILTER.filter(record("/workflows/abc")) is True
