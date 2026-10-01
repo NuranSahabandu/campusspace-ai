@@ -224,7 +224,7 @@ class ToolAgentWorker:
             _merge(run.recorder, step)
             if not future.done():
                 meta["usage"] = add_usage(meta["usage"], _usage(messages, self.prompt))
-                return fallback(f"{label} LLM timed out after {limit:g} s")
+                return fallback(f"{label} LLM timed out after {limit:.3g} s")
             try:
                 answer = future.result()
             except StructuredOutputValidationError as exc:

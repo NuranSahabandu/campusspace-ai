@@ -281,3 +281,18 @@ def test_provider_error_text_never_reaches_the_trace(
     out = steps_of(view, "venue_matching")[0]["output"]
     assert out["fallback_reason"] == "Venue LLM error: rate limited (HTTP 429)"
     assert "RESOURCE_EXHAUSTED" not in state and "{'error'" not in state
+
+
+def test_a_timeout_reason_is_rounded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(faults, "SLOW_S", 1.0)
+    s = fault_settings(monkeypatch, "slow", "supervisor")
+    planner = LlmPlanner(lambda: build_chat_model("planner", s, "supervisor"), s.planner_model,
+                         deadline_s=0.2123456)  # fmt: skip
+    h = Harness(tmp_path / "cp.sqlite", planner=planner)
+    try:
+        view = h.view(h.start())
+    finally:
+        h.close()
+
+    reason = steps_of(view, "supervisor")[0]["output"]["fallback_reason"]
+    assert reason == "Planner LLM timed out after 0.212 s"

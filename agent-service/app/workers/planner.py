@@ -230,7 +230,7 @@ class LlmPlanner:
             future = submit(lambda sent=sent: runnable.invoke(sent), "planner-llm")
             wait([future], timeout=max(remaining, 0.0))
             if not future.done():
-                return fallback(f"Planner LLM timed out after {limit:g} s")
+                return fallback(f"Planner LLM timed out after {limit:.3g} s")
             try:
                 result = future.result()
             except Exception as exc:  # noqa: BLE001 - timeouts, 429s after retries, API errors
