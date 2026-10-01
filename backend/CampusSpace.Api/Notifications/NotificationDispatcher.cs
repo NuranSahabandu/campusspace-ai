@@ -1,3 +1,4 @@
+using CampusSpace.Api.Background;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -9,11 +10,14 @@ namespace CampusSpace.Api.Notifications;
 /// Sends the outbox (plan §14, §7.1 rule 6). Every Email:PollSeconds it (1) fails rows stuck in Sending, (2) claims due
 /// Pending rows with FOR UPDATE SKIP LOCKED, marks them Sending and commits, then (3) sends each one outside any
 /// transaction, in its own scope. A row is marked Sending before the call, so a crash mid-send ends Failed instead of
-/// being sent twice (at most once). An email therefore never blocks, delays or rolls back a decision. Off when
+/// being sent twice (at most once). An email therefore never blocks, delays or rolls back a decision. With nothing due it
+/// goes idle (no database query) until a new row is signalled (<see cref="WorkSignals.Email"/>), the next known due time
+/// or the next Email:IdleSweepMinutes sweep, so Neon can scale to zero (<see cref="PollingSchedule"/>). Off when
 /// Email:DispatcherEnabled is false (Testing); tests call <see cref="ProcessOnceAsync"/>.
 /// </summary>
 public sealed class NotificationDispatcher(
-    IServiceScopeFactory scopes, IOptions<EmailOptions> options, TimeProvider clock, IHostEnvironment environment,
+    IServiceScopeFactory scopes, IOptions<EmailOptions> options, WorkSignals signals, TimeProvider clock,
+    IHostEnvironment environment,
     ILogger<NotificationDispatcher> logger)
     : BackgroundService
 {
@@ -36,26 +40,40 @@ public sealed class NotificationDispatcher(
             return;
         }
 
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(o.PollSeconds), clock);
+        logger.LogInformation("Notification dispatcher: every {PollSeconds} s while emails are due, else idle with a sweep every {SweepMinutes} min",
+            o.PollSeconds, o.IdleSweepMinutes);
         try
         {
-            do
-            {
-                try
-                {
-                    await ProcessOnceAsync(stoppingToken);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
-                {
-                    logger.LogError(ex, "Notification dispatch failed; retrying on the next tick");
-                }
-            }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
+            await SignalledPollingLoop.RunAsync(TickAsync, signals.Email, TimeSpan.FromSeconds(o.PollSeconds),
+                TimeSpan.FromMinutes(o.IdleSweepMinutes), clock, logger, "Notification dispatch", stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // Shutting down.
         }
+    }
+
+    private async Task<TickResult> TickAsync(CancellationToken ct) =>
+        await ProcessOnceAsync(ct) > 0 ? new TickResult(FoundWork: true) : new TickResult(false, await NextDueAsync(ct));
+
+    /// <summary>
+    /// The earliest moment a row needs the dispatcher: a Pending row's NextAttemptAt (now when it has none), or when a
+    /// Sending row becomes stale. Null when there is neither, so the loop can idle until a signal or its sweep.
+    /// </summary>
+    public async Task<DateTimeOffset?> NextDueAsync(CancellationToken ct = default)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var now = clock.GetUtcNow().UtcDateTime;
+        var due = await db.NotificationLogs.AsNoTracking()
+            .Where(n => n.Status == NotificationStatuses.Pending || n.Status == NotificationStatuses.Sending)
+            .Select(n => n.Status == NotificationStatuses.Pending
+                ? n.NextAttemptAt ?? now
+                : (n.LastAttemptAt ?? now) + StaleSendingAfter)
+            .OrderBy(d => d)
+            .Select(d => (DateTime?)d)
+            .FirstOrDefaultAsync(ct);
+        return due is { } d ? new DateTimeOffset(DateTime.SpecifyKind(d, DateTimeKind.Utc)) : null;
     }
 
     /// <summary>One tick. Returns how many rows it tried to send.</summary>

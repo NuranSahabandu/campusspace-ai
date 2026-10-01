@@ -23,4 +23,7 @@ public static class AgentRunStatuses
 
     /// <summary>A live run: at most one per request (IX_AgentRuns_RequestId_Live).</summary>
     public static readonly IReadOnlyList<string> Active = [Queued, Running, AwaitingApproval, Resuming];
+
+    /// <summary>What the AgentRunPoller processes; an AwaitingApproval run waits for the officer and is not polled.</summary>
+    public static readonly IReadOnlyList<string> Polled = [Queued, Running, Resuming];
 }

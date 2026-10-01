@@ -23,6 +23,12 @@ public sealed class AgentServiceOptions
     /// <summary>Seconds between poller ticks.</summary>
     [Range(1, 3600)] public int PollSeconds { get; set; } = 3;
 
+    /// <summary>
+    /// With no live run the poller makes no database query except this sweep (and wakes at once when this process
+    /// creates a run), so Neon can scale to zero. Aligned to the clock, like Email:IdleSweepMinutes.
+    /// </summary>
+    [Range(1, 1440)] public int IdleSweepMinutes { get; set; } = 30;
+
     /// <summary>The watchdog fails a run that has been Running longer than this.</summary>
     [Range(1, 1440)] public int RunTimeoutMinutes { get; set; } = 4;
 

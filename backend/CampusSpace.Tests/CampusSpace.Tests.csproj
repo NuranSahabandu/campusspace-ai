@@ -14,6 +14,7 @@
     <!-- FluentAssertions v8+ switched to a commercial licence (Xceed); stay on 7.x. -->
     <PackageReference Include="FluentAssertions" Version="7.*" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="8.10.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.*" />
     <PackageReference Include="xunit" Version="2.5.3" />

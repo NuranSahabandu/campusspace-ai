@@ -1,3 +1,4 @@
+using CampusSpace.Api.Background;
 using CampusSpace.Api.Data;
 using CampusSpace.Api.Options;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,8 @@ public static class PersistenceExtensions
 {
     public static IServiceCollection AddPersistence(this IServiceCollection services)
     {
+        // Raised by AppDbContext after a save that created work; wakes the idle AgentRunPoller / NotificationDispatcher.
+        services.AddSingleton<WorkSignals>();
         // Read the connection string when the context is built, so test overrides are picked up.
         services.AddDbContext<AppDbContext>((sp, options) =>
         {
