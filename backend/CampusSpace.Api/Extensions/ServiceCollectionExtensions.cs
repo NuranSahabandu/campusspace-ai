@@ -4,6 +4,7 @@ using CampusSpace.Api.Data;
 using CampusSpace.Api.Health;
 using CampusSpace.Api.Middleware;
 using CampusSpace.Api.Options;
+using CampusSpace.Api.Photos;
 using CampusSpace.Api.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -24,10 +25,15 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>CORS for the React app. Origins come from Cors:AllowedOrigins.</summary>
-    public static IServiceCollection AddFrontendCors(this IServiceCollection services, IConfiguration configuration)
+    /// <summary>
+    /// CORS for the React app. Origins come only from Cors:AllowedOrigins. Production refuses an empty list, a wildcard
+    /// or a non-https origin other than localhost (<see cref="HostingExtensions.CorsProblems"/>).
+    /// </summary>
+    public static IServiceCollection AddFrontendCors(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
         var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (environment.IsProduction() && HostingExtensions.CorsProblems(origins) is { Count: > 0 } problems)
+            throw new InvalidOperationException(string.Join(" ", problems));
         services.AddCors(options => options.AddPolicy(FrontendsCorsPolicy, policy =>
             policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod()));
         return services;
@@ -53,13 +59,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
         services.AddScoped<ILoanService, LoanService>();
-        services.AddOptions<StorageOptions>()
-            .BindConfiguration(StorageOptions.SectionName)
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-        services.AddSingleton<IDamagePhotoStore>(sp => new DamagePhotoStore(Path.Combine(
-            sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
-            sp.GetRequiredService<IOptions<StorageOptions>>().Value.DamagePhotosPath)));
+        services.AddPhotoStorage();
         services.AddScoped<IPricingRuleService, PricingRuleService>();
         services.AddScoped<IQuotationCalculator, QuotationCalculator>();
         services.AddScoped<IQuotationService, QuotationService>();

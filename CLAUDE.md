@@ -153,7 +153,7 @@ Backend (needs dotnet-ef 8.* installed globally: `dotnet tool install -g dotnet-
 ./scripts/dev-secrets.sh                            # .env -> dotnet user-secrets (never prints values, re-runnable)
 dotnet build backend
 dotnet test backend                                 # Docker must be running (Testcontainers postgres:16)
-dotnet run --project backend/CampusSpace.Api        # http://localhost:5080 (/health, /swagger); Development auto-migrates
+dotnet run --project backend/CampusSpace.Api        # http://localhost:5080 (/health, /swagger); Development auto-migrates + seeds
 dotnet ef migrations add <Name> --project backend/CampusSpace.Api -o Data/Migrations
 dotnet ef database update --project backend/CampusSpace.Api
 dotnet list backend package --include-transitive | grep -E " 9\.| 10\."   # must print nothing Microsoft.*/Npgsql
@@ -265,7 +265,7 @@ the technician's home body is `TodayHandoversView`. A booking's loans come from 
 reads `GET /api/equipment-items?typeId=&status=Available`. Every checkout/check-in error title is shown exactly as sent,
 and `invalidateLoanLists` reloads what changed. The check-in rules (Damaged needs a note and a photo; photo JPEG/PNG by
 magic bytes, ≤ 5 MB; note ≤ 1000) are mirrored in `CheckInRules` (`features/loans/models.dart`), with the server's
-messages, so keep them in step with `LoanService`/`DamagePhotoStore`. Photos come only through `photoPickerProvider`
+messages, so keep them in step with `LoanService`/`DamagePhotoRules`. Photos come only through `photoPickerProvider`
 (image_picker with maxWidth 1600, imageQuality 80) as bytes, and are uploaded as dio `FormData`. A loan that is already
 checked in opens read-only. Tests use `pumpLoansScreens`, `MockLoansRepository`, `FakePhotoPicker` and the
 `live*` models from `test/fixtures/loans.dart`.
@@ -395,10 +395,27 @@ Active includes CheckedIn, not only the plan's Confirmed. Lock order is always t
 (`FOR UPDATE`, READ COMMITTED). Cancel checks for open loans under the same booking lock ("Equipment is still on loan;
 check it in first"). Only checkout and check-in change OnLoan (`ILoanService`). Tests build loans with `LoanTestData`:
 each booking gets its own room, type and items, never seeded rows.
-Damage photos: magic-byte checked, ≤ 5 MB, random names, stored outside the web root, served only through
-GET /api/loans/{id}/photo. Use `IDamagePhotoStore` only. The folder is `Storage:DamagePhotosPath` (git-ignored
-`App_Data/damage-photos` by default), and the DB stores only the file name (`CK_EquipmentLoans_DamagePhotoPath`). Write
-the file after every check passes and delete it if the transaction fails. Tests read `factory.DamagePhotosPath`.
+Damage photos (Task 6.D1, `Photos/`): the rules are `DamagePhotoRules` (JPEG/PNG by magic bytes, ≤ 5 MB) and the keys
+`PhotoKeys` (32 random hex + .jpg/.png, no user data; `CK_EquipmentLoans_DamagePhotoKey`); a store never sees a name,
+id or URL. Use `IPhotoStore` only. `AddPhotoStorage` picks `R2PhotoStore` (a PRIVATE Cloudflare R2 bucket over the S3
+API, AWSSDK.S3) when all four `R2__AccountId/AccessKeyId/SecretAccessKey/Bucket` are set, else `LocalPhotoStore`
+(`Storage:DamagePhotosPath`, git-ignored `App_Data/damage-photos`); a partial R2 configuration, or Production without R2,
+stops startup (Render's disk is wiped). The startup log names the store only. The DB stores the key,
+`DamagePhotoContentType` and `DamagePhotoSizeBytes` (`CK_EquipmentLoans_DamagePhotoMeta`), never a URL. Check-in uploads
+FIRST, outside any transaction (no row lock is held while R2 is called), then locks loan → item, re-checks the rules and
+commits; anything that fails after the upload deletes the object best effort (after a failed commit it first checks
+whether the row committed). If that delete fails, the object is an orphan: logged as a Warning with its random key,
+private and unreferenced, removed by hand (README); there is no sweeper. GET /api/loans/{id}/photo is the ONLY way to
+view a photo: the API streams it (never a redirect or a signed URL: a signed URL is a bearer link that bypasses the role
+check and can't be revoked) with the stored Content-Type, nosniff, `Cache-Control: private, no-store` and inline.
+`PhotoStoreUnavailableException` (a fixed text, no inner exception) maps to 503 (unreachable) or 502 (R2 answered with
+an error); R2 errors are logged as operation + HTTP status + S3 error code only. R2 client: path-style, region "auto",
+10 s timeout, 2 retries, checksums only when required, unsigned payload (R2 refuses the SDK v4 default checksums). At
+startup with R2, `LegacyPhotoImporter` moves referenced files from the local folder into the bucket (same key,
+idempotent, fills a missing size, never deletes the folder). /health does not check R2 (it would spend R2 operations on
+every ping, and an R2 outage must not make Render restart a healthy API). Tests never call R2: the factory blanks
+`R2:*`; use `FakePhotoStore` (`factory.WithPhotoStore(store)`, `api.SameUser(client)`; `FailWith`, `FailDelete`,
+`DuringPut`), and `factory.DamagePhotosPath` for the local store.
 
 Quotation conventions (Component D): Prices are computed only by IQuotationCalculator. The agent's quote is checked
 against it (V09). Lecturer bookings are fully exempt (room and equipment); students pay room rules + equipment fees.
@@ -855,6 +872,24 @@ report KPI cards reuse `MetricCard`. Report queries sit under `bookingRequestsKe
 has one default handler (an empty dashboard, `EMPTY_DASHBOARD`) because Officer tests land on `/`; tests override it with
 `reportsHandlers(...)`. Fixtures (`reportsFixtures.ts`) are captures (`/tmp/checklist-5.3/capture.sh`; recapture after a
 contract change).
+
+Production configuration (Task 6.D1; deployment itself is D3): `appsettings.Production.json` holds no secret; every
+secret is an environment variable (README "Deploy": one table for API, agent service, web and mobile). Startup:
+`PrepareDatabaseAsync` migrates only when `Database:MigrateOnStartup` is on (Development); in Production it is off (the
+app role has DML rights only) and a pending migration stops startup; apply migrations with the OWNER role
+(`dotnet ef migrations script --idempotent` + psql, README). The seed runs when `Seed:OnStartup` is on: Development =
+`Seed.SeedAsync` (adds the demo blackout and requests), Production = `Seed.SeedReferenceAsync` (accounts, clubs,
+facilities, equipment, pricing, policy; no requests, bookings, blackouts or loans); both only SELECT/INSERT. The
+Production demo password is ONLY the env var `Seed__DemoPassword` (≥ 12 chars, not the public dev one; the repo is
+public, so it goes in the report, never the README). Seeded addresses are fake, so Production sets
+`Email__RedirectAllTo` (a startup Warning otherwise). `Database:RequireSsl` (Production) refuses a connection string
+below `SslMode=Require`. CORS origins come only from `Cors:AllowedOrigins` (`Cors__AllowedOrigins__0=<Vercel URL>`,
+`__1=http://localhost:5173`); Production refuses an empty list, a wildcard, a path or plain http other than localhost.
+Swagger is on when Development or `Swagger:Enabled` (Production), Bearer scheme, `/internal` hidden. Behind Render:
+`ForwardedHeaders:Enabled` (X-Forwarded-For/Proto, ForwardLimit 1, no known proxies) runs first; HTTPS redirection
+(`https_port` 443) skips `/health`; `PORT` sets `http://0.0.0.0:{PORT}`. Production logs are a readable console
+template. Tests: `ProductionApi` (Production environment, fake R2 values + `FakePhotoStore`, RequireSsl off because
+Testcontainers has no TLS, seed off unless a test turns it on) and `fixture.CreateDatabaseAsync(migrate: false)`.
 
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).

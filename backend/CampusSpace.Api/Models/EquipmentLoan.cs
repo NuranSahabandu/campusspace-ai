@@ -22,8 +22,12 @@ public class EquipmentLoan : ITimestamped, IAuditable
     /// <summary>One of <see cref="EquipmentConditions.All"/>; set at check-in.</summary>
     public string? ReturnCondition { get; set; }
     public string? DamageNote { get; set; }
-    /// <summary>The file name under Storage:DamagePhotosPath (never a URL or an absolute path).</summary>
-    public string? DamagePhotoPath { get; set; }
+    /// <summary>The photo's object key in the photo store (<see cref="Photos.PhotoKeys"/>; never a URL or a path).</summary>
+    public string? DamagePhotoKey { get; set; }
+    /// <summary>image/jpeg or image/png, from the magic bytes at upload; served as the photo's Content-Type.</summary>
+    public string? DamagePhotoContentType { get; set; }
+    /// <summary>The photo's size in bytes. Null only for a legacy photo until LegacyPhotoImporter fills it.</summary>
+    public int? DamagePhotoSizeBytes { get; set; }
     /// <summary>Checked in after DueAt. Flagged, not charged.</summary>
     public bool IsLateReturn { get; set; }
     public DateTime CreatedAt { get; set; }

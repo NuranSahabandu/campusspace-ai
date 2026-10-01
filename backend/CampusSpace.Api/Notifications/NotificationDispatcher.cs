@@ -13,7 +13,8 @@ namespace CampusSpace.Api.Notifications;
 /// Email:DispatcherEnabled is false (Testing); tests call <see cref="ProcessOnceAsync"/>.
 /// </summary>
 public sealed class NotificationDispatcher(
-    IServiceScopeFactory scopes, IOptions<EmailOptions> options, TimeProvider clock, ILogger<NotificationDispatcher> logger)
+    IServiceScopeFactory scopes, IOptions<EmailOptions> options, TimeProvider clock, IHostEnvironment environment,
+    ILogger<NotificationDispatcher> logger)
     : BackgroundService
 {
     public const int BatchSize = 10;
@@ -26,6 +27,9 @@ public sealed class NotificationDispatcher(
         // The mode only, never a value.
         logger.LogInformation("Email: {Mode}, redirect {Redirect}", o.IsConfigured ? "Brevo" : "disabled (no Email:BrevoApiKey; emails are Skipped)",
             o.Redirect is null ? "off" : "on");
+        // The seeded demo addresses (@campusspace.local) are fake: in Production every email must go to one real inbox.
+        if (environment.IsProduction() && o.IsConfigured && o.Redirect is null)
+            logger.LogWarning("Email: Production sends to the seeded demo addresses, which are fake; set Email__RedirectAllTo");
         if (!o.DispatcherEnabled)
         {
             logger.LogInformation("Notification dispatcher is disabled (Email:DispatcherEnabled = false)");

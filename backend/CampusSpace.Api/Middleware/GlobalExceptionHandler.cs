@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using CampusSpace.Api.Data.Configurations;
+using CampusSpace.Api.Photos;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
@@ -51,6 +52,11 @@ public sealed class GlobalExceptionHandler(
             return (StatusCodes.Status400BadRequest, rule.Message);
         if (exception is ForbiddenException forbidden)
             return (StatusCodes.Status403Forbidden, forbidden.Message);
+        // A fixed text only: never the storage SDK's message, a key or the bucket.
+        if (exception is PhotoStoreUnavailableException store)
+            return (store.Failure == PhotoStoreFailure.Unreachable
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status502BadGateway, store.Message);
 
         // EF Core wraps database errors in DbUpdateException; look for the PostgresException inside.
         var postgres = exception as PostgresException ?? exception.InnerException as PostgresException;

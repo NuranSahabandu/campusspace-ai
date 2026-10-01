@@ -18,11 +18,19 @@ keys=(
   AgentTools__Key
 )
 # Optional: copied when set in .env, removed from user-secrets when empty (so a key deleted from .env doesn't linger).
-# Without Email__BrevoApiKey the API records every email as Skipped.
+# Without Email__BrevoApiKey the API records every email as Skipped. With all four R2__ keys damage photos go to the R2
+# bucket; with none, to the local folder (App_Data/damage-photos).
+r2_keys=(
+  R2__AccountId
+  R2__AccessKeyId
+  R2__SecretAccessKey
+  R2__Bucket
+)
 optional_keys=(
   Email__BrevoApiKey
   Email__FromAddress
   Email__RedirectAllTo
+  "${r2_keys[@]}"
 )
 
 if [[ ! -f "$env_file" ]]; then
@@ -61,6 +69,16 @@ fi
 # X-Service-Key (.NET -> agent) and X-Agent-Key (agent tools -> .NET) must be different secrets (plan §15.3).
 if [[ "$(lookup AgentService__ServiceKey)" == "$(lookup AgentTools__Key)" ]]; then
   echo "error: AgentService__ServiceKey and AgentTools__Key must differ. Generate each with: openssl rand -hex 32" >&2
+  exit 1
+fi
+
+# R2 is all or nothing (the API refuses a partial configuration at startup); say which names are missing, never a value.
+r2_missing=()
+for key in "${r2_keys[@]}"; do
+  [[ -z "$(lookup "$key" || true)" ]] && r2_missing+=("$key")
+done
+if (( ${#r2_missing[@]} > 0 && ${#r2_missing[@]} < ${#r2_keys[@]} )); then
+  echo "error: set all four R2__ keys in .env, or none. Missing: ${r2_missing[*]}" >&2
   exit 1
 fi
 

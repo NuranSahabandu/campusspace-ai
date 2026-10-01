@@ -21,13 +21,13 @@ abstract final class ItemConditions {
       };
 }
 
-/// The check-in rules the server enforces (LoanService, DamagePhotoStore, CheckInRequest), mirrored to save a round
+/// The check-in rules the server enforces (LoanService, DamagePhotoRules, CheckInRequest), mirrored to save a round
 /// trip. The server still decides.
 abstract final class CheckInRules {
   /// EquipmentLoanConfiguration.DamageNoteMaxLength.
   static const noteMaxLength = 1000;
 
-  /// DamagePhotoStore.MaxBytes (the §15.3 upload limit).
+  /// DamagePhotoRules.MaxBytes (the §15.3 upload limit).
   static const photoMaxBytes = 5 * 1024 * 1024;
 
   static const damagedNoteRequired = 'A note is required for a damaged return.';
@@ -46,7 +46,7 @@ abstract final class CheckInRules {
     return true;
   }
 
-  /// "image/png" or "image/jpeg" from the first bytes (as DamagePhotoStore.Detect), or null for anything else
+  /// "image/png" or "image/jpeg" from the first bytes (as DamagePhotoRules.Detect), or null for anything else
   /// (for example HEIC or WebP from the gallery).
   static String? imageType(List<int> bytes) => _startsWith(bytes, _pngMagic)
       ? 'image/png'

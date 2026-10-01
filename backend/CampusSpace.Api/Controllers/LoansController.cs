@@ -66,6 +66,8 @@ public class LoansController(ILoanService loans) : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<LoanDto>> CheckIn(long id, [FromForm] CheckInRequest request, CancellationToken ct)
         => await loans.CheckInAsync(id, request, ct) is { } loan ? Ok(loan) : NotFound();
 
@@ -73,12 +75,18 @@ public class LoansController(ILoanService loans) : ControllerBase
     [ProducesResponseType<FileStreamResult>(StatusCodes.Status200OK, "image/jpeg", "image/png")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Photo(long id, CancellationToken ct)
     {
+        // Streamed through the API (never a redirect to a signed URL), so the role check above is the only way in.
         if (await loans.GetPhotoAsync(id, ct) is not { } photo)
             return NotFound();
-        // The content type comes from the verified magic bytes; nosniff stops a browser from guessing another one.
+        // The content type was recorded from the verified magic bytes; nosniff stops a browser from guessing another
+        // one. Evidence photos are not cached anywhere, and they are shown, never downloaded.
         Response.Headers.XContentTypeOptions = "nosniff";
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.ContentDisposition = "inline";
         return File(photo.Content, photo.ContentType);
     }
 }

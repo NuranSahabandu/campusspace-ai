@@ -19,6 +19,8 @@ public class EquipmentLoansConstraintTests(PostgresFixture fixture)
     private const string Out = "'2031-03-13 04:00Z'";
     private const string Due = "'2031-03-13 06:30Z'";
     private const string Photo = "'0123456789abcdef0123456789abcdef.jpg'";
+    /// <summary>(DamagePhotoContentType, DamagePhotoSizeBytes) for a row with a photo.</summary>
+    private const string PhotoMeta = "'image/jpeg', 1234";
 
     private async Task<(long BookingId, long ItemId, long UserId)> SetupAsync()
     {
@@ -35,18 +37,19 @@ public class EquipmentLoansConstraintTests(PostgresFixture fixture)
 
     /// <summary>
     /// Inserts a loan checked out at <see cref="Out"/> and due at <see cref="Due"/>. <paramref name="checkIn"/> is SQL for
-    /// (CheckedInAt, CheckedInById, ReturnCondition, DamageNote, DamagePhotoPath, IsLateReturn); @user is the technician.
+    /// (CheckedInAt, CheckedInById, ReturnCondition, DamageNote, DamagePhotoKey, IsLateReturn) and <paramref name="photoMeta"/>
+    /// for (DamagePhotoContentType, DamagePhotoSizeBytes); @user is the technician.
     /// </summary>
     private async Task InsertAsync((long BookingId, long ItemId, long UserId) s, string checkIn = "NULL, NULL, NULL, NULL, NULL, false",
-        string checkedOut = Out, string due = Due)
+        string checkedOut = Out, string due = Due, string photoMeta = "NULL, NULL")
     {
         await using var connection = new NpgsqlConnection(fixture.ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand($"""
             INSERT INTO "EquipmentLoans" ("BookingId", "ItemId", "CheckedOutAt", "CheckedOutById", "DueAt",
-                "CheckedInAt", "CheckedInById", "ReturnCondition", "DamageNote", "DamagePhotoPath", "IsLateReturn",
-                "CreatedAt", "UpdatedAt")
-            VALUES (@booking, @item, {checkedOut}, @user, {due}, {checkIn}, now(), now())
+                "CheckedInAt", "CheckedInById", "ReturnCondition", "DamageNote", "DamagePhotoKey", "IsLateReturn",
+                "DamagePhotoContentType", "DamagePhotoSizeBytes", "CreatedAt", "UpdatedAt")
+            VALUES (@booking, @item, {checkedOut}, @user, {due}, {checkIn}, {photoMeta}, now(), now())
             """, connection);
         command.Parameters.AddWithValue("booking", s.BookingId);
         command.Parameters.AddWithValue("item", s.ItemId);
@@ -67,7 +70,7 @@ public class EquipmentLoansConstraintTests(PostgresFixture fixture)
         var s = await SetupAsync();
 
         await InsertAsync(s, $"'2031-03-13 05:00Z', @user, 'Good', NULL, NULL, false");
-        await InsertAsync(s, $"'2031-03-13 06:00Z', @user, 'Damaged', 'Cracked', {Photo}, false");
+        await InsertAsync(s, $"'2031-03-13 06:00Z', @user, 'Damaged', 'Cracked', {Photo}, false", photoMeta: PhotoMeta);
         await InsertAsync(s);
     }
 
@@ -109,7 +112,8 @@ public class EquipmentLoansConstraintTests(PostgresFixture fixture)
     {
         var s = await SetupAsync();
 
-        await ShouldFailAsync(() => InsertAsync(s, $"'2031-03-13 05:00Z', @user, 'Damaged', {noteAndPhoto}, false"),
+        var meta = noteAndPhoto.Contains(Photo) ? PhotoMeta : "NULL, NULL";
+        await ShouldFailAsync(() => InsertAsync(s, $"'2031-03-13 05:00Z', @user, 'Damaged', {noteAndPhoto}, false", photoMeta: meta),
             PostgresErrorCodes.CheckViolation, "CK_EquipmentLoans_Damaged");
     }
 
@@ -134,11 +138,34 @@ public class EquipmentLoansConstraintTests(PostgresFixture fixture)
     [InlineData("'../../etc/passwd'")]
     [InlineData("'0123456789abcdef0123456789abcdef.gif'")]
     [InlineData("'/a/0123456789abcdef0123456789abcd.jpg'")]
-    public async Task Photo_path_is_a_random_file_name_only(string path)
+    public async Task Photo_key_is_a_random_key_only(string key)
     {
         var s = await SetupAsync();
 
-        await ShouldFailAsync(() => InsertAsync(s, $"'2031-03-13 05:00Z', @user, 'Good', NULL, {path}, false"),
-            PostgresErrorCodes.CheckViolation, "CK_EquipmentLoans_DamagePhotoPath");
+        await ShouldFailAsync(() => InsertAsync(s, $"'2031-03-13 05:00Z', @user, 'Good', NULL, {key}, false", photoMeta: PhotoMeta),
+            PostgresErrorCodes.CheckViolation, "CK_EquipmentLoans_DamagePhotoKey");
+    }
+
+    [Theory]
+    [InlineData(Photo, "NULL, NULL", "CK_EquipmentLoans_DamagePhotoMeta")]          // a key needs its content type
+    [InlineData("NULL", "'image/jpeg', NULL", "CK_EquipmentLoans_DamagePhotoMeta")] // a content type needs a key
+    [InlineData("NULL", "NULL, 1234", "CK_EquipmentLoans_DamagePhotoMeta")]         // a size needs a key
+    [InlineData(Photo, "'image/gif', 1234", "CK_EquipmentLoans_DamagePhotoContentType")]
+    [InlineData(Photo, "'image/jpeg', 0", "CK_EquipmentLoans_DamagePhotoSizeBytes")]
+    [InlineData(Photo, "'image/jpeg', 5242881", "CK_EquipmentLoans_DamagePhotoSizeBytes")]
+    public async Task Photo_content_type_and_size_go_with_the_key(string key, string photoMeta, string constraint)
+    {
+        var s = await SetupAsync();
+
+        await ShouldFailAsync(() => InsertAsync(s, $"'2031-03-13 05:00Z', @user, 'Good', NULL, {key}, false", photoMeta: photoMeta),
+            PostgresErrorCodes.CheckViolation, constraint);
+    }
+
+    [Fact]
+    public async Task A_legacy_photo_may_have_no_size_yet()
+    {
+        var s = await SetupAsync();
+
+        await InsertAsync(s, $"'2031-03-13 06:00Z', @user, 'Damaged', 'Cracked', {Photo}, false", photoMeta: "'image/jpeg', NULL");
     }
 }
