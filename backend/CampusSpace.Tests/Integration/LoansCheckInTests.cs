@@ -266,6 +266,13 @@ public class LoansCheckInTests(PostgresFixture fixture)
     // ---- The photo store (FakePhotoStore: in memory, no network) ----
 
     [Fact]
+    public void The_test_API_uses_the_local_store_so_CI_never_calls_R2()
+    {
+        Factory.Services.GetRequiredService<IPhotoStore>().Should().BeOfType<LocalPhotoStore>()
+            .Which.Root.Should().Be(Factory.DamagePhotosPath);
+    }
+
+    [Fact]
     public async Task The_photo_goes_to_the_active_store_and_comes_back_byte_for_byte_with_the_stored_type()
     {
         var store = new FakePhotoStore();

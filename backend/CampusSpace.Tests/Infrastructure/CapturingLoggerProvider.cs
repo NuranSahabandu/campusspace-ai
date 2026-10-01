@@ -19,6 +19,7 @@ public sealed class CapturingLoggerProvider : ILoggerProvider
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter) =>
-            provider.Entries.Enqueue((category, formatter(state, exception)));
+            // The exception's full text too, so "never in the logs" checks cover stack traces and inner messages.
+            provider.Entries.Enqueue((category, formatter(state, exception) + (exception is null ? "" : "\n" + exception)));
     }
 }

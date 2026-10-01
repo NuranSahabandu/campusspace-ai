@@ -17,10 +17,12 @@ namespace CampusSpace.Tests.Infrastructure;
 /// so user-secrets, Swagger and the Development auto-migration are all off.
 /// The agent-service health check is stubbed to answer 200, IAgentClient is <see cref="AgentClient"/> (a fake) and the
 /// AgentRunPoller and the NotificationDispatcher are off (tests call PollOnceAsync / ProcessOnceAsync), and email has no
-/// key, so nothing calls Brevo. Pass <paramref name="clock"/> to freeze the API's TimeProvider
-/// (for rules about "now", such as lead time).
+/// key, so nothing calls Brevo. R2 has no settings, so photos go to <see cref="DamagePhotosPath"/> and nothing calls R2.
+/// Pass <paramref name="clock"/> to freeze the API's TimeProvider (for rules about "now", such as lead time), and
+/// <paramref name="environment"/> for the environment-specific tests (ProductionConfigTests).
 /// </summary>
-public sealed class CustomWebApplicationFactory(string connectionString, TimeProvider? clock = null) : WebApplicationFactory<Program>
+public sealed class CustomWebApplicationFactory(string connectionString, TimeProvider? clock = null, string environment = "Testing")
+    : WebApplicationFactory<Program>
 {
     public const string JwtIssuer = "campusspace-api-tests";
     public const string JwtAudience = "campusspace-clients-tests";
@@ -41,9 +43,11 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
     public string DamagePhotosPath { get; } =
         Path.Combine(Path.GetTempPath(), "campusspace-tests", "damage-photos", Guid.NewGuid().ToString("N"));
 
+    public string ConnectionString => connectionString;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(environment);
         builder.UseSetting("ConnectionStrings:Default", connectionString);
         builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("Jwt:Issuer", JwtIssuer);
@@ -58,6 +62,10 @@ public sealed class CustomWebApplicationFactory(string connectionString, TimePro
         builder.UseSetting("Email:FromAddress", "");
         builder.UseSetting("Email:RedirectAllTo", "");
         builder.UseSetting("Email:DispatcherEnabled", "false");
+        // Photos: no R2 settings, so the local store (DamagePhotosPath) is used and CI never calls R2. Set explicitly so a
+        // developer's R2__* environment variables can't leak in.
+        foreach (var key in new[] { "AccountId", "AccessKeyId", "SecretAccessKey", "Bucket" })
+            builder.UseSetting($"R2:{key}", "");
         // Approve waits for the agent's finalize: short in tests, so a "slow agent" test answers 202 within a second.
         builder.UseSetting("AgentService:ApprovalWaitSeconds", "1");
         builder.UseSetting("AgentService:ApprovalPollMilliseconds", "50");

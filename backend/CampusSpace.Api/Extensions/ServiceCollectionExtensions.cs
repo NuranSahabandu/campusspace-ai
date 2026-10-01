@@ -54,13 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEquipmentTypeService, EquipmentTypeService>();
         services.AddScoped<IEquipmentItemService, EquipmentItemService>();
         services.AddScoped<ILoanService, LoanService>();
-        services.AddOptions<StorageOptions>()
-            .BindConfiguration(StorageOptions.SectionName)
-            .ValidateDataAnnotations()
-            .ValidateOnStart();
-        services.AddSingleton<IPhotoStore>(sp => new LocalPhotoStore(Path.Combine(
-            sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
-            sp.GetRequiredService<IOptions<StorageOptions>>().Value.DamagePhotosPath)));
+        services.AddPhotoStorage();
         services.AddScoped<IPricingRuleService, PricingRuleService>();
         services.AddScoped<IQuotationCalculator, QuotationCalculator>();
         services.AddScoped<IQuotationService, QuotationService>();
