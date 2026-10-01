@@ -1,8 +1,12 @@
 """The Gemini client factory (Labs 05–07 settings) and token bookkeeping. No model call."""
 
+import json
+import logging
+
 import httpx
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.tools import tool
 
 from app.llm import add_usage, build_chat_model, llm_error_reason, usage_from
 from tests.conftest import make_settings
@@ -120,3 +124,64 @@ def test_transport_errors_and_others_never_carry_their_message() -> None:
     assert llm_error_reason(httpx.ReadTimeout("slow", request=request)) == "timeout"
     assert llm_error_reason(TimeoutError("read timed out")) == "timeout"
     assert llm_error_reason(RuntimeError("detail with notes")) == "RuntimeError"
+
+
+# ---------- AFC (Task 5.5): our client never logs "AFC is enabled" ----------
+
+AFC_LINES = ("AFC is enabled", "automatic function calling (AFC)")
+
+
+def _gemini_ok(request: httpx.Request) -> httpx.Response:
+    body = json.loads(request.content)
+    declared = [d["name"] for t in body.get("tools") or [] for d in t["functionDeclarations"]]
+    part = {"functionCall": {"name": declared[0], "args": {}}} if declared else {"text": "ok"}
+    content = {"role": "model", "parts": [part]}
+    return httpx.Response(200, request=request, json={
+        "candidates": [{"content": content, "finishReason": "STOP"}],
+        "usageMetadata": {"promptTokenCount": 3, "candidatesTokenCount": 1, "totalTokenCount": 4},
+    })  # fmt: skip
+
+
+def _offline(model, monkeypatch: pytest.MonkeyPatch):
+    """Point an already-built model's google-genai client at a MockTransport (no network)."""
+    client = model.client._api_client
+    monkeypatch.setattr(
+        client, "_httpx_client", httpx.Client(transport=httpx.MockTransport(_gemini_ok))
+    )
+    return model
+
+
+@tool
+def ping(text: str) -> str:
+    """Echo the text."""
+    return text
+
+
+def test_our_gemini_client_never_logs_afc(monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+    settings = make_settings(
+        monkeypatch, AGENT_LLM_AGENTS="supervisor", GOOGLE_API_KEY=FAKE_GOOGLE_KEY
+    )
+    model = _offline(build_chat_model("worker", settings, "venue_matching"), monkeypatch)
+    caplog.set_level(logging.DEBUG, logger="google_genai")
+
+    model.invoke("hi")
+    model.bind_tools([ping]).invoke("call ping")
+
+    assert not [r for r in caplog.records if any(a in r.getMessage() for a in AFC_LINES)]
+    config = model._prepare_request([HumanMessage("hi")])["config"]
+    assert config.automatic_function_calling.disable is True
+
+
+def test_the_plain_client_does_log_afc(monkeypatch: pytest.MonkeyPatch, caplog) -> None:
+    """Contrast: proves the test above would see the line if it were emitted."""
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    model = _offline(
+        ChatGoogleGenerativeAI(model="gemini-3.5-flash", google_api_key=FAKE_GOOGLE_KEY),
+        monkeypatch,
+    )
+    caplog.set_level(logging.DEBUG, logger="google_genai")
+
+    model.invoke("hi")
+
+    assert any("AFC is enabled" in r.getMessage() for r in caplog.records)

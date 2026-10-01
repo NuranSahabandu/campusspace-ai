@@ -6,6 +6,7 @@ explicitly: pydantic-settings reads the repo-root .env without exporting it to o
 """
 
 import json
+from functools import lru_cache
 from typing import Any, Literal
 
 from app.config import Settings
@@ -17,10 +18,35 @@ Role = Literal["planner", "worker"]
 CHARS_PER_TOKEN = 4  # Lab 07's estimate, used only when a response has no usage_metadata
 
 
+@lru_cache(maxsize=1)
+def _gemini_class() -> type:
+    """ChatGoogleGenerativeAI with google-genai's automatic function calling (AFC) turned off.
+
+    AFC is the SDK's own tool loop: it runs Python callables passed as tools. We never pass any
+    (create_agent's ToolNode runs our tools, and Gemini only sees declarations), so AFC can never
+    act. Yet without disable=True every generate_content call logs "AFC is enabled with max remote
+    calls: 10" (INFO) and the first one also warns "Direct use of automatic function calling (AFC)
+    ... is not recommended" (WARNING). Turning it off makes the SDK take its no-AFC branch, so
+    neither line is emitted; no other log is touched. langchain-google-genai forwards extra request
+    kwargs into GenerateContentConfig but not model_kwargs, hence the _prepare_request override.
+    """
+    from google.genai.types import AutomaticFunctionCallingConfig
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    class CampusGeminiChat(ChatGoogleGenerativeAI):
+        def _prepare_request(self, messages: Any, **kwargs: Any) -> dict[str, Any]:
+            kwargs.setdefault(
+                "automatic_function_calling", AutomaticFunctionCallingConfig(disable=True)
+            )
+            return super()._prepare_request(messages, **kwargs)
+
+    return CampusGeminiChat
+
+
 def build_chat_model(role: Role, settings: Settings, agent: str | None = None) -> Any:
     """agent names the caller ("supervisor", "venue_matching", ...) so a development fault
     (app/faults.py) can be attached to that agent's client only."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    chat_class = _gemini_class()
 
     if settings.google_api_key is None:
         raise RuntimeError("GOOGLE_API_KEY is not configured")
@@ -31,7 +57,7 @@ def build_chat_model(role: Role, settings: Settings, agent: str | None = None) -
         extra["client_args"] = {
             "transport": FaultTransport(fault, agent or role, settings.agent_fault_times)
         }
-    return ChatGoogleGenerativeAI(
+    return chat_class(
         model=settings.planner_model if planner else settings.worker_model,
         google_api_key=settings.google_api_key,
         temperature=0,
