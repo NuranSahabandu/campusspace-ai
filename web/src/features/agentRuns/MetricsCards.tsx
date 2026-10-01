@@ -17,7 +17,7 @@ const FALLBACK_HELP =
   'Runs with at least one step that fell back from the LLM to its stub ÷ runs with at least one LLM-attempted step. ' +
   'With every agent on stubs the rate is — (0 of 0).'
 
-function MetricCard({ title, help, value, children }: { title: string; help: string; value: string; children: ReactNode }) {
+export function MetricCard({ title, help, value, children }: { title: string; help: string; value: string; children: ReactNode }) {
   return (
     <Paper component="section" aria-label={title} variant="outlined" sx={{ p: 2, minWidth: 0 }}>
       <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>

@@ -29,6 +29,8 @@ export const ROUTE_ROLES = {
   // The agent-run endpoints are Facilities Officer only (plan §9), so the monitor and the run detail are too.
   '/agent-runs': OFFICER,
   '/agent-runs/:runId': OFFICER,
+  // The report endpoints are Facilities Officer only (plan §9).
+  '/reports': OFFICER,
   '/users': ADMIN,
   '/clubs': ADMIN,
   '/clubs/:id': ADMIN,

@@ -669,3 +669,97 @@ export interface NotificationLogDto {
   sentAt: string | null
   error: string | null
 }
+
+/**
+ * Booked and available hours (2 dp) and utilization = booked ÷ available (a fraction, 4 dp), null when nothing was
+ * available (Task 5.3).
+ */
+export interface UtilizationFigures {
+  bookedHours: number
+  availableHours: number
+  utilization: number | null
+}
+
+/** One building: the ratio of its active rooms' sums. */
+export interface BuildingUtilizationDto {
+  buildingId: number
+  code: string
+  name: string
+  rooms: number
+  figures: UtilizationFigures
+}
+
+/** One room. isActive false: inactive now, not in the totals; listed only when it has booked hours in the range. */
+export interface RoomUtilizationDto {
+  roomId: number
+  code: string
+  name: string
+  buildingId: number
+  buildingCode: string
+  isActive: boolean
+  figures: UtilizationFigures
+}
+
+/** GET /api/reports/utilization?from&to (Facilities Officer). from/to are campus dates, inclusive. */
+export interface UtilizationReportDto {
+  from: string
+  to: string
+  overall: UtilizationFigures
+  buildings: BuildingUtilizationDto[]
+  rooms: RoomUtilizationDto[]
+}
+
+export interface DayCountDto {
+  date: string
+  count: number
+}
+
+/** hour is the campus clock hour (0–23). */
+export interface HourCountDto {
+  hour: number
+  count: number
+}
+
+/** Outcomes by the date of the status change. approvalRate = approved ÷ decided (approved + officerRejected). */
+export interface ApprovalOutcomesDto {
+  approved: number
+  officerRejected: number
+  decided: number
+  approvalRate: number | null
+  closedAutomatically: number
+  cancelledBeforeDecision: number
+  agentFailed: number
+  revisionsRequested: number
+}
+
+/** GET /api/reports/demand?from&to (Facilities Officer): requests submitted in the range, by day and requested hour. */
+export interface DemandReportDto {
+  from: string
+  to: string
+  total: number
+  byDay: DayCountDto[]
+  byHour: HourCountDto[]
+  approvals: ApprovalOutcomesDto
+}
+
+/** The 5.1 monitor's run figures for the dashboard range: success = reachedGate ÷ finished; processing over processingRuns. */
+export interface DashboardAgentDto {
+  successRate: number | null
+  reachedGate: number
+  finished: number
+  avgProcessingMs: number | null
+  processingRuns: number
+}
+
+/** GET /api/reports/dashboard (Facilities Officer). Everything but the two "now" counts covers [from, to = today]. */
+export interface DashboardDto {
+  today: string
+  from: string
+  to: string
+  pendingApprovals: number
+  todayBookings: number
+  utilization: UtilizationFigures
+  utilizationByBuilding: BuildingUtilizationDto[]
+  bookingsPerDay: DayCountDto[]
+  agent: DashboardAgentDto
+}

@@ -4,7 +4,7 @@ import { Navigate, Route, Routes } from 'react-router'
 import { ProtectedRoute } from './auth/ProtectedRoute'
 import { type AppPath, ROUTE_ROLES } from './auth/routeAccess'
 import { LoginPage } from './features/auth/LoginPage'
-import { DashboardPage } from './features/dashboard/DashboardPage'
+import { HomePage } from './features/dashboard/HomePage'
 import { ForbiddenPage } from './features/errors/ForbiddenPage'
 import { NotFoundPage } from './features/errors/NotFoundPage'
 import { AppLayout } from './layout/AppLayout'
@@ -45,6 +45,7 @@ const ApprovalDetailPage = lazy(() =>
 const AgentRunsPage = lazy(() =>
   import('./features/agentRuns/AgentRunsPage').then((m) => ({ default: m.AgentRunsPage })),
 )
+const ReportsPage = lazy(() => import('./features/reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 const AgentRunDetailPage = lazy(() =>
   import('./features/agentRuns/AgentRunDetailPage').then((m) => ({ default: m.AgentRunDetailPage })),
 )
@@ -69,7 +70,7 @@ export function AppRoutes() {
           <Route path="forbidden" element={<ForbiddenPage />} />
           {/* Staff only; a signed-in non-staff user is sent to /forbidden above. */}
           <Route element={<ProtectedRoute roles={ROUTE_ROLES['/']} />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<HomePage />} />
             <Route path="rooms" element={<GuardedPage path="/rooms"><RoomsPage /></GuardedPage>} />
             <Route path="rooms/:id" element={<GuardedPage path="/rooms/:id"><RoomDetailPage /></GuardedPage>} />
             {/* Not a page of its own: the target's guard decides access. */}
@@ -85,6 +86,7 @@ export function AppRoutes() {
             <Route path="approvals/:requestId" element={<GuardedPage path="/approvals/:requestId"><ApprovalDetailPage /></GuardedPage>} />
             <Route path="agent-runs" element={<GuardedPage path="/agent-runs"><AgentRunsPage /></GuardedPage>} />
             <Route path="agent-runs/:runId" element={<GuardedPage path="/agent-runs/:runId"><AgentRunDetailPage /></GuardedPage>} />
+            <Route path="reports" element={<GuardedPage path="/reports"><ReportsPage /></GuardedPage>} />
             <Route path="users" element={<GuardedPage path="/users"><UsersPage /></GuardedPage>} />
             <Route path="clubs" element={<GuardedPage path="/clubs"><ClubsPage /></GuardedPage>} />
             <Route path="clubs/:id" element={<GuardedPage path="/clubs/:id"><ClubDetailPage /></GuardedPage>} />

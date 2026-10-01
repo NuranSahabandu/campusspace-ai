@@ -768,6 +768,41 @@ Pending/Sending, error as plain text); fixtures are captured responses (`notific
 redirect)` (same API and database with a fake sender), `BrevoEmailSenderTests` (sentinel key never in logs or errors).
 Env vars override user-secrets, so a one-run override (`Email__BrevoApiKey=invalid dotnet run …`) never needs `.env` edits.
 
+Reports and dashboard (Task 5.3, UC22, plan §9/§12; `ReportService`, `ReportsController`, read-only, no new tables or
+indexes: EXPLAIN ANALYZE of a 366-day utilization on the dev data ran in ~50 ms using the blackout GiST and
+`IX_Bookings_RoomId`). `GET /api/reports/utilization?from&to`, `GET /api/reports/demand?from&to` and
+`GET /api/reports/dashboard` are FacilitiesOfficer only (class attribute; Admin 403). from/to are campus dates, inclusive,
+both required, from ≤ to, ≤ 366 days (`ReportRangeQuery`, 400 otherwise). Every rate is null when its denominator is 0
+(the UI shows "—" with the denominator, never 0%). Utilization (SQL, parameters only: campus days from `generate_series`
+over `timestamp`, the CURRENT policy's opening hours as arrays, `CampusTime.Offset` as an interval): a window per (room,
+campus day) = that weekday's opening hours as a UTC tstzrange (closed days: none); blocked = `range_agg` of blackouts ∩
+window; available = window − blocked; booked = `range_agg` of Confirmed/CheckedIn/Completed bookings
+(`ReportService.CountedBookingStatuses`; Cancelled excluded) ∩ window − blocked, so booked time inside a blackout counts
+in neither and booked ≤ available; utilization = booked ÷ available seconds (4 dp; hours 2 dp). Buildings and overall are
+Σ booked ÷ Σ available over ACTIVE rooms (`Room.IsActive`, the availability search's rule), never a mean of percentages;
+an inactive room is listed (`isActive: false`, "Inactive, not in totals") only when it has booked hours. Limitation:
+opening hours and the active flag are today's values (no history is stored), so a past range is measured against them.
+Demand counts requests by CreatedAt (= submission) in the range: `byDay` per campus date (zero-filled), `byHour` by campus
+hour of RequestedStart (24 buckets). Approval outcomes are counted on the date of the status change (history ChangedAt,
+DISTINCT requests): approved (→ Approved), officerRejected (→ Rejected with an actor), approvalRate = approved ÷ decided
+(approved + officerRejected); shown apart and not in the rate: closedAutomatically (→ Rejected without an actor),
+cancelledBeforeDecision (→ Cancelled not from Approved), agentFailed (→ AgentFailed), revisionsRequested (officer →
+RevisionRequested). Dashboard: pendingApprovals = PendingApproval now; todayBookings = counted bookings overlapping campus
+today; the rest covers the last 7 campus days [today − 6, today] (`TimeProvider`): overall utilization and by building
+(the same code), bookingsPerDay by campus date of the booking start, and the agent KPIs taken unchanged from
+`IAgentRunMonitorService.GetMetricsAsync` (success = reachedGate ÷ finished; avg processing = reachedGateProcessing.avgMs
+over its runs); never re-derive the 5.1 definitions. Tests: `ReportsTests` (own database, own opening hours, hand-computed
+numbers). React: `/` is `HomePage`: an Officer gets the lazy `OfficerDashboard`, an Admin `AdminHome` (shortcuts, no API
+calls); `/reports` is Officer only (`ROUTE_ROLES`, nav "Reports"), its range in the URL (default the last 30 campus days;
+an invalid range sends nothing and keeps the last results). Charts come only from `ChartPanel` (`features/reports/`),
+which lazy-loads `charts/BarChartView.tsx`, the ONLY module that imports `@mui/x-charts` (keep the library out of the
+main chunk); every chart has a summary line and a Chart/Table toggle with a captioned table. Show utilization with
+`formatUtilization` ("62.5% (50.0 of 80.0 h)", "— (0 h available)"), hours with `formatHours`, rates with `formatRate`;
+report KPI cards reuse `MetricCard`. Report queries sit under `bookingRequestsKeys.all` (`reportsKeys`). The MSW server
+has one default handler (an empty dashboard, `EMPTY_DASHBOARD`) because Officer tests land on `/`; tests override it with
+`reportsHandlers(...)`. Fixtures (`reportsFixtures.ts`) are captures (`/tmp/checklist-5.3/capture.sh`; recapture after a
+contract change).
+
 If Docker Hub is unreachable, Testcontainers cannot pull its Ryuk reaper image. Run the tests with
 `TESTCONTAINERS_RYUK_DISABLED=true` (local only; never commit it).
 
