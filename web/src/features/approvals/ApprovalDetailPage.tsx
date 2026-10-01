@@ -15,6 +15,7 @@ import { AgentTimeline } from './AgentTimeline'
 import { DecisionDialog, type DecisionMode, type DecisionResult } from './DecisionDialog'
 import { PolicyChangedBanner } from './PolicyChangedBanner'
 import { ProposalCard } from './ProposalCard'
+import { EmailStatusCard } from '../notifications/EmailStatusCard'
 import { RunHistory } from './RunHistory'
 import { APPROVAL_IN_PROGRESS_REFRESH_MS, approvalsKeys, useAgentRun, useRequestQuotation, useRequestRuns } from './useApprovals'
 import { ValidationChecklist } from './ValidationChecklist'
@@ -186,6 +187,7 @@ export function ApprovalDetailPage() {
         <Card title="Status history" wide>
           <Timeline history={request.history} />
         </Card>
+        <EmailStatusCard requestId={request.id} version={version} />
       </Box>
 
       {dialog && (
