@@ -958,8 +958,12 @@ URLs (a Blueprint sync rewrites dashboard edits of `value:` keys). Images: `back
 cross-compiled SDK stage, `aspnet:8.0-noble-chiseled-extra`, non-root, `PORT`) and `agent-service/Dockerfile` (context
 `agent-service/`, `uv sync --locked --no-dev`, non-root, uvicorn `--log-config app/logging.json`, which keeps httpx,
 psycopg and google_genai at WARNING). Production `AgentService:StartTimeoutMinutes` is 4 (a sleeping free agent takes
-~1 min to wake; the poller retries the start with the same thread_id meanwhile). No keep-alive pings (750 Render hours
-are shared by both services). `scripts/verify-deploy.sh --api --agent --web` checks a deployment (the demo password
+~1 min to wake; the poller retries the start with the same thread_id meanwhile). Keep-awake (Task 6.D5, RUNBOOK §7): only
+the agent, only 07:00–23:00 Colombo: cron-job.org pings `/health/live` every 10 min (it keeps the agent awake but can't
+wake it: Render's waking page is too large for it, and API calls get a 502), and `.github/workflows/wake-agent.yml`
+(schedule + workflow_dispatch only, never a CI check; 06:50 and 07:35 Colombo = `20 1`/`5 2` UTC) retries until
+`{"status":"ok"}`. Never add 24/7 pings, API pings or API → agent pings (750 Render hours are shared; the agent uses
+~504/month). A request made overnight ends AgentFailed: wake the agent, then Retry agent. `scripts/verify-deploy.sh --api --agent --web` checks a deployment (the demo password
 via a hidden prompt and stdin only; `--local` adds X-Forwarded-Proto for a rehearsal against local containers).
 
 Idle-friendly background loops (Task 6.D3, `Background/`): a loop that polls the database must not query it every

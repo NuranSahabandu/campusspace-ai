@@ -255,10 +255,43 @@ idle connection + 5 minutes before suspend ≈ 6 minutes of every 30 → 0.25 CU
 21 October** (≈ 37 for a whole month), plus about 0.25 CU-hour per hour of real use. Render: two services awake
 24/7 would need 1,488 hours, twice the 750; the API alone around the clock (bots) would still fit (≈ 744).
 
-**No keep-alive pings.** A 24/7 ping would spend ~1,488 Render hours and suspend both services before the deadline.
+**No 24/7 keep-alive.** A 24/7 ping would spend ~1,488 Render hours and suspend both services before the deadline.
 For the same reason the API does **not** ping the agent service while it is awake: with crawler traffic keeping the
-API up around the clock, the agent would be kept up too and the two would exceed 750 hours. The agent service sleeps
-whenever nothing calls it; the API waits for it to wake (below).
+API up around the clock, the agent would be kept up too and the two would exceed 750 hours. Only the agent service is
+kept awake, and only in the daytime (next paragraph); the API is never pinged.
+
+**Keep-awake schedule for the agent (Task 6.D5).** Two parts, because neither works alone:
+- **cron-job.org job** (keeps it awake): `GET https://campusspace-agent.onrender.com/health/live` every 10 minutes,
+  hours 07–22 Asia/Colombo (crontab `*/10 7-22 * * *`, so the last ping is 22:50 and the agent sleeps ~23:05). It
+  **cannot wake a sleeping service**: Render answers a sleeping service with its large HTML "waking up" page,
+  cron-job.org aborts with "Failed (output too large)", and the spin-up doesn't happen. API → agent calls don't wake
+  it either (they get an instant 502). A browser GET does.
+- **GitHub Actions workflow `Wake agent`** (`.github/workflows/wake-agent.yml`; wakes it): requests `/health/live` with
+  a browser User-Agent, following redirects, every 10 s for up to 4 minutes until it gets HTTP 200 with
+  `{"status":"ok"}`. It ignores the HTML waking page and keeps trying. Green = awake; red = not awake after 4 minutes.
+  Schedule (cron is UTC; Colombo is UTC+05:30):
+
+  | cron (UTC) | Asia/Colombo | Why |
+  |------------|--------------|-----|
+  | `20 1 * * *` | 06:50 | Main wake. Not earlier than 06:45, or the agent sleeps again (15 min idle) before the 07:00 ping. A late GitHub run is fine: the pings carry on from it. |
+  | `5 2 * * *` | 07:35 | Safety net for a dropped or failed first run. If the agent is already up, it succeeds on the first try. |
+
+  Run it by hand (for example before a demo, or after an overnight request failed): GitHub → **Actions** → **Wake
+  agent** → **Run workflow** (branch `main`). It runs only on schedule and by hand, never on push or PR, so it is not a
+  CI check. A scheduled run attaches its check to main's latest commit, though. If a push to main landed while a wake
+  run was failing, Render's `checksPass` would wait for that run, so re-run the wake or the deploy if that happens.
+  GitHub disables scheduled workflows after 60 days without repository activity. That is fine until 21 October;
+  re-enable it in the Actions tab if it was disabled.
+
+**Hour budget.** The agent is up ~06:50–23:05 ≈ 16.25 h/day ≈ **504 h** in a 31-day month (≈ 488 h in 30 days), out of
+750 shared hours. That leaves ≈ **246 h** (≈ 7.9 h/day) for the API, which wakes only when it gets traffic. The
+"API alone around the clock" case above no longer fits next to the agent, so keep checking Render billing (below). No
+second wake window: each extra hour of agent coverage costs ≈ 31 h/month, and nobody uses the app at night.
+
+**Overnight gap.** A request submitted between ~23:05 and 07:00 Colombo reaches a sleeping agent that the API can't
+wake. It stays "Agent processing" and becomes **Agent failed** after 4 minutes (`AgentService:StartTimeoutMinutes`).
+To recover, wake the agent (open `https://campusspace-agent.onrender.com/health` in a browser, or run **Wake agent**).
+Then a Facilities Officer opens the request and uses **Retry agent**.
 
 **Warm-up before a demo** (10 minutes before):
 1. Open `https://campusspace-agent.onrender.com/health` (wakes the agent service and Neon; ~1 minute; you get the

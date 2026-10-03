@@ -1,0 +1,65 @@
+# Wakes the free Render agent service every morning (Task 6.D5, docs/deploy/RUNBOOK.md §7).
+# cron-job.org pings /health/live every 10 min from 07:00 to 22:50 Asia/Colombo, which keeps an awake agent awake but
+# cannot wake a sleeping one (Render's HTML waking page is too large for it, and API calls get an instant 502).
+# This workflow requests /health/live like a browser until it answers 200 {"status":"ok"}.
+# Schedule and manual runs only: never on push or pull_request, so it is not a CI check.
+name: Wake agent
+
+on:
+  schedule:
+    # Cron is UTC; Asia/Colombo is UTC+05:30 (no DST).
+    # 06:50 Colombo: after 06:45, so the agent can't fall asleep (15 min idle) before the 07:00 ping.
+    - cron: "20 1 * * *"
+    # 07:35 Colombo: safety net for a dropped or failed first run; one try when the agent is already up.
+    - cron: "5 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wake-agent
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    name: wake
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      URL: https://campusspace-agent.onrender.com/health/live
+      DEADLINE_S: "240"
+      INTERVAL_S: "10"
+    steps:
+      - name: Request /health/live until the agent is awake
+        run: |
+          set -u
+          ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 campusspace-wake/1.0"
+          body="$(mktemp)"
+          start=$SECONDS
+          try=0
+          while :; do
+            try=$((try + 1))
+            meta="$(curl -sS -L --max-time 20 -A "$ua" -H 'Accept: application/json' \
+              -o "$body" -w '%{http_code} %{content_type}' "$URL" 2>/dev/null)" || meta="000 curl-error"
+            code="${meta%% *}"
+            ctype="${meta#* }"
+            size="$(wc -c < "$body" | tr -d ' ')"
+            elapsed=$((SECONDS - start))
+            if [ "$code" = "200" ] && jq -e '.status == "ok"' "$body" > /dev/null 2>&1; then
+              echo "try $try (${elapsed}s): HTTP 200, {\"status\":\"ok\"}"
+              echo "Agent is awake after $try tries, ${elapsed}s."
+              exit 0
+            fi
+            case "$ctype" in
+              text/html*) note="Render waking page (HTML)" ;;
+              *) note="not ready" ;;
+            esac
+            echo "try $try (${elapsed}s): HTTP $code, ${ctype:-no content type}, $size bytes: $note"
+            if [ $((SECONDS - start + INTERVAL_S)) -ge "$DEADLINE_S" ]; then
+              break
+            fi
+            sleep "$INTERVAL_S"
+          done
+          echo "::error::The agent did not wake within ${DEADLINE_S}s ($try tries)."
+          exit 1
