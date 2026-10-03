@@ -276,6 +276,8 @@ To re-seed, wipe the database (`docker compose down -v`) and run the API again.
 
 Free Render services sleep, so the first call takes about a minute (warm-up: [runbook](docs/deploy/RUNBOOK.md) step 7).
 Open them in an incognito window before submitting.
+The agent service is kept awake 07:00–23:00 Asia/Colombo (a morning wake workflow plus cron-job.org pings). Outside
+those hours, open its health URL in a browser and wait about a minute (runbook step 7, "Keep-awake schedule").
 
 | What | URL |
 |------|-----|
